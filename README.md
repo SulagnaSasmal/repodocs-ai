@@ -77,10 +77,12 @@ repodocs-ai/
 - frontmatter validation for templates and examples
 - repository structure validation
 - documentation quality validation for examples and generated output
+- schema-aware OpenAPI validation for endpoint examples
 - Markdown linting
 - OpenAPI-to-Markdown generation script
 - pull request validation workflow
 - GitHub Pages deployment workflow
+- MkDocs starter integration
 
 ## How To Use
 
@@ -110,6 +112,7 @@ repodocs-ai/
 
 - validation scripts added for frontmatter and repository structure
 - OpenAPI generation script and manual workflow added
+- schema-aware OpenAPI example validation added
 - GitHub Actions added for pull request checks
 - static landing and docs pages added under `site/`
 - GitHub Pages deployment workflow added
@@ -118,7 +121,7 @@ repodocs-ai/
 
 - add more template packs for operations and architecture
 - add OpenAPI-to-template generation workflows
-- add static-site starter integration for MkDocs and Docusaurus
+- add Docusaurus starter integration
 - expand quality checks to cover example payload validation
 
 See `docs/roadmap-spec-summary.md` for a direct map between the specification, roadmap, current phase coverage, and remaining gaps.

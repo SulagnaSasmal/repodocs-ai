@@ -1,0 +1,8 @@
+site_name: RepoDocs AI Starter
+site_description: MkDocs starter integration for RepoDocs AI
+theme:
+  name: material
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - API Reference Workflow: api-reference.md

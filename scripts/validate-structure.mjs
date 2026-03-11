@@ -25,16 +25,24 @@ const requiredPaths = [
   "validation/hallucination-guards/api-doc-guardrails.md",
   "validation/review-checklists/documentation-quality-checklist.md",
   "examples/api-docs/payments-api-overview.md",
+  "examples/api-docs/payments-create-payment.md",
+  "examples/api-docs/payments-retrieve-payment.md",
   "examples/openapi/payments-openapi.yaml",
   "examples/product-docs/repodocs-ai-product-overview.md",
   "examples/product-docs/repodocs-ai-user-guide.md",
   "diagrams/data-flow/payments-data-flow.mmd",
   "scripts/generate-openapi-docs.mjs",
   "scripts/validate-doc-quality.mjs",
+  "scripts/validate-openapi-examples.mjs",
   "site/index.html",
   "site/roadmap.html",
   "site/automation.html",
-  "site/styles.css"
+  "site/styles.css",
+  "starters/mkdocs/README.md",
+  "starters/mkdocs/mkdocs.yml",
+  "starters/mkdocs/docs/index.md",
+  "starters/mkdocs/docs/getting-started.md",
+  "starters/mkdocs/docs/api-reference.md"
 ];
 
 async function exists(relativePath) {

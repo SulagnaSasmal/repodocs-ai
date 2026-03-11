@@ -8,8 +8,9 @@
     "validate:frontmatter": "node scripts/validate-frontmatter.mjs",
     "validate:structure": "node scripts/validate-structure.mjs",
     "validate:quality": "node scripts/validate-doc-quality.mjs",
+    "validate:openapi": "node scripts/validate-openapi-examples.mjs",
     "generate:openapi": "node scripts/generate-openapi-docs.mjs examples/openapi/payments-openapi.yaml generated/payments-platform-api",
-    "validate": "npm run validate:frontmatter && npm run validate:structure && npm run validate:quality && npm run lint:markdown"
+    "validate": "npm run validate:frontmatter && npm run validate:structure && npm run validate:quality && npm run validate:openapi && npm run lint:markdown"
   },
   "devDependencies": {
     "js-yaml": "^4.1.0",
