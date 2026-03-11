@@ -5,12 +5,16 @@ service: "payments-platform"
 component: "endpoint"
 owner: "platform-docs"
 api_version: "v1"
-status: stable
+status: deprecated
 dependencies:
   - auth-service
   - ledger-service
 last_reviewed: 2026-03-11
 security_impact: high
+deprecated_since: "v1"
+sunset_version: "v2"
+replaced_by: "GET /payments/{payment_id}/status"
+migration_guide: "docs/migration-guides/payments-retrieve-status.md"
 ---
 
 # Endpoint: Retrieve Payment
@@ -18,6 +22,8 @@ security_impact: high
 ## Summary
 
 Fetch the current state of a payment by identifier.
+
+This legacy endpoint remains available for compatibility but should not be used for new integrations.
 
 ## Endpoint
 
@@ -60,3 +66,13 @@ curl -X GET "https://api.example.com/payments/v1/payments/pay_123" \
 ## Performance Notes
 
 Read operations should stay low latency to support dashboard refresh patterns.
+
+## Deprecation
+
+This endpoint was deprecated in v1 and is scheduled to sunset in v2.
+
+## Migration
+
+Move clients to `GET /payments/{payment_id}/status`.
+
+Migration guide: `docs/migration-guides/payments-retrieve-status.md`.

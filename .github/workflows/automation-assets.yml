@@ -1,0 +1,54 @@
+name: Build Automation Assets
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - agents/**
+      - analytics/**
+      - knowledge-graph/**
+      - scripts/run-documentation-agent.mjs
+      - scripts/generate-analytics-report.mjs
+      - scripts/build-knowledge-graph.mjs
+      - scripts/generate-openapi-docs.mjs
+      - scripts/lib/docs-automation-utils.mjs
+      - examples/openapi/**
+      - examples/**
+      - docs/**
+
+jobs:
+  automation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run documentation agent
+        run: npm run agent:run
+
+      - name: Generate analytics report
+        run: npm run analytics:report
+
+      - name: Build knowledge graph
+        run: npm run graph:build
+
+      - name: Upload automation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: repodocs-ai-automation-assets
+          path: |
+            agents/output
+            analytics/output
+            knowledge-graph/output

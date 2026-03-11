@@ -90,9 +90,14 @@ repodocs-ai/
 - schema-aware OpenAPI validation for endpoint examples
 - request-body validation against OpenAPI request schemas
 - version-compatibility validation for API docs and examples
+- deprecation and migration validation for versioned endpoint docs
 - Markdown linting
 - OpenAPI-to-Markdown generation script
 - automatic regeneration workflow for changed OpenAPI specs
+- runnable documentation-agent orchestration for OpenAPI sources
+- runnable analytics report generation for repository coverage and freshness
+- runnable knowledge-graph generation from frontmatter, dependencies, and endpoints
+- export pipelines for Confluence, Google Docs, and PDF-ready artifacts
 - pull request validation workflow
 - GitHub Pages deployment workflow
 - MkDocs starter integration
@@ -143,7 +148,20 @@ repodocs-ai/
 
 The repository now includes starter packs for both MkDocs and Docusaurus, plus an end-to-end sample under `examples/complete-system/`.
 
-The repository also includes GitBook and Next.js starter packs, GitLab and Bitbucket support assets, pricing and bundle manifests, and roadmap assets for documentation agents, knowledge graph indexing, and analytics.
+The repository also includes GitBook and Next.js starter packs, GitLab and Bitbucket support assets, pricing and bundle manifests, and runnable repository automation for documentation agents, knowledge graph indexing, and analytics.
+
+## UI
+
+Yes. RepoDocs AI already includes a lightweight static UI in `site/` for GitHub Pages deployment. It covers the landing page, roadmap, automation summary, and complete-system walkthrough.
+
+## Automation Commands
+
+- `npm run validate`
+- `npm run agent:run`
+- `npm run analytics:report`
+- `npm run graph:build`
+- `npm run automation:run`
+- `npm run export`
 
 See `docs/roadmap-spec-summary.md` for a direct map between the specification, roadmap, current phase coverage, and remaining gaps.
 

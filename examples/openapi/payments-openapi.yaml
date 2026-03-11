@@ -50,6 +50,11 @@ paths:
     get:
       summary: Retrieve payment
       description: Fetch the current state of a payment by identifier.
+      deprecated: true
+      x-deprecated-since: v1
+      x-sunset-version: v2
+      x-replaced-by: GET /payments/{payment_id}/status
+      x-migration-guide: docs/migration-guides/payments-retrieve-status.md
       security:
         - bearerAuth: []
       parameters:
@@ -76,6 +81,39 @@ paths:
                   amount:
                     type: number
                     example: 125.5
+        '404':
+          description: Payment not found
+  /payments/{payment_id}/status:
+    get:
+      summary: Retrieve payment status
+      description: Fetch the current lifecycle status of a payment by identifier.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: payment_id
+          required: true
+          description: Unique payment identifier.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Payment status retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment_id:
+                    type: string
+                    example: pay_123
+                  status:
+                    type: string
+                    example: completed
+                  last_updated:
+                    type: string
+                    format: date-time
+                    example: '2026-03-11T10:15:00Z'
         '404':
           description: Payment not found
 components:

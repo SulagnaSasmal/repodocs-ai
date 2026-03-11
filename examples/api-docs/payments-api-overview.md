@@ -37,6 +37,8 @@ OAuth 2.0 bearer tokens with service-specific scopes.
 
 Breaking changes are introduced in new major versions. Backward-compatible enhancements are added within the current major version.
 
+The legacy retrieve endpoint is deprecated in `v1` and is scheduled to sunset in `v2`. New consumers should adopt `GET /payments/{payment_id}/status`.
+
 ## Rate Limits
 
 Requests are limited per client application and enforced at the gateway.

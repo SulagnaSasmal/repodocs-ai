@@ -83,7 +83,11 @@ Implemented assets:
 - GitLab support starter
 - Bitbucket support starter
 - pricing and bundle manifest assets
-- agent, knowledge-graph, and analytics roadmap assets
+- deprecation and migration validation for versioned docs
+- export pipelines for Confluence, Google Docs, and PDF artifacts
+- documentation-agent automation
+- analytics report automation
+- knowledge-graph build automation
 
 Outcome:
 
@@ -91,9 +95,8 @@ The repository now validates core docs hygiene, supports OpenAPI-assisted docume
 
 Remaining automation gaps:
 
-- automatic regeneration of docs from changed OpenAPI specs
-- multi-channel export support for systems such as Confluence or PDF
-- multi-channel export support for systems such as Confluence or PDF
+- Notion export support
+- hosted application delivery for analytics, agent execution, and knowledge graph services
 
 ## Spec Coverage Map
 
@@ -109,7 +112,8 @@ Remaining automation gaps:
 - end-to-end example system surfaced in the published site
 - platform-support assets for GitLab and Bitbucket
 - packaging and pricing assets represented in the repository
-- roadmap-enablement assets for agents, knowledge graph indexing, and analytics
+- runnable repository automation for agents, knowledge graph indexing, and analytics
+- multi-channel exports for Confluence, Google Docs, and PDF
 
 ### Partially covered
 
@@ -125,17 +129,17 @@ The remaining partial areas are:
 
 - version compatibility depth beyond current version matching and metadata checks
 - commercial delivery remains repository-packaged rather than a standalone distributable product
-- future roadmap assets are scaffolded but not operational applications yet
+- future roadmap capabilities are runnable as repository automation, not hosted products yet
 
 ### Not yet covered
 
 - workflow packaging for sellable distribution
-- Notion, Confluence, and Google Docs output support
+- Notion output support
 - advanced lifecycle automation and maintenance workflows
 
 ## Recommended Next Steps
 
-1. Add deeper semantic validation for request bodies and version compatibility.
-2. Add operations and architecture template packs.
-3. Add multi-channel export support.
-4. Add GitLab and Bitbucket platform support.
+1. Add Notion export support to close the remaining output-channel gap.
+2. Turn repository automation into a hosted control plane if product direction stays platform-oriented.
+3. Add live LLM execution behind the documentation agent with review-safe guardrails.
+4. Expand lifecycle checks from version/deprecation alignment into SDK and changelog compatibility.

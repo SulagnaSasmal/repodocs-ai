@@ -2,3 +2,7 @@
 Thumbs.db
 node_modules/
 generated/
+exports/
+agents/output/
+analytics/output/
+knowledge-graph/output/
