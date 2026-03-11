@@ -4,6 +4,10 @@ AI-native docs-as-code documentation system for SaaS API teams.
 
 RepoDocs AI gives engineering teams a reusable template library, structured AI prompts, diagram starters, and review guardrails for Markdown-based documentation in GitHub repositories.
 
+For a fast product entry point, start with `docs/product-guide.md`.
+
+For installation and first-run steps, use `docs/installation.md`.
+
 For a product-style walkthrough of the installable system, see `docs/ready-to-install-system.md`.
 
 For the published GitHub Pages version of that document, use `site/ready-to-install-system.html`.
@@ -29,21 +33,45 @@ Version 1 focuses on:
 - documentation governance
 - Markdown-first repository workflows
 
+## Quickstart
+
+The repository should be installable in under 5 minutes for a developer evaluating the system.
+
+1. Clone the repository.
+2. Run `npm install`.
+3. Run `npm run validate` to verify the template packs, prompts, examples, and docs structure.
+4. Open `site/index.html` or the published Pages site to review the product walkthrough.
+5. Start from `templates/`, `prompts/`, and `docs/installation.md` to adapt the system into your own docs repository.
+
+For the optional hosted automation runtime:
+
+1. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY`.
+2. Run `npm run control-plane:stack:smoke`.
+3. Confirm the Redis-backed control plane and admin flow pass the smoke test.
+
 ## Repository Layout
 
 ```text
 repodocs-ai/
+├── README.md
 ├── .github/
 ├── docs/
 ├── diagrams/
 ├── examples/
+├── prompts/
 ├── scripts/
 ├── site/
-├── prompts/
 ├── schema/
 ├── templates/
 └── validation/
 ```
+
+Product-facing entry points inside `docs/`:
+
+- `docs/product-guide.md`
+- `docs/installation.md`
+- `docs/ready-to-install-system.md`
+- `docs/product-specification.md`
 
 ## Core Principles
 
