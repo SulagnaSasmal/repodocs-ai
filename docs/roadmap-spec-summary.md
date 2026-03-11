@@ -90,10 +90,12 @@ Implemented assets:
 - knowledge-graph build automation
 - hosted control plane for automation jobs and artifact inspection
 - control-plane authentication via per-user API keys and bearer tokens
-- durable queued execution for multiple automation requests
+- Redis-backed durable queued execution for multiple automation requests across restarts and workers
 - control-plane user and key management endpoints
 - container deployment packaging for the hosted control plane
 - Render deployment manifest for hosted rollout
+- Fly.io deployment manifest for hosted rollout
+- Azure Container Apps deployment manifest for hosted rollout
 
 Outcome:
 
@@ -102,8 +104,7 @@ The repository now validates core docs hygiene, supports OpenAPI-assisted docume
 Remaining automation gaps:
 
 - identity-provider integration and tenancy for the hosted control plane
-- hosted application delivery for analytics, agent execution, and knowledge graph services beyond a single-process runtime
-- database-backed queue storage and multi-worker orchestration for control-plane jobs
+- hosted application delivery for analytics, agent execution, and knowledge graph services beyond the current lightweight runtime
 
 ## Spec Coverage Map
 
@@ -123,7 +124,7 @@ Remaining automation gaps:
 - multi-channel exports for Confluence, Google Docs, Notion, and PDF
 - hosted control plane for running repository automation through HTTP
 - authenticated and queue-aware hosted control plane for running repository automation through HTTP
-- hosted deployment manifest for a production-style container target
+- hosted deployment manifests for production-style container targets
 
 ### Partially covered
 
@@ -148,7 +149,7 @@ The remaining partial areas are:
 
 ## Recommended Next Steps
 
-1. Add durable queue storage and multi-worker execution to the hosted control plane.
+1. Add identity-provider-backed auth and tenancy to the hosted control plane.
 2. Add live LLM execution behind the documentation agent with review-safe guardrails.
 3. Expand lifecycle checks from version/deprecation alignment into SDK and changelog compatibility.
-4. Package the control plane for managed hosting with environment-specific deployment manifests.
+4. Add provider-specific operational runbooks for managed hosting targets.

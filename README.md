@@ -6,6 +6,8 @@ RepoDocs AI gives engineering teams a reusable template library, structured AI p
 
 For a product-style walkthrough of the installable system, see `docs/ready-to-install-system.md`.
 
+For the published GitHub Pages version of that document, use `site/ready-to-install-system.html`.
+
 The repository currently implements the Phase 1 and Phase 2 foundation of the product, plus a baseline of Phase 3 automation:
 
 - product specification and scope definition
@@ -172,6 +174,8 @@ Yes. RepoDocs AI already includes a lightweight static UI in `site/` for GitHub 
 - `npm run export`
 - `npm run export:notion`
 - `npm run control-plane:start`
+- `npm run control-plane:stack:up`
+- `npm run control-plane:stack:down`
 
 Control plane environment:
 
@@ -186,6 +190,8 @@ Control plane environment:
 - `npm run docker:control-plane:run`
 
 The control plane now stores queue state, run metadata, and user/key records in Redis so multiple app instances can safely accept and process jobs against shared state. The legacy `.control-plane/*.json` files are only used as a one-time migration source when Redis starts empty.
+
+For local development, the repository now includes a `compose.yaml` stack that runs Redis and the control plane together. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY` in your shell or environment, then run `npm run control-plane:stack:up`.
 
 Control plane management endpoints:
 
@@ -202,6 +208,7 @@ Hosted deployment manifests:
 - `azure-container-apps.yaml`
 
 See `docs/roadmap-spec-summary.md` for a direct map between the specification, roadmap, current phase coverage, and remaining gaps.
+For the published Pages version, use `site/spec-summary.html`.
 See `docs/spec-scorecard.md` for a strict 17-section scorecard against the attached specification.
 
 ## Buyer Fit

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RepoDocs AI Spec Summary</title>
+    <meta
+      name="description"
+      content="Published roadmap and specification summary for RepoDocs AI."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <nav class="topbar">
+        <a class="brand" href="index.html">RepoDocs AI</a>
+        <div class="topbar-links">
+          <a href="ready-to-install-system.html">System</a>
+          <a href="product-specification.html">Spec</a>
+          <a href="roadmap.html">Roadmap</a>
+          <a href="automation.html">Automation</a>
+          <a href="control-plane.html">Control Plane</a>
+          <a href="complete-system.html">Example System</a>
+          <a href="spec-summary.html">Summary</a>
+        </div>
+      </nav>
+
+      <header class="subpage-hero">
+        <p class="eyebrow">Spec Summary</p>
+        <h1>Where the repository stands against the roadmap and the attached spec.</h1>
+        <p class="hero-text">
+          RepoDocs AI now covers the phase 1 and 2 foundation in full and ships a substantial phase 3 automation baseline, including authenticated control-plane hosting and Redis-backed queued execution.
+        </p>
+      </header>
+
+      <main>
+        <section class="grid-section detail-grid">
+          <article class="content-card">
+            <p class="section-label">Current Position</p>
+            <h2>Implemented now</h2>
+            <ul class="feature-list">
+              <li>Documented product specification</li>
+              <li>Reusable Markdown template library</li>
+              <li>Shared frontmatter schema</li>
+              <li>Prompt packs for generation and review</li>
+              <li>Governance checklists and hallucination guardrails</li>
+              <li>Examples, validation scripts, CI workflows, and a Pages-ready site</li>
+            </ul>
+          </article>
+          <article class="content-card">
+            <p class="section-label">Phase Coverage</p>
+            <h2>Phases 1 through 3</h2>
+            <ul class="feature-list">
+              <li>Phase 1: foundation complete</li>
+              <li>Phase 2: core template packs complete</li>
+              <li>Phase 3: automation, export, starter-pack, and hosted-control-plane baseline shipped</li>
+            </ul>
+          </article>
+        </section>
+
+        <section class="grid-section detail-grid">
+          <article class="content-card">
+            <p class="section-label">Automation Depth</p>
+            <h2>Current hosted and validation baseline</h2>
+            <ul class="feature-list">
+              <li>OpenAPI example and request-body validation</li>
+              <li>Version, deprecation, and migration validation</li>
+              <li>Confluence, Google Docs, Notion, and PDF export pipelines</li>
+              <li>Agent, analytics, and knowledge-graph automation</li>
+              <li>Per-user API keys and bearer-token auth</li>
+              <li>Redis-backed durable queue for multi-worker-safe execution</li>
+              <li>Render, Fly.io, and Azure Container Apps deployment manifests</li>
+            </ul>
+          </article>
+          <article class="content-card emphasis-card">
+            <p class="section-label">Remaining Gaps</p>
+            <h2>What is still not fully productized</h2>
+            <ul class="feature-list">
+              <li>Identity-provider-backed auth and tenancy</li>
+              <li>Hosted delivery beyond the current lightweight control-plane runtime</li>
+              <li>Broader lifecycle automation around SDKs and changelogs</li>
+              <li>Commercial packaging beyond repository-first distribution</li>
+            </ul>
+          </article>
+        </section>
+
+        <section class="cta-section">
+          <p class="section-label">Repository Source</p>
+          <h2>The Markdown source is in the repo.</h2>
+          <p>
+            The repository copy of this summary lives at <strong>docs/roadmap-spec-summary.md</strong>. This published page avoids the broken GitHub Pages pattern of linking from the deployed <strong>site/</strong> artifact to raw Markdown outside that artifact.
+          </p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

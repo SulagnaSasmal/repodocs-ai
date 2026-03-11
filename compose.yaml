@@ -1,0 +1,36 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: repodocs-ai-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - repodocs-ai-redis-data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+
+  control-plane:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: repodocs-ai-control-plane
+    restart: unless-stopped
+    depends_on:
+      - redis
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+      REPODOCS_CONTROL_PLANE_HOST: 0.0.0.0
+      REPODOCS_CONTROL_PLANE_PORT: 4312
+      REPODOCS_CONTROL_PLANE_DATA_DIR: /var/data/control-plane
+      REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER: admin
+      REPODOCS_CONTROL_PLANE_BOOTSTRAP_DISPLAY_NAME: RepoDocs Admin
+      REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY: ${REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY:-replace-me}
+    ports:
+      - "4312:4312"
+    volumes:
+      - repodocs-ai-control-plane-data:/var/data
+
+volumes:
+  repodocs-ai-redis-data:
+  repodocs-ai-control-plane-data:

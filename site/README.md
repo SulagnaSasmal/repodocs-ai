@@ -17,5 +17,8 @@ If GitHub Pages is enabled for the repository, pushes to `main` will publish the
 ## Pages
 
 - `index.html`: landing page and product overview
+- `ready-to-install-system.html`: long-form installable system walkthrough
+- `product-specification.html`: published product specification page
 - `roadmap.html`: roadmap and specification coverage summary
+- `spec-summary.html`: strict roadmap/spec summary in published HTML form
 - `automation.html`: automation workflow and validation overview
