@@ -1,0 +1,12 @@
+sequenceDiagram
+    participant Client
+    participant API
+    participant Service
+    participant Database
+
+    Client->>API: Send request
+    API->>Service: Validate and process
+    Service->>Database: Query or persist data
+    Database-->>Service: Return result
+    Service-->>API: Build response
+    API-->>Client: Return response

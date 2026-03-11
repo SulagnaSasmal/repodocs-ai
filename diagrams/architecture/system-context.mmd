@@ -1,0 +1,6 @@
+flowchart TD
+    Developer[Developer Consumer] --> API[Public API]
+    API --> Auth[Auth Service]
+    API --> Service[Core Service]
+    Service --> Database[(Primary Database)]
+    Service --> Queue[Event Queue]
