@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RepoDocs AI Quickstart</title>
+    <meta
+      name="description"
+      content="Install RepoDocs AI in under 5 minutes: clone the repo, install dependencies, validate the system, and start from the templates and prompts."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <nav class="topbar">
+        <a class="brand" href="index.html">RepoDocs AI</a>
+        <div class="topbar-links">
+          <a href="docs/index.html">Docs</a>
+          <a href="installation.html">Quickstart</a>
+          <a href="ready-to-install-system.html">System</a>
+          <a href="product-specification.html">Spec</a>
+          <a href="roadmap.html">Roadmap</a>
+          <a href="automation.html">Automation</a>
+          <a href="control-plane.html">Control Plane</a>
+          <a href="complete-system.html">Example System</a>
+          <a href="spec-summary.html">Summary</a>
+        </div>
+      </nav>
+
+      <header class="subpage-hero split-hero">
+        <div class="subpage-hero-copy">
+          <p class="eyebrow">Quickstart</p>
+          <h1>Install RepoDocs AI in under 5 minutes.</h1>
+          <p class="hero-text">
+            Clone the repository, install dependencies, validate the documentation system, and start from the templates, prompts, and examples. This page is the shortest path from first visit to usable system.
+          </p>
+        </div>
+        <aside class="hero-summary-card">
+          <p class="section-label">Expected Outcome</p>
+          <h2>A new developer should be productive immediately.</h2>
+          <ul class="feature-list">
+            <li>Understand what the product does</li>
+            <li>Validate the repository successfully</li>
+            <li>Open the template and prompt packs right away</li>
+            <li>Optionally verify the hosted control plane locally</li>
+          </ul>
+        </aside>
+      </header>
+
+      <main class="section-stack">
+        <section class="grid-section detail-grid">
+          <article class="content-card">
+            <p class="section-label">Prerequisites</p>
+            <h2>What you need first</h2>
+            <ul class="feature-list">
+              <li>Node.js 20 or later</li>
+              <li>npm</li>
+              <li>Git</li>
+              <li>Docker Desktop if you want the hosted control-plane path</li>
+            </ul>
+          </article>
+          <article class="content-card emphasis-card">
+            <p class="section-label">Install Flow</p>
+            <h2>The core setup is only three commands.</h2>
+            <pre class="code-block">git clone https://github.com/SulagnaSasmal/repodocs-ai.git
+cd repodocs-ai
+npm install
+npm run validate</pre>
+          </article>
+        </section>
+
+        <section class="grid-section detail-grid">
+          <article class="content-card">
+            <p class="section-label">After Install</p>
+            <h2>Where to go next</h2>
+            <ul class="feature-list">
+              <li>Read the product guide for positioning and use cases</li>
+              <li>Open the system guide for the full walkthrough</li>
+              <li>Start from templates, prompts, and examples</li>
+              <li>Use the docs hub for source documents and deeper implementation notes</li>
+            </ul>
+            <div class="link-list">
+              <a href="docs/index.html">Open docs hub</a>
+              <a href="ready-to-install-system.html">Read system guide</a>
+              <a href="complete-system.html">View example system</a>
+            </div>
+          </article>
+          <article class="content-card">
+            <p class="section-label">Optional Runtime Check</p>
+            <h2>Verify the hosted automation runtime locally</h2>
+            <p>
+              If you want to test the Redis-backed control plane, set a bootstrap key and run the one-command stack smoke test.
+            </p>
+            <pre class="code-block">$env:REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY = 'replace-me'
+npm run control-plane:stack:smoke</pre>
+          </article>
+        </section>
+
+        <section class="cta-section">
+          <p class="section-label">Source Document</p>
+          <h2>The installation guide also ships as source Markdown.</h2>
+          <p>
+            The repository source for this page lives at <strong>docs/installation.md</strong>, and the published source copy is available at <strong>site/docs/installation.md</strong>.
+          </p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
