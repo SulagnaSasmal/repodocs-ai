@@ -1,0 +1,8 @@
+flowchart LR
+    Client[Client Application] --> Gateway[API Gateway]
+    Gateway --> Payments[Payments API]
+    Payments --> Ledger[Ledger Service]
+    Payments --> Risk[Risk Engine]
+    Payments --> Events[(Event Stream)]
+    Ledger --> Warehouse[(Reporting Store)]
+    Events --> Notifications[Notifications Service]

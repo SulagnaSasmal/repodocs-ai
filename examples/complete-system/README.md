@@ -13,6 +13,8 @@ security_impact: low
 
 # Complete System Example
 
+## Scope
+
 This directory is reserved for a future end-to-end documentation sample that combines:
 
 - API overview documentation
@@ -20,5 +22,7 @@ This directory is reserved for a future end-to-end documentation sample that com
 - feature documentation
 - review checklist usage
 - Mermaid diagrams
+
+## Current State
 
 The initial scaffold includes focused examples in sibling folders.

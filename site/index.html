@@ -12,6 +12,14 @@
   </head>
   <body>
     <div class="page-shell">
+      <nav class="topbar">
+        <a class="brand" href="index.html">RepoDocs AI</a>
+        <div class="topbar-links">
+          <a href="roadmap.html">Roadmap</a>
+          <a href="automation.html">Automation</a>
+          <a href="../docs/roadmap-spec-summary.md">Summary</a>
+        </div>
+      </nav>
       <header class="hero">
         <div class="hero-copy">
           <p class="eyebrow">RepoDocs AI</p>
@@ -22,6 +30,7 @@
           <div class="hero-actions">
             <a class="primary-action" href="../README.md">View Repository</a>
             <a class="secondary-action" href="../docs/product-specification.md">Read Spec</a>
+            <a class="secondary-action" href="roadmap.html">See Roadmap</a>
           </div>
         </div>
         <section class="hero-panel">
@@ -98,17 +107,38 @@
             </article>
             <article class="timeline-item active">
               <span>Phase 3</span>
-              <h3>Automation started</h3>
-              <p>Validation scripts, CI workflows, and a landing page are now implemented. OpenAPI generation workflows remain next.</p>
+              <h3>Automation baseline shipped</h3>
+              <p>Validation scripts, CI workflows, OpenAPI generation scaffolding, and a publishable site are now implemented.</p>
             </article>
           </div>
+        </section>
+
+        <section class="grid-section detail-grid">
+          <article class="content-card">
+            <p class="section-label">Spec Coverage</p>
+            <h2>Five subsystems, one repo-native workflow.</h2>
+            <ul class="feature-list">
+              <li>Template library across product, API, feature, and governance docs</li>
+              <li>Shared frontmatter schema for all Markdown assets</li>
+              <li>Prompt framework for drafting and review</li>
+              <li>Mermaid starters for architecture, sequence, and data flow</li>
+              <li>Validation and publishing automation through scripts and Actions</li>
+            </ul>
+          </article>
+          <article class="content-card emphasis-card">
+            <p class="section-label">What remains</p>
+            <h2>Phase 3 is real, but not finished.</h2>
+            <p>
+              The remaining work is deeper automation: schema-aware example validation, regeneration from changed API specs, and starter integrations for full docs frameworks.
+            </p>
+          </article>
         </section>
 
         <section class="cta-section">
           <p class="section-label">Next Build</p>
           <h2>Move from static assets to generated documentation workflows.</h2>
           <p>
-            The next milestone is OpenAPI-assisted generation, richer linting, and starter integrations for documentation site frameworks.
+            The next milestone is schema-aware validation, richer regeneration workflows, and starter integrations for documentation site frameworks.
           </p>
         </section>
       </main>

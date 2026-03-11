@@ -9,6 +9,7 @@ const repoRoot = path.resolve(__dirname, "..");
 const requiredPaths = [
   "docs/product-specification.md",
   "docs/phase-1-phase-2-plan.md",
+  "docs/roadmap-spec-summary.md",
   "templates/api/api-overview.md",
   "templates/api/endpoint-template.md",
   "templates/product/product-overview.md",
@@ -24,9 +25,15 @@ const requiredPaths = [
   "validation/hallucination-guards/api-doc-guardrails.md",
   "validation/review-checklists/documentation-quality-checklist.md",
   "examples/api-docs/payments-api-overview.md",
+  "examples/openapi/payments-openapi.yaml",
   "examples/product-docs/repodocs-ai-product-overview.md",
   "examples/product-docs/repodocs-ai-user-guide.md",
+  "diagrams/data-flow/payments-data-flow.mmd",
+  "scripts/generate-openapi-docs.mjs",
+  "scripts/validate-doc-quality.mjs",
   "site/index.html",
+  "site/roadmap.html",
+  "site/automation.html",
   "site/styles.css"
 ];
 

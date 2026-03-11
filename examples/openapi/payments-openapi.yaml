@@ -1,0 +1,86 @@
+openapi: 3.0.3
+info:
+  title: Payments Platform API
+  version: v1
+  description: API for creating and retrieving payment records.
+servers:
+  - url: https://api.example.com/payments/v1
+paths:
+  /payments:
+    post:
+      summary: Create payment
+      description: Create a new payment record for checkout processing.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                  example: 125.5
+                currency:
+                  type: string
+                  example: USD
+                customer_id:
+                  type: string
+                  example: cus_123
+      responses:
+        '201':
+          description: Payment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment_id:
+                    type: string
+                    example: pay_123
+                  status:
+                    type: string
+                    example: pending
+        '400':
+          description: Invalid payment request
+        '401':
+          description: Unauthorized
+  /payments/{payment_id}:
+    get:
+      summary: Retrieve payment
+      description: Fetch the current state of a payment by identifier.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: payment_id
+          required: true
+          description: Unique payment identifier.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Payment retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment_id:
+                    type: string
+                    example: pay_123
+                  status:
+                    type: string
+                    example: completed
+                  amount:
+                    type: number
+                    example: 125.5
+        '404':
+          description: Payment not found
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

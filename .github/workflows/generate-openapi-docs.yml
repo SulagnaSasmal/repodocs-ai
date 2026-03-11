@@ -1,0 +1,39 @@
+name: Generate OpenAPI Docs
+
+on:
+  workflow_dispatch:
+    inputs:
+      spec_path:
+        description: Relative path to the OpenAPI file to convert
+        required: true
+        default: examples/openapi/payments-openapi.yaml
+      output_directory:
+        description: Relative output directory for generated docs
+        required: true
+        default: generated/payments-platform-api
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate API docs from OpenAPI
+        run: node scripts/generate-openapi-docs.mjs "${{ inputs.spec_path }}" "${{ inputs.output_directory }}"
+
+      - name: Upload generated docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-openapi-docs
+          path: ${{ inputs.output_directory }}

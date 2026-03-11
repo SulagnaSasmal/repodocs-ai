@@ -4,7 +4,7 @@ AI-native docs-as-code documentation system for SaaS API teams.
 
 RepoDocs AI gives engineering teams a reusable template library, structured AI prompts, diagram starters, and review guardrails for Markdown-based documentation in GitHub repositories.
 
-The repository currently implements the Phase 1 and Phase 2 foundation of the product:
+The repository currently implements the Phase 1 and Phase 2 foundation of the product, plus a baseline of Phase 3 automation:
 
 - product specification and scope definition
 - metadata and validation system
@@ -13,7 +13,8 @@ The repository currently implements the Phase 1 and Phase 2 foundation of the pr
 - AI prompt packs for generation and review
 - example documentation sets
 - Phase 3 validation and publishing automation
-- static landing page for product presentation
+- OpenAPI-assisted document generation scaffold
+- static landing and docs site for product presentation
 
 ## Scope
 
@@ -75,7 +76,9 @@ repodocs-ai/
 
 - frontmatter validation for templates and examples
 - repository structure validation
+- documentation quality validation for examples and generated output
 - Markdown linting
+- OpenAPI-to-Markdown generation script
 - pull request validation workflow
 - GitHub Pages deployment workflow
 
@@ -106,8 +109,9 @@ repodocs-ai/
 ### Phase 3
 
 - validation scripts added for frontmatter and repository structure
+- OpenAPI generation script and manual workflow added
 - GitHub Actions added for pull request checks
-- static landing page added under `site/`
+- static landing and docs pages added under `site/`
 - GitHub Pages deployment workflow added
 
 ## Initial Roadmap
@@ -116,6 +120,8 @@ repodocs-ai/
 - add OpenAPI-to-template generation workflows
 - add static-site starter integration for MkDocs and Docusaurus
 - expand quality checks to cover example payload validation
+
+See `docs/roadmap-spec-summary.md` for a direct map between the specification, roadmap, current phase coverage, and remaining gaps.
 
 ## Buyer Fit
 

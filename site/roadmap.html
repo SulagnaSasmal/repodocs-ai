@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RepoDocs AI Roadmap</title>
+    <meta
+      name="description"
+      content="Roadmap and specification coverage for RepoDocs AI."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <nav class="topbar">
+        <a class="brand" href="index.html">RepoDocs AI</a>
+        <div class="topbar-links">
+          <a href="roadmap.html">Roadmap</a>
+          <a href="automation.html">Automation</a>
+          <a href="../docs/roadmap-spec-summary.md">Summary</a>
+        </div>
+      </nav>
+
+      <header class="subpage-hero">
+        <p class="eyebrow">Roadmap</p>
+        <h1>What phases 1, 2, and 3 cover today.</h1>
+        <p class="hero-text">
+          RepoDocs AI now has a complete foundation, working template packs, and a baseline automation layer. The remaining roadmap is depth, not first-pass scaffolding.
+        </p>
+      </header>
+
+      <main>
+        <section class="stacked-section">
+          <div class="timeline vertical-timeline">
+            <article class="timeline-item complete">
+              <span>Phase 1</span>
+              <h3>Foundation complete</h3>
+              <p>Specification, schema, guardrails, repository structure, and usage framing are all present.</p>
+            </article>
+            <article class="timeline-item complete">
+              <span>Phase 2</span>
+              <h3>Core packs shipped</h3>
+              <p>Product, feature, API, and governance assets are usable today with prompt support and example documents.</p>
+            </article>
+            <article class="timeline-item active">
+              <span>Phase 3</span>
+              <h3>Automation baseline shipped</h3>
+              <p>Validation, CI, OpenAPI generation scaffolding, and GitHub Pages publishing are in place, with deeper semantic checks still open.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="grid-section detail-grid">
+          <article class="content-card">
+            <p class="section-label">Covered</p>
+            <h2>Implemented against the spec</h2>
+            <ul class="feature-list">
+              <li>Template library</li>
+              <li>Metadata schema</li>
+              <li>Prompt framework</li>
+              <li>Architecture, sequence, and data-flow starters</li>
+              <li>Validation, CI, and Pages deployment</li>
+            </ul>
+          </article>
+          <article class="content-card">
+            <p class="section-label">Open Gaps</p>
+            <h2>Still on the roadmap</h2>
+            <ul class="feature-list">
+              <li>Schema-aware example validation</li>
+              <li>Auto-regeneration from changed API specs</li>
+              <li>MkDocs and Docusaurus starter integration</li>
+              <li>Operations and architecture template packs</li>
+              <li>Multi-channel export support</li>
+            </ul>
+          </article>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

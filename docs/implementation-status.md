@@ -5,8 +5,8 @@
 RepoDocs AI now covers the requested first three build steps:
 
 1. Phase 1 and Phase 2 assets are implemented and stored in the repository.
-2. Phase 3 automation has started with validation scripts and GitHub Actions.
-3. A public-facing landing page has been added for presentation and GitHub Pages deployment.
+2. Phase 3 automation now includes validation scripts, GitHub Actions, and OpenAPI-assisted generation scaffolding.
+3. A public-facing landing page and lightweight docs site have been added for presentation and GitHub Pages deployment.
 
 ## Roadmap Status
 
@@ -15,12 +15,12 @@ RepoDocs AI now covers the requested first three build steps:
 - Phase 1 foundation
 - Phase 2 core template packs
 - Phase 3 baseline automation
-- static landing page and deployment workflow
+- static landing and docs site with deployment workflow
 
 ### In Progress
 
-- richer repository validation
-- OpenAPI-to-template generation workflow
+- schema-aware payload validation
+- automatic regeneration from changed API specs
 - docs-site framework starter integration
 
 ### Not Started
@@ -40,9 +40,10 @@ RepoDocs AI now covers the requested first three build steps:
 - API templates implemented
 - product templates implemented
 - AI prompt framework implemented
-- Mermaid diagram starters implemented
+- Mermaid diagram starters implemented across architecture, sequence, and data-flow coverage
 - validation guardrails implemented
 - example documentation implemented
+- roadmap-to-spec summary documented
 
 ### Partially implemented
 
@@ -54,5 +55,4 @@ RepoDocs AI now covers the requested first three build steps:
 
 - multi-channel exports
 - Notion, Confluence, Google Docs support
-- automation scripts for OpenAPI generation
 - advanced lifecycle and maintenance workflows

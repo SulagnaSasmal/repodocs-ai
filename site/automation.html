@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RepoDocs AI Automation</title>
+    <meta
+      name="description"
+      content="Automation workflow and validation coverage for RepoDocs AI."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <nav class="topbar">
+        <a class="brand" href="index.html">RepoDocs AI</a>
+        <div class="topbar-links">
+          <a href="roadmap.html">Roadmap</a>
+          <a href="automation.html">Automation</a>
+          <a href="../docs/roadmap-spec-summary.md">Summary</a>
+        </div>
+      </nav>
+
+      <header class="subpage-hero">
+        <p class="eyebrow">Automation</p>
+        <h1>Baseline validation and generation workflows are in place.</h1>
+        <p class="hero-text">
+          RepoDocs AI now validates frontmatter, structure, and documentation quality, and it can generate Markdown API docs from an OpenAPI source file through a local script or GitHub Actions.
+        </p>
+      </header>
+
+      <main>
+        <section class="grid-section detail-grid">
+          <article class="content-card">
+            <p class="section-label">Validation</p>
+            <h2>Quality gates</h2>
+            <ul class="feature-list">
+              <li>Frontmatter validation for templates and examples</li>
+              <li>Repository structure validation for required assets</li>
+              <li>Quality checks for unresolved placeholders in example and generated docs</li>
+              <li>Markdown linting through npm validation</li>
+            </ul>
+          </article>
+          <article class="content-card">
+            <p class="section-label">Generation</p>
+            <h2>OpenAPI to Markdown</h2>
+            <ul class="feature-list">
+              <li>Local generator script for API overview and endpoint docs</li>
+              <li>Example OpenAPI spec in the repository</li>
+              <li>Manual GitHub Action for artifact generation</li>
+              <li>Generated output folder suitable for review before publishing</li>
+            </ul>
+          </article>
+        </section>
+
+        <section class="cta-section">
+          <p class="section-label">Next Automation Step</p>
+          <h2>Move from scaffolding to semantic validation.</h2>
+          <p>
+            The strongest next improvement is validating generated examples against source schemas so the review loop catches incorrect payloads before merge.
+          </p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
