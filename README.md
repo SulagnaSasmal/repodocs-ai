@@ -174,7 +174,9 @@ Yes. RepoDocs AI already includes a lightweight static UI in `site/` for GitHub 
 - `npm run export`
 - `npm run export:notion`
 - `npm run control-plane:start`
+- `npm run control-plane:smoke`
 - `npm run control-plane:stack:up`
+- `npm run control-plane:stack:smoke`
 - `npm run control-plane:stack:down`
 
 Control plane environment:
@@ -191,7 +193,9 @@ Control plane environment:
 
 The control plane now stores queue state, run metadata, and user/key records in Redis so multiple app instances can safely accept and process jobs against shared state. The legacy `.control-plane/*.json` files are only used as a one-time migration source when Redis starts empty.
 
-For local development, the repository now includes a `compose.yaml` stack that runs Redis and the control plane together. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY` in your shell or environment, then run `npm run control-plane:stack:up`.
+For local development, the repository now includes a `compose.yaml` stack that runs Redis and the control plane together. Both services publish Docker health checks, so `docker compose ps` shows when Redis is ready and when the control plane is answering `/health`. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY` in your shell or environment, then run `npm run control-plane:stack:up`.
+
+To run a repeatable end-to-end verification against a live stack, use `npm run control-plane:smoke`. To boot the compose stack and run the smoke test in one step, use `npm run control-plane:stack:smoke`.
 
 Control plane management endpoints:
 

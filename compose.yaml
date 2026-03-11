@@ -8,6 +8,12 @@ services:
     volumes:
       - repodocs-ai-redis-data:/data
     command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   control-plane:
     build:
@@ -16,7 +22,8 @@ services:
     container_name: repodocs-ai-control-plane
     restart: unless-stopped
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     environment:
       NODE_ENV: production
       REDIS_URL: redis://redis:6379
@@ -30,6 +37,18 @@ services:
       - "4312:4312"
     volumes:
       - repodocs-ai-control-plane-data:/var/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4312/health').then((response)=>{if(!response.ok){process.exit(1);}return response.json();}).then((payload)=>{if(payload.status!=='ok'){process.exit(1);}}).catch(()=>process.exit(1))"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
 
 volumes:
   repodocs-ai-redis-data:
