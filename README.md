@@ -4,6 +4,36 @@ AI-native docs-as-code documentation system for SaaS API teams.
 
 RepoDocs AI gives engineering teams a reusable template library, structured AI prompts, diagram starters, and review guardrails for Markdown-based documentation in GitHub repositories.
 
+## What This Repo Is
+
+RepoDocs AI is a developer product for teams that want to stand up a serious documentation repository quickly.
+
+It is not just a folder of Markdown templates. It includes:
+
+- reusable templates for API, feature, governance, operations, product, and architecture docs
+- prompt packs for AI drafting and review
+- examples that show the system in practice
+- validation scripts for documentation quality and structure
+- an optional hosted control plane for automation
+
+## How To Use It
+
+Use RepoDocs AI as the starting kit for your own documentation repository.
+
+The shortest path is:
+
+1. Create a docs repository for your company or product.
+2. Copy the RepoDocs AI template packs into that repository.
+3. Use the prompts to draft and review content.
+4. Start documenting your APIs and features.
+5. Run validation before publishing.
+
+## How To Install It
+
+If you want to evaluate RepoDocs AI itself, clone this repository, install dependencies, and run the validation suite.
+
+If you want to adopt RepoDocs AI into your own docs repository, use the Quick Start below.
+
 Start here if you are evaluating the product:
 
 - `docs/installation.md` for the 5-minute install path
@@ -32,7 +62,42 @@ Version 1 focuses on:
 - documentation governance
 - Markdown-first repository workflows
 
-## Quickstart
+## Quick Start
+
+This is the fastest way to use RepoDocs AI as a developer adopting it into a real documentation repository.
+
+1. Create a documentation repository.
+2. Copy RepoDocs AI templates.
+3. Start documenting APIs.
+
+Example on Windows PowerShell:
+
+```powershell
+mkdir company-docs
+Set-Location company-docs
+Copy-Item ..\repodocs-ai\templates -Destination . -Recurse
+Copy-Item ..\repodocs-ai\prompts -Destination . -Recurse
+Copy-Item ..\repodocs-ai\diagrams -Destination . -Recurse
+```
+
+Example on bash:
+
+```bash
+mkdir company-docs
+cd company-docs
+cp -R ../repodocs-ai/templates .
+cp -R ../repodocs-ai/prompts .
+cp -R ../repodocs-ai/diagrams .
+```
+
+Then start with:
+
+1. `templates/api/` for API documentation
+2. `templates/features/` for feature documentation
+3. `templates/governance/` for review and quality guardrails
+4. `prompts/` for AI-assisted drafting and review
+
+## Install RepoDocs AI
 
 The repository should be installable in under 5 minutes for a developer evaluating the system.
 
@@ -40,7 +105,7 @@ The repository should be installable in under 5 minutes for a developer evaluati
 2. Run `npm install`.
 3. Run `npm run validate` to verify the template packs, prompts, examples, and docs structure.
 4. Open `docs/index.md` for the source documentation hub or `site/index.html` for the published product walkthrough.
-5. Start from `templates/`, `prompts/`, `examples/`, and `docs/installation.md` to adapt the system into your own docs repository.
+5. Use the Quick Start section above if your goal is to create your own documentation repository from these assets.
 
 For the optional hosted automation runtime:
 
