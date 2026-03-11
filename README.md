@@ -4,13 +4,12 @@ AI-native docs-as-code documentation system for SaaS API teams.
 
 RepoDocs AI gives engineering teams a reusable template library, structured AI prompts, diagram starters, and review guardrails for Markdown-based documentation in GitHub repositories.
 
-For a fast product entry point, start with `docs/product-guide.md`.
+Start here if you are evaluating the product:
 
-For installation and first-run steps, use `docs/installation.md`.
-
-For a product-style walkthrough of the installable system, see `docs/ready-to-install-system.md`.
-
-For the published GitHub Pages version of that document, use `site/ready-to-install-system.html`.
+- `docs/installation.md` for the 5-minute install path
+- `docs/product-guide.md` for product positioning and fit
+- `docs/index.md` for the source docs hub
+- `site/installation.html` for the published quickstart page
 
 The repository currently implements the Phase 1 and Phase 2 foundation of the product, plus a baseline of Phase 3 automation:
 
@@ -40,8 +39,8 @@ The repository should be installable in under 5 minutes for a developer evaluati
 1. Clone the repository.
 2. Run `npm install`.
 3. Run `npm run validate` to verify the template packs, prompts, examples, and docs structure.
-4. Open `site/index.html` or the published Pages site to review the product walkthrough.
-5. Start from `templates/`, `prompts/`, and `docs/installation.md` to adapt the system into your own docs repository.
+4. Open `docs/index.md` for the source documentation hub or `site/index.html` for the published product walkthrough.
+5. Start from `templates/`, `prompts/`, `examples/`, and `docs/installation.md` to adapt the system into your own docs repository.
 
 For the optional hosted automation runtime:
 
@@ -54,20 +53,26 @@ For the optional hosted automation runtime:
 ```text
 repodocs-ai/
 ├── README.md
+├── LICENSE
 ├── .github/
 ├── docs/
+│   ├── index.md
+│   ├── installation.md
+│   └── product-guide.md
 ├── diagrams/
 ├── examples/
 ├── prompts/
-├── scripts/
-├── site/
-├── schema/
 ├── templates/
-└── validation/
+│   ├── api/
+│   ├── features/
+│   └── governance/
+├── site/
+└── scripts/
 ```
 
 Product-facing entry points inside `docs/`:
 
+- `docs/index.md`
 - `docs/product-guide.md`
 - `docs/installation.md`
 - `docs/ready-to-install-system.md`
@@ -150,6 +155,17 @@ Product-facing entry points inside `docs/`:
 3. Use a matching prompt from `prompts/` to draft content with an AI assistant.
 4. Validate the result against the checklists in `validation/`.
 5. Commit the documentation into the product repository and review it through pull requests.
+
+## Product Surface
+
+If you want the repository to feel like a clean developer product, use these entry points first:
+
+- `README.md` for the top-level promise and install path
+- `docs/index.md` for the source docs hub
+- `templates/README.md` for the template packs
+- `prompts/README.md` for AI prompt packs
+- `examples/README.md` for working reference systems
+- `diagrams/README.md` for visual starters
 
 ## Phase Status
 
