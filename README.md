@@ -99,6 +99,9 @@ repodocs-ai/
 - runnable knowledge-graph generation from frontmatter, dependencies, and endpoints
 - export pipelines for Confluence, Google Docs, Notion, and PDF-ready artifacts
 - small hosted control plane for running automation over HTTP
+- API-key and bearer-token authentication for control-plane endpoints
+- queued execution so multiple automation requests can be accepted safely
+- container packaging for hosted control-plane deployment
 - pull request validation workflow
 - GitHub Pages deployment workflow
 - MkDocs starter integration
@@ -166,7 +169,16 @@ Yes. RepoDocs AI already includes a lightweight static UI in `site/` for GitHub 
 - `npm run export:notion`
 - `npm run control-plane:start`
 
+Control plane environment:
+
+- `REPODOCS_CONTROL_PLANE_API_KEYS` as a comma-separated list of accepted tokens
+- `REPODOCS_CONTROL_PLANE_HOST`
+- `REPODOCS_CONTROL_PLANE_PORT`
+- `npm run docker:control-plane:build`
+- `npm run docker:control-plane:run`
+
 See `docs/roadmap-spec-summary.md` for a direct map between the specification, roadmap, current phase coverage, and remaining gaps.
+See `docs/spec-scorecard.md` for a strict 17-section scorecard against the attached specification.
 
 ## Buyer Fit
 

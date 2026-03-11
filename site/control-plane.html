@@ -37,6 +37,7 @@
             <h2>Runnable over HTTP</h2>
             <ul class="feature-list">
               <li>GET /health</li>
+              <li>GET /auth/status</li>
               <li>GET /jobs</li>
               <li>GET /runs</li>
               <li>GET /artifacts</li>
@@ -47,18 +48,18 @@
           </article>
           <article class="content-card">
             <p class="section-label">Hosted Scope</p>
-            <h2>Small by design</h2>
+            <h2>Authenticated and queue-aware</h2>
             <p>
-              The control plane is meant to bridge repo-native automation and a hosted deployment model without introducing a full platform stack. It runs one job at a time, keeps artifacts on disk, and exposes the results through JSON.
+              The control plane is meant to bridge repo-native automation and a hosted deployment model without introducing a full platform stack. It now protects job and artifact endpoints with API keys, accepts multiple requests through a FIFO queue, keeps artifacts on disk, and can be packaged into a container image.
             </p>
           </article>
         </section>
 
         <section class="cta-section">
           <p class="section-label">Runtime</p>
-          <h2>Start it with one command.</h2>
+          <h2>Start it locally or run it in a container.</h2>
           <p>
-            Run <strong>npm run control-plane:start</strong> to launch the dashboard and API on port 4312 by default.
+            Run <strong>npm run control-plane:start</strong> with <strong>REPODOCS_CONTROL_PLANE_API_KEYS</strong> set, or build the container image with <strong>npm run docker:control-plane:build</strong>.
           </p>
         </section>
       </main>

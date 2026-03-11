@@ -89,6 +89,9 @@ Implemented assets:
 - analytics report automation
 - knowledge-graph build automation
 - hosted control plane for automation jobs and artifact inspection
+- control-plane authentication via API keys and bearer tokens
+- queued execution for multiple automation requests
+- container deployment packaging for the hosted control plane
 
 Outcome:
 
@@ -98,6 +101,7 @@ Remaining automation gaps:
 
 - authentication, tenancy, and queueing for the hosted control plane
 - hosted application delivery for analytics, agent execution, and knowledge graph services beyond a single-process runtime
+- durable queue storage and multi-worker orchestration for control-plane jobs
 
 ## Spec Coverage Map
 
@@ -116,6 +120,7 @@ Remaining automation gaps:
 - runnable repository automation for agents, knowledge graph indexing, and analytics
 - multi-channel exports for Confluence, Google Docs, Notion, and PDF
 - hosted control plane for running repository automation through HTTP
+- authenticated and queue-aware hosted control plane for running repository automation through HTTP
 
 ### Partially covered
 
@@ -140,7 +145,7 @@ The remaining partial areas are:
 
 ## Recommended Next Steps
 
-1. Add authentication and queue-backed execution to the hosted control plane.
+1. Add durable queue storage and multi-worker execution to the hosted control plane.
 2. Add live LLM execution behind the documentation agent with review-safe guardrails.
 3. Expand lifecycle checks from version/deprecation alignment into SDK and changelog compatibility.
-4. Package the control plane for container deployment and managed hosting.
+4. Package the control plane for managed hosting with environment-specific deployment manifests.

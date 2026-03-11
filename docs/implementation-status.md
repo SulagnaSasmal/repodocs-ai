@@ -11,6 +11,7 @@ RepoDocs AI now covers the requested first three build steps:
 5. Automatic OpenAPI regeneration, a Docusaurus starter, and a complete end-to-end example are now included.
 6. Request-body schema validation plus operations and architecture template packs are now included.
 7. Version-compatibility validation, GitBook and Next.js starters, platform support assets, packaging assets, and roadmap-enablement assets are now included.
+8. The hosted control plane now supports API-key authentication, queued execution, and container deployment packaging.
 
 ## Roadmap Status
 
@@ -30,6 +31,7 @@ RepoDocs AI now covers the requested first three build steps:
 - hosted analytics service beyond repository-generated reports
 - AI-assisted draft writing against a live LLM provider
 - authenticated multi-user control-plane access
+- queue-backed distributed execution beyond the local in-memory worker
 
 ## Spec Coverage
 
@@ -59,12 +61,16 @@ RepoDocs AI now covers the requested first three build steps:
 - export pipelines added for Confluence, Google Docs, Notion, and PDF
 - deprecation and migration validation added
 - hosted control plane added for automation jobs and artifact inspection
+- API-key and bearer-token authentication added for control-plane endpoints
+- queued control-plane execution added so multiple requests can be accepted safely
+- container deployment packaging added for the control plane
 
 ### Partially implemented
 
 - documentation workflow is documented and partially automated
 - packaging exists as repository assets but not as a sellable release bundle
 - automation runs in a small hosted control plane, but not yet as an authenticated multi-tenant service
+- queueing is in-process only and not yet backed by durable storage
 
 ### Not yet implemented
 
