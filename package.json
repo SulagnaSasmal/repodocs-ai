@@ -1,0 +1,16 @@
+{
+  "name": "repodocs-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI-native docs-as-code documentation system for SaaS API teams",
+  "scripts": {
+    "lint:markdown": "markdownlint \"**/*.md\" --ignore node_modules --ignore site",
+    "validate:frontmatter": "node scripts/validate-frontmatter.mjs",
+    "validate:structure": "node scripts/validate-structure.mjs",
+    "validate": "npm run validate:frontmatter && npm run validate:structure && npm run lint:markdown"
+  },
+  "devDependencies": {
+    "js-yaml": "^4.1.0",
+    "markdownlint-cli": "^0.45.0"
+  }
+}

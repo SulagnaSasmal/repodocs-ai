@@ -1,3 +1,16 @@
+---
+title: "Documentation Review Checklist"
+description: "Reusable governance checklist for reviewing technical documentation"
+service: ""
+component: "governance"
+owner: ""
+api_version: "n/a"
+status: draft
+dependencies: []
+last_reviewed: 2026-03-11
+security_impact: low
+---
+
 # Documentation Review Checklist
 
 ## Accuracy
