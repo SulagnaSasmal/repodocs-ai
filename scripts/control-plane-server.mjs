@@ -904,7 +904,9 @@ const stateReady = (async () => {
   await redis.connect();
   await migrateFileStateToRedisIfNeeded();
   await bootstrapAdminIfNeeded();
-  await startWorkerLoop();
+  startWorkerLoop().catch((error) => {
+    console.error("Failed to start control-plane worker loop", error);
+  });
 })();
 
 const server = http.createServer(async (request, response) => {
