@@ -6,7 +6,7 @@
     <title>RepoDocs AI Spec Summary</title>
     <meta
       name="description"
-      content="Published roadmap and specification summary for RepoDocs AI."
+      content="RepoDocs AI is an AI-native docs-as-code documentation system for SaaS teams building APIs, with templates, prompts, validation, examples, and automation."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -26,70 +26,101 @@
         </div>
       </nav>
 
-      <header class="subpage-hero">
-        <p class="eyebrow">Spec Summary</p>
-        <h1>Where the repository stands against the roadmap and the attached spec.</h1>
-        <p class="hero-text">
-          RepoDocs AI now covers the phase 1 and 2 foundation in full and ships a substantial phase 3 automation baseline, including authenticated control-plane hosting and Redis-backed queued execution.
-        </p>
+      <header class="subpage-hero split-hero">
+        <div class="subpage-hero-copy">
+          <p class="eyebrow">Spec Summary</p>
+          <h1>RepoDocs AI is an AI-native docs-as-code documentation system for SaaS teams building APIs.</h1>
+          <p class="hero-text">
+            It gives engineering teams a repository-ready documentation system with templates, prompt packs, validation guardrails, examples, and automation so they can create clearer docs faster and keep them aligned with product and API changes.
+          </p>
+        </div>
+        <aside class="hero-summary-card">
+          <p class="section-label">30-Second View</p>
+          <h2>What a new visitor should understand immediately.</h2>
+          <ul class="feature-list">
+            <li>What it is: a docs-as-code documentation system, not just a template pack</li>
+            <li>Who it is for: SaaS teams, API platforms, DevRel, and technical writers</li>
+            <li>What problem it solves: slow, inconsistent, drift-prone documentation</li>
+            <li>What makes it different: AI prompts, validation, examples, governance, and automation in one repo workflow</li>
+          </ul>
+        </aside>
       </header>
 
       <main>
         <section class="grid-section detail-grid">
           <article class="content-card">
-            <p class="section-label">Current Position</p>
-            <h2>Implemented now</h2>
+            <p class="section-label">Problem</p>
+            <h2>Normal documentation templates leave too much work undone.</h2>
             <ul class="feature-list">
-              <li>Documented product specification</li>
-              <li>Reusable Markdown template library</li>
-              <li>Shared frontmatter schema</li>
-              <li>Prompt packs for generation and review</li>
-              <li>Governance checklists and hallucination guardrails</li>
-              <li>Examples, validation scripts, CI workflows, and a Pages-ready site</li>
+              <li>Teams document features and APIs inconsistently across repositories</li>
+              <li>Manual documentation is slow and often slips behind releases</li>
+              <li>AI-generated docs are unreliable without structure and review guardrails</li>
+              <li>Most template packs stop at layout and do not help with validation or workflow automation</li>
             </ul>
           </article>
           <article class="content-card">
-            <p class="section-label">Phase Coverage</p>
-            <h2>Phases 1 through 3</h2>
+            <p class="section-label">Solution</p>
+            <h2>RepoDocs AI turns documentation into a repeatable repo-native system.</h2>
             <ul class="feature-list">
-              <li>Phase 1: foundation complete</li>
-              <li>Phase 2: core template packs complete</li>
-              <li>Phase 3: automation, export, starter-pack, and hosted-control-plane baseline shipped</li>
+              <li>Reusable Markdown templates across product, feature, API, governance, operations, and architecture docs</li>
+              <li>Prompt packs for drafting and review instead of ad hoc AI usage</li>
+              <li>Shared frontmatter schema and validation scripts for consistency</li>
+              <li>Examples, CI workflows, publishing support, exports, and a hosted control plane for automation</li>
             </ul>
           </article>
         </section>
 
         <section class="grid-section detail-grid">
           <article class="content-card">
-            <p class="section-label">Automation Depth</p>
-            <h2>Current hosted and validation baseline</h2>
+            <p class="section-label">Example</p>
+            <h2>What the system looks like in practice</h2>
             <ul class="feature-list">
-              <li>OpenAPI example and request-body validation</li>
-              <li>Version, deprecation, and migration validation</li>
-              <li>Confluence, Google Docs, Notion, and PDF export pipelines</li>
-              <li>Agent, analytics, and knowledge-graph automation</li>
-              <li>Per-user API keys and bearer-token auth</li>
-              <li>Redis-backed durable queue for multi-worker-safe execution</li>
-              <li>Render, Fly.io, and Azure Container Apps deployment manifests</li>
+              <li>A product team starts with a structured repo instead of blank Markdown files</li>
+              <li>An engineer feeds OpenAPI or product inputs into guided prompts</li>
+              <li>The team fills consistent templates, reviews with checklists, and validates structure automatically</li>
+              <li>The published site then shows a complete example system instead of isolated doc fragments</li>
             </ul>
           </article>
           <article class="content-card emphasis-card">
-            <p class="section-label">Remaining Gaps</p>
-            <h2>What is still not fully productized</h2>
+            <p class="section-label">How It Works</p>
+            <h2>Problem to published docs in four steps</h2>
             <ul class="feature-list">
-              <li>Identity-provider-backed auth and tenancy</li>
-              <li>Hosted delivery beyond the current lightweight control-plane runtime</li>
-              <li>Broader lifecycle automation around SDKs and changelogs</li>
-              <li>Commercial packaging beyond repository-first distribution</li>
+              <li>1. Start with the template library, frontmatter schema, and prompts</li>
+              <li>2. Generate and refine content with guided AI and review workflows</li>
+              <li>3. Validate docs quality, OpenAPI examples, versions, and structure in CI</li>
+              <li>4. Publish, export, and automate updates through scripts, workflows, and the control plane</li>
+            </ul>
+          </article>
+        </section>
+
+        <section class="grid-section detail-grid">
+          <article class="content-card">
+            <p class="section-label">Why It Is Different</p>
+            <h2>More than normal documentation templates</h2>
+            <ul class="feature-list">
+              <li>Templates are combined with AI prompt frameworks, not used in isolation</li>
+              <li>Validation and governance are built in, not left to manual review only</li>
+              <li>Examples and site publishing are part of the system, not separate follow-up work</li>
+              <li>Automation, exports, and a hosted runtime are included for operational use</li>
+            </ul>
+          </article>
+          <article class="content-card emphasis-card">
+            <p class="section-label">Current Product Status</p>
+            <h2>Foundation, core packs, and automation baseline are already shipped</h2>
+            <ul class="feature-list">
+              <li>Phase 1: foundation complete</li>
+              <li>Phase 2: core template packs complete</li>
+              <li>Phase 3: automation, export, starter-pack, and hosted-control-plane baseline shipped</li>
+              <li>Remaining work is mostly deeper hosting, tenancy, and productization</li>
             </ul>
           </article>
         </section>
 
         <section class="cta-section">
-          <p class="section-label">Repository Source</p>
-          <h2>The Markdown source is in the repo.</h2>
+          <p class="section-label">Next Click</p>
+          <h2>Use the site in the same order a new buyer would.</h2>
           <p>
-            The repository copy of this summary lives at <strong>docs/roadmap-spec-summary.md</strong>. This published page avoids the broken GitHub Pages pattern of linking from the deployed <strong>site/</strong> artifact to raw Markdown outside that artifact.
+            Read the system page for the product walkthrough, open the example system to see how the documentation model works in practice, and use the Docs hub for the full source documentation set. The repository copy of this summary still lives at <strong>docs/roadmap-spec-summary.md</strong>.
           </p>
         </section>
       </main>
