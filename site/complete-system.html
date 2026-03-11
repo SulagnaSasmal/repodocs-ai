@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RepoDocs AI Complete System Example</title>
+    <meta
+      name="description"
+      content="End-to-end complete-system example for RepoDocs AI across product, feature, API, governance, and diagrams."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <nav class="topbar">
+        <a class="brand" href="index.html">RepoDocs AI</a>
+        <div class="topbar-links">
+          <a href="roadmap.html">Roadmap</a>
+          <a href="automation.html">Automation</a>
+          <a href="complete-system.html">Example System</a>
+          <a href="../docs/roadmap-spec-summary.md">Summary</a>
+        </div>
+      </nav>
+
+      <header class="subpage-hero">
+        <p class="eyebrow">Complete System</p>
+        <h1>One product flow documented across product, feature, API, review, and diagrams.</h1>
+        <p class="hero-text">
+          This page surfaces the complete-system sample directly in the published site so a buyer or adopter can see how RepoDocs AI assets fit together in a realistic payments use case.
+        </p>
+      </header>
+
+      <main>
+        <section class="grid-section detail-grid">
+          <article class="content-card">
+            <p class="section-label">Product</p>
+            <h2>Payments Platform</h2>
+            <p>
+              The sample product supports payment creation, retrieval, hosted checkout, and operator-facing workflows. It shows how product-level context frames the API and feature docs.
+            </p>
+            <ul class="feature-list">
+              <li>Shared API for payment lifecycle operations</li>
+              <li>Hosted and API-driven collection flows</li>
+              <li>Linked ownership and dependency metadata</li>
+            </ul>
+          </article>
+          <article class="content-card">
+            <p class="section-label">Feature</p>
+            <h2>Payment Links</h2>
+            <p>
+              The sample feature shows how a merchant operator creates a branded payment link, shares it, and tracks final payment status from the dashboard.
+            </p>
+            <ul class="feature-list">
+              <li>Depends on checkout and notifications services</li>
+              <li>Documents workflow, configuration, and limitations</li>
+              <li>Connects feature behavior to API and architecture assets</li>
+            </ul>
+          </article>
+        </section>
+
+        <section class="stacked-section">
+          <div class="section-heading">
+            <p class="section-label">API Flow</p>
+            <h2>Two endpoint documents anchored to the same OpenAPI source</h2>
+          </div>
+          <div class="timeline vertical-timeline">
+            <article class="timeline-item complete">
+              <span>Endpoint 1</span>
+              <h3>Create Payment</h3>
+              <p>POST /payments documents authentication, request payload, response fields, and error conditions for payment creation.</p>
+            </article>
+            <article class="timeline-item complete">
+              <span>Endpoint 2</span>
+              <h3>Retrieve Payment</h3>
+              <p>GET /payments/{payment_id} shows parameter coverage, response validation, and operational retrieval behavior.</p>
+            </article>
+            <article class="timeline-item active">
+              <span>Review</span>
+              <h3>Governance closes the loop</h3>
+              <p>The sample review report captures moderate issues, missing SME input, and publication constraints before documentation goes live.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="grid-section detail-grid">
+          <article class="content-card">
+            <p class="section-label">Architecture Diagram</p>
+            <h2>System context</h2>
+            <pre class="code-block">flowchart TD
+    Merchant[Merchant Operator] --&gt; Dashboard[Merchant Dashboard]
+    Dashboard --&gt; API[Payments API]
+    API --&gt; Auth[Auth Service]
+    API --&gt; Ledger[Ledger Service]
+    API --&gt; Checkout[Checkout Service]
+    Checkout --&gt; Customer[Customer Payment Page]
+    API --&gt; Notifications[Notifications Service]</pre>
+          </article>
+          <article class="content-card">
+            <p class="section-label">Data Flow</p>
+            <h2>Payment lifecycle movement</h2>
+            <pre class="code-block">flowchart LR
+    Client[Client App] --&gt; Gateway[API Gateway]
+    Gateway --&gt; Payments[Payments API]
+    Payments --&gt; Ledger[(Ledger)]
+    Payments --&gt; Events[(Event Stream)]
+    Events --&gt; Notifications[Notifications]
+    Ledger --&gt; Dashboard[Merchant Dashboard]</pre>
+          </article>
+        </section>
+
+        <section class="cta-section">
+          <p class="section-label">Repository Assets</p>
+          <h2>The published view mirrors the full example set in the repository.</h2>
+          <p>
+            The underlying Markdown and diagram assets are stored in `examples/complete-system/`, and this page presents the same system narrative as a buyer-facing preview of the docs-as-code workflow.
+          </p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

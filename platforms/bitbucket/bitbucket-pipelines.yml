@@ -1,0 +1,11 @@
+image: node:20
+
+pipelines:
+  default:
+    - step:
+        name: Validate documentation
+        caches:
+          - node
+        script:
+          - npm ci
+          - npm run validate

@@ -1,0 +1,24 @@
+{
+  "product": "RepoDocs AI",
+  "version": "1.0.0",
+  "editions": [
+    {
+      "name": "individual",
+      "price_usd": 49
+    },
+    {
+      "name": "team",
+      "price_usd": 149
+    }
+  ],
+  "includes": [
+    "templates",
+    "prompts",
+    "diagrams",
+    "schema",
+    "validation",
+    "examples",
+    "starters",
+    "platforms"
+  ]
+}

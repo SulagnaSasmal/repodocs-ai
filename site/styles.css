@@ -200,6 +200,19 @@ h1 {
   line-height: 1.8;
 }
 
+.code-block {
+  margin: 16px 0 0;
+  padding: 18px;
+  overflow-x: auto;
+  border-radius: 20px;
+  border: 1px solid rgba(19, 32, 43, 0.12);
+  background: rgba(19, 32, 43, 0.94);
+  color: #f5efe3;
+  font-family: "IBM Plex Mono", "Consolas", monospace;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
 .stacked-section {
   margin-bottom: 24px;
 }

@@ -86,6 +86,25 @@ function extractResponseJson(content) {
   }
 }
 
+function extractRequestJson(content) {
+  const requestMatch = content.match(/## Request Example\s+[\s\S]*?```bash\s*([\s\S]*?)```/);
+  if (!requestMatch) {
+    return null;
+  }
+
+  const curlBlock = requestMatch[1];
+  const bodyMatch = curlBlock.match(/(?:-d|--data|--data-raw)\s+'([^']+)'/);
+  if (!bodyMatch) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(bodyMatch[1]);
+  } catch {
+    return { __parseError: true };
+  }
+}
+
 function extractParameterNames(content) {
   const sectionMatch = content.match(/## Parameters\s+[\s\S]*?\| --- \| --- \| --- \| --- \|\s*([\s\S]*?)(?:\n## |$)/);
   if (!sectionMatch) {
@@ -128,6 +147,10 @@ function extractSchemaProperties(operation) {
   return schema?.properties || null;
 }
 
+function extractRequestSchema(operation) {
+  return operation.requestBody?.content?.["application/json"]?.schema || null;
+}
+
 function collectDefinedParameterNames(pathItem, operation) {
   const combined = [...(pathItem.parameters || []), ...(operation.parameters || [])];
   return new Set(combined.map((parameter) => parameter.name));
@@ -161,9 +184,37 @@ async function main() {
     }
 
     const responseJson = extractResponseJson(content);
+    const requestJson = extractRequestJson(content);
     if (responseJson?.__parseError) {
       errors.push(`${relativePath}: response example is not valid JSON`);
       continue;
+    }
+
+    if (requestJson?.__parseError) {
+      errors.push(`${relativePath}: request example body is not valid JSON`);
+      continue;
+    }
+
+    const requestSchema = extractRequestSchema(match.operation);
+    if (requestSchema) {
+      if (!requestJson) {
+        errors.push(`${relativePath}: request body schema exists but no JSON request example was found`);
+      } else if (typeof requestJson === "object" && !Array.isArray(requestJson)) {
+        const allowedRequestProperties = requestSchema.properties || {};
+        const requiredRequestProperties = new Set(requestSchema.required || []);
+
+        for (const key of Object.keys(requestJson)) {
+          if (!(key in allowedRequestProperties)) {
+            errors.push(`${relativePath}: request example field '${key}' is not defined in ${path.basename(match.filePath)}`);
+          }
+        }
+
+        for (const key of requiredRequestProperties) {
+          if (!(key in requestJson)) {
+            errors.push(`${relativePath}: request example is missing required field '${key}' from ${path.basename(match.filePath)}`);
+          }
+        }
+      }
     }
 
     if (responseJson && typeof responseJson === "object" && !Array.isArray(responseJson)) {

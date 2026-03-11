@@ -1,0 +1,13 @@
+html,
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", sans-serif;
+  background: #f8f5ef;
+  color: #13202b;
+}
+
+main {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}

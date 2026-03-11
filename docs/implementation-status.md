@@ -9,6 +9,8 @@ RepoDocs AI now covers the requested first three build steps:
 3. A public-facing landing page and lightweight docs site have been added for presentation and GitHub Pages deployment.
 4. Schema-aware OpenAPI example validation and an MkDocs starter are now included.
 5. Automatic OpenAPI regeneration, a Docusaurus starter, and a complete end-to-end example are now included.
+6. Request-body schema validation plus operations and architecture template packs are now included.
+7. Version-compatibility validation, GitBook and Next.js starters, platform support assets, packaging assets, and roadmap-enablement assets are now included.
 
 ## Roadmap Status
 
@@ -22,13 +24,12 @@ RepoDocs AI now covers the requested first three build steps:
 ### In Progress
 
 - automatic regeneration from changed API specs
-- deeper request-body and version-compatibility validation
+- deeper semantic checks for version-aware deprecation and migration guidance
 
 ### Not Started
 
 - operations documentation pack
 - architecture documentation pack
-- multi-format publishing support
 - automation for Notion, Confluence, and PDF output
 
 ## Spec Coverage
@@ -47,7 +48,13 @@ RepoDocs AI now covers the requested first three build steps:
 - roadmap-to-spec summary documented
 - MkDocs starter integration documented
 - Docusaurus starter integration documented
+- GitBook starter integration documented
+- Next.js starter integration documented
 - complete-system example expanded into an end-to-end sample
+- operations and architecture template packs added
+- GitLab and Bitbucket support assets added
+- pricing and packaging assets added
+- future-roadmap assets added for agents, knowledge graph indexing, and analytics
 
 ### Partially implemented
 

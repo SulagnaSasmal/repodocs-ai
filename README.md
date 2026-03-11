@@ -72,12 +72,24 @@ repodocs-ai/
 - review checklist
 - quality validation guidance
 
+### Operations
+
+- runbook
+- deployment guide
+
+### Architecture
+
+- system architecture
+- integration architecture
+
 ## Automation
 
 - frontmatter validation for templates and examples
 - repository structure validation
 - documentation quality validation for examples and generated output
 - schema-aware OpenAPI validation for endpoint examples
+- request-body validation against OpenAPI request schemas
+- version-compatibility validation for API docs and examples
 - Markdown linting
 - OpenAPI-to-Markdown generation script
 - automatic regeneration workflow for changed OpenAPI specs
@@ -85,6 +97,8 @@ repodocs-ai/
 - GitHub Pages deployment workflow
 - MkDocs starter integration
 - Docusaurus starter integration
+- GitBook starter integration
+- Next.js docs starter integration
 
 ## How To Use
 
@@ -115,6 +129,7 @@ repodocs-ai/
 - validation scripts added for frontmatter and repository structure
 - OpenAPI generation script and manual workflow added
 - schema-aware OpenAPI example validation added
+- request-body schema validation added
 - automatic regeneration workflow added for changed OpenAPI specs
 - GitHub Actions added for pull request checks
 - static landing and docs pages added under `site/`
@@ -127,6 +142,8 @@ repodocs-ai/
 - expand quality checks to cover example payload validation
 
 The repository now includes starter packs for both MkDocs and Docusaurus, plus an end-to-end sample under `examples/complete-system/`.
+
+The repository also includes GitBook and Next.js starter packs, GitLab and Bitbucket support assets, pricing and bundle manifests, and roadmap assets for documentation agents, knowledge graph indexing, and analytics.
 
 See `docs/roadmap-spec-summary.md` for a direct map between the specification, roadmap, current phase coverage, and remaining gaps.
 

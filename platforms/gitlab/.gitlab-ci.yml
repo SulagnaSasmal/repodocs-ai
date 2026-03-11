@@ -1,0 +1,9 @@
+stages:
+  - validate
+
+validate_docs:
+  stage: validate
+  image: node:20
+  script:
+    - npm ci
+    - npm run validate

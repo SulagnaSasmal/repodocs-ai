@@ -67,6 +67,7 @@ Implemented assets:
 - repository structure validation script
 - documentation quality validation script
 - OpenAPI schema-aware example validation script
+- request-body schema validation
 - Markdown linting
 - pull request validation workflow
 - manual OpenAPI-to-Markdown generation workflow
@@ -75,6 +76,14 @@ Implemented assets:
 - static landing and docs site pages
 - MkDocs starter integration
 - Docusaurus starter integration
+- GitBook starter integration
+- Next.js docs starter integration
+- operations template pack
+- architecture template pack
+- GitLab support starter
+- Bitbucket support starter
+- pricing and bundle manifest assets
+- agent, knowledge-graph, and analytics roadmap assets
 
 Outcome:
 
@@ -96,6 +105,11 @@ Remaining automation gaps:
 - basic Mermaid architecture and sequence starters
 - Documentation Validation System baseline with schema-aware API example checks
 - starter integrations for MkDocs and Docusaurus
+- starter integrations for GitBook and Next.js docs
+- end-to-end example system surfaced in the published site
+- platform-support assets for GitLab and Bitbucket
+- packaging and pricing assets represented in the repository
+- roadmap-enablement assets for agents, knowledge graph indexing, and analytics
 
 ### Partially covered
 
@@ -103,9 +117,18 @@ Remaining automation gaps:
 - deeper semantic validation beyond current OpenAPI checks
 - workflow automation from OpenAPI source to generated docs is artifact-based rather than repository-committing
 
+### Attached spec alignment
+
+Against the attached version 1.0 spec, the repository now fully covers the product vision, target market framing, template library, prompt framework, diagram starters, documentation workflow, validation baseline, packaging as repository assets, and the example documentation system.
+
+The remaining partial areas are:
+
+- version compatibility depth beyond current version matching and metadata checks
+- commercial delivery remains repository-packaged rather than a standalone distributable product
+- future roadmap assets are scaffolded but not operational applications yet
+
 ### Not yet covered
 
-- GitLab and Bitbucket support
 - workflow packaging for sellable distribution
 - Notion, Confluence, and Google Docs output support
 - advanced lifecycle automation and maintenance workflows
