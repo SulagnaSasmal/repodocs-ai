@@ -38,3 +38,37 @@ Observed result:
 - minimal editing is still needed for SME-owned details such as exact authentication scope language, rate limits, and performance guidance
 
 Direct execution inside ChatGPT, Claude, and GitHub Copilot could not be performed from this workspace session, but the prompt-fit test against the shipped template system passed and the new `examples/payments-api/` sample reflects the expected output shape.
+
+## Developer Trust Test
+
+The repository now includes a complete trust-test sample under `examples/payments-api/` with:
+
+- `api-overview.md`
+- `create-payment.md`
+- `retrieve-payment.md`
+- `refund-payment.md`
+
+This is the concrete answer to the question: "What does a full documentation system built with RepoDocs AI actually look like?"
+
+## Minimum Product Readiness Criteria
+
+RepoDocs AI is product-ready only if these conditions are true:
+
+- clear README
+- quick start instructions
+- working templates
+- AI prompts tested
+- example documentation system
+- clean repository structure
+
+Current assessment: the repository meets this baseline for an installable developer product, with the main remaining proof point being external hands-on evaluation by additional developers or writers.
+
+## Self-Test
+
+Ask this question before release:
+
+Would I install this repo directly from GitHub, or would I feel like I need to read the full spec first?
+
+If the answer is "install it", the product is simple enough.
+
+If the answer is "read the spec first", the product still needs simplification in the README, examples, or install flow.

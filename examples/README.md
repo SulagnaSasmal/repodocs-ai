@@ -30,3 +30,11 @@ Use examples when you want to:
 Start with `complete-system/` if you want to see the full product, feature, API, governance, and diagram flow in one place.
 
 If you want the fastest API-only trust check, start with `payments-api/`.
+
+## Headline Example
+
+`payments-api/` is the killer example for the product.
+
+It is the shortest path to answering the question: "What would my docs look like if I used RepoDocs AI?"
+
+Use it when you want to evaluate whether the templates and prompts can produce a Stripe-style API documentation baseline for a real payments platform.

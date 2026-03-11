@@ -29,6 +29,8 @@ Issue a refund against a completed payment.
 
 Bearer authentication is required.
 
+See `authentication.md` for token handling and scope guidance.
+
 ## Parameters
 
 | Name | Type | Required | Description |
@@ -69,6 +71,14 @@ curl -X POST "https://api.startup-payments.example/v1/payments/refund" \
 | 400 | Invalid refund request |
 | 401 | Unauthorized |
 | 404 | Payment not found |
+
+See `error-handling.md` for the shared error envelope used across the API.
+
+## Idempotency
+
+Clients should send an `Idempotency-Key` header on refund requests to avoid duplicate reversals.
+
+See `idempotency.md` for the retry model.
 
 ## Performance Notes
 

@@ -40,7 +40,7 @@ async function collectFiles(directory, extensions) {
 }
 
 async function loadSpecs() {
-  const specsDirectory = path.join(repoRoot, "examples", "openapi");
+  const specsDirectory = path.join(repoRoot, "examples");
   if (!(await pathExists(specsDirectory))) {
     return [];
   }
@@ -51,10 +51,17 @@ async function loadSpecs() {
   for (const filePath of files) {
     const raw = await fs.readFile(filePath, "utf8");
     const spec = path.extname(filePath).toLowerCase() === ".json" ? JSON.parse(raw) : yaml.load(raw);
-    specs.push({ filePath, spec });
+
+    if (spec?.openapi && spec?.paths) {
+      specs.push({ filePath, spec });
+    }
   }
 
   return specs;
+}
+
+function normalizeRoute(route) {
+  return route.replace(/\{[^}]+\}/g, "{}");
 }
 
 function extractOperation(content) {
@@ -121,18 +128,25 @@ function extractParameterNames(content) {
     .filter((value) => value !== "None");
 }
 
-function findSpecOperation(specs, route, method) {
+function findSpecOperations(specs, route, method) {
   const lowerMethod = method.toLowerCase();
+  const normalizedRoute = normalizeRoute(route);
+  const matches = [];
 
   for (const { filePath, spec } of specs) {
-    const pathItem = spec.paths?.[route];
-    const operation = pathItem?.[lowerMethod];
-    if (operation) {
-      return { filePath, pathItem, operation };
+    for (const [specRoute, pathItem] of Object.entries(spec.paths || {})) {
+      if (normalizeRoute(specRoute) !== normalizedRoute) {
+        continue;
+      }
+
+      const operation = pathItem?.[lowerMethod];
+      if (operation) {
+        matches.push({ filePath, pathItem, operation, route: specRoute });
+      }
     }
   }
 
-  return null;
+  return matches;
 }
 
 function extractSchemaProperties(operation) {
@@ -156,6 +170,47 @@ function collectDefinedParameterNames(pathItem, operation) {
   return new Set(combined.map((parameter) => parameter.name));
 }
 
+function scoreOperationMatch(candidate, route, requestJson, responseJson, documentedParameters) {
+  let score = candidate.route === route ? 5 : 0;
+
+  const requestSchema = extractRequestSchema(candidate.operation);
+  const allowedRequestProperties = requestSchema?.properties || {};
+  const allowedResponseProperties = extractSchemaProperties(candidate.operation) || {};
+  const definedParameters = collectDefinedParameterNames(candidate.pathItem, candidate.operation);
+
+  if (requestJson && typeof requestJson === "object" && !Array.isArray(requestJson)) {
+    for (const key of Object.keys(requestJson)) {
+      score += key in allowedRequestProperties ? 3 : -4;
+    }
+  }
+
+  if (responseJson && typeof responseJson === "object" && !Array.isArray(responseJson)) {
+    for (const key of Object.keys(responseJson)) {
+      score += key in allowedResponseProperties ? 2 : -3;
+    }
+  }
+
+  for (const name of documentedParameters) {
+    score += definedParameters.has(name) ? 3 : -4;
+  }
+
+  return score;
+}
+
+function findBestSpecOperation(specs, route, method, requestJson, responseJson, documentedParameters) {
+  const candidates = findSpecOperations(specs, route, method);
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  return candidates
+    .map((candidate) => ({
+      candidate,
+      score: scoreOperationMatch(candidate, route, requestJson, responseJson, documentedParameters)
+    }))
+    .sort((left, right) => right.score - left.score)[0].candidate;
+}
+
 async function main() {
   const specs = await loadSpecs();
   const errors = [];
@@ -177,14 +232,24 @@ async function main() {
       continue;
     }
 
-    const match = findSpecOperation(specs, operationRef.url, operationRef.method);
+    const responseJson = extractResponseJson(content);
+    const requestJson = extractRequestJson(content);
+    const documentedParameters = extractParameterNames(content);
+
+    const match = findBestSpecOperation(
+      specs,
+      operationRef.url,
+      operationRef.method,
+      requestJson,
+      responseJson,
+      documentedParameters
+    );
+
     if (!match) {
       errors.push(`${relativePath}: no OpenAPI operation found for ${operationRef.method} ${operationRef.url}`);
       continue;
     }
 
-    const responseJson = extractResponseJson(content);
-    const requestJson = extractRequestJson(content);
     if (responseJson?.__parseError) {
       errors.push(`${relativePath}: response example is not valid JSON`);
       continue;
@@ -228,7 +293,6 @@ async function main() {
       }
     }
 
-    const documentedParameters = extractParameterNames(content);
     const definedParameters = collectDefinedParameterNames(match.pathItem, match.operation);
     for (const name of documentedParameters) {
       if (!definedParameters.has(name)) {

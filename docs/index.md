@@ -22,8 +22,19 @@ Use this path if you are evaluating RepoDocs AI as a developer product:
 
 - `installation.md`
 - `product-guide.md`
+- `market-validation.md`
+- `developer-experience-scorecard.md`
 - `ready-to-install-system.md`
 - `product-specification.md`
+
+## Fastest Trust Check
+
+If you want to decide whether RepoDocs AI is real or still just a prototype, review these in order:
+
+1. `../examples/payments-api/README.md`
+2. `real-world-validation.md`
+3. `market-validation.md`
+4. `developer-experience-scorecard.md`
 
 ## Operational Documents
 

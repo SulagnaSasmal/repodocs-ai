@@ -30,6 +30,8 @@ The Startup Payments API lets product teams create payments, retrieve payment st
 
 Bearer token authentication is required for all operations.
 
+See `authentication.md` for token usage and scope guidance.
+
 ## Base URL
 
 `https://api.startup-payments.example/v1`
@@ -45,6 +47,20 @@ Requests are rate-limited per client application to protect payment creation and
 ## Error Handling
 
 The API uses standard HTTP status codes with a structured JSON error body validated by platform conventions.
+
+See `error-handling.md` for the shared error envelope and common platform error codes.
+
+## Idempotency
+
+Write operations should include an `Idempotency-Key` header to protect payment creation and refund workflows from duplicate retries.
+
+See `idempotency.md` for the shared retry and conflict model.
+
+## Webhooks
+
+Clients can subscribe to payment lifecycle events for asynchronous updates.
+
+See `webhooks.md` for the event model and example payloads.
 
 ## SDK Support
 

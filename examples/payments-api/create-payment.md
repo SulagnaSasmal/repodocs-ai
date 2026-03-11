@@ -28,6 +28,8 @@ Create a payment for a customer checkout session.
 
 Bearer authentication is required.
 
+See `authentication.md` for token handling and scope guidance.
+
 ## Parameters
 
 | Name | Type | Required | Description |
@@ -70,6 +72,14 @@ curl -X POST "https://api.startup-payments.example/v1/payments" \
 | 400 | Invalid payment request |
 | 401 | Unauthorized |
 | 409 | Duplicate payment submission |
+
+See `error-handling.md` for the shared error envelope used across the API.
+
+## Idempotency
+
+Clients should send an `Idempotency-Key` header on create requests.
+
+See `idempotency.md` for retry behavior and key-reuse rules.
 
 ## Performance Notes
 

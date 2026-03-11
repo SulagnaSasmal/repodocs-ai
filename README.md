@@ -103,6 +103,22 @@ Then start with:
 3. `templates/governance/` for review and quality guardrails
 4. `prompts/` for AI-assisted drafting and review
 
+## Killer Example
+
+If you want to understand RepoDocs AI in under 2 minutes, start with the payments example.
+
+`examples/payments-api/` shows a complete Stripe-style API documentation set for a payments platform built from the shipped templates and API-generation prompt.
+
+It includes:
+
+- `api-overview.md`
+- `create-payment.md`
+- `retrieve-payment.md`
+- `refund-payment.md`
+- `payments-openapi.yaml`
+
+This is the fastest trust check for the product: it shows what a real documentation system built with RepoDocs AI looks like.
+
 ## Install RepoDocs AI
 
 The repository should be installable in under 5 minutes for a developer evaluating the system.
@@ -146,6 +162,8 @@ Product-facing entry points inside `docs/`:
 - `docs/index.md`
 - `docs/product-guide.md`
 - `docs/installation.md`
+- `docs/market-validation.md`
+- `docs/developer-experience-scorecard.md`
 - `docs/ready-to-install-system.md`
 - `docs/product-specification.md`
 

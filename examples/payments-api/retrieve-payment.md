@@ -28,6 +28,8 @@ Retrieve the current state and metadata for a payment.
 
 Bearer authentication is required.
 
+See `authentication.md` for token handling and scope guidance.
+
 ## Parameters
 
 | Name | Type | Required | Description |
@@ -64,6 +66,14 @@ curl -X GET "https://api.startup-payments.example/v1/payments/pay_123" \
 | --- | --- |
 | 401 | Unauthorized |
 | 404 | Payment not found |
+
+See `error-handling.md` for the shared error envelope used across the API.
+
+## Related Async Flow
+
+Polling is useful for some clients, but production integrations often pair this endpoint with webhook delivery.
+
+See `webhooks.md` for payment lifecycle events.
 
 ## Performance Notes
 
