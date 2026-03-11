@@ -28,3 +28,5 @@ Use examples when you want to:
 ## Recommended Start
 
 Start with `complete-system/` if you want to see the full product, feature, API, governance, and diagram flow in one place.
+
+If you want the fastest API-only trust check, start with `payments-api/`.

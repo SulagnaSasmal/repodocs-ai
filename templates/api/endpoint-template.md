@@ -32,6 +32,12 @@ Describe required credentials, scopes, or roles.
 | --- | --- | --- | --- |
 | example | string | yes | Replace with actual parameter details |
 
+## Request Body
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| example_field | string | yes | Replace with actual request body details, or say `No request body` |
+
 ## Request Example
 
 ```bash

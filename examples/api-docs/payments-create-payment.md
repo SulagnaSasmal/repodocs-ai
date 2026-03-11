@@ -34,6 +34,14 @@ Bearer authentication is required.
 | --- | --- | --- | --- |
 | None | n/a | no | No path or query parameters defined |
 
+## Request Body
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| amount | number | yes | Payment amount in major currency units |
+| currency | string | yes | ISO 4217 currency code |
+| customer_id | string | yes | Unique customer identifier |
+
 ## Request Example
 
 ```bash

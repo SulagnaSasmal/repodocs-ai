@@ -1,0 +1,161 @@
+openapi: 3.0.3
+info:
+  title: Startup Payments API
+  version: v1
+  description: API for creating payments, retrieving payment details, and issuing refunds.
+servers:
+  - url: https://api.startup-payments.example/v1
+paths:
+  /payments:
+    post:
+      summary: Create payment
+      description: Create a payment for a customer checkout session.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - currency
+                - customer_id
+              properties:
+                amount:
+                  type: number
+                  description: Payment amount in major currency units.
+                  example: 125.5
+                currency:
+                  type: string
+                  description: ISO 4217 currency code.
+                  example: USD
+                customer_id:
+                  type: string
+                  description: Unique customer identifier.
+                  example: cus_123
+                payment_method_id:
+                  type: string
+                  description: Saved payment method identifier.
+                  example: pm_123
+      responses:
+        '201':
+          description: Payment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment_id:
+                    type: string
+                    example: pay_123
+                  status:
+                    type: string
+                    example: pending
+                  amount:
+                    type: number
+                    example: 125.5
+                  currency:
+                    type: string
+                    example: USD
+        '400':
+          description: Invalid payment request
+        '401':
+          description: Unauthorized
+        '409':
+          description: Duplicate payment submission
+  /payments/{id}:
+    get:
+      summary: Retrieve payment
+      description: Retrieve the current state and metadata for a payment.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          description: Unique payment identifier.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Payment retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment_id:
+                    type: string
+                    example: pay_123
+                  status:
+                    type: string
+                    example: completed
+                  amount:
+                    type: number
+                    example: 125.5
+                  currency:
+                    type: string
+                    example: USD
+        '401':
+          description: Unauthorized
+        '404':
+          description: Payment not found
+  /payments/refund:
+    post:
+      summary: Refund payment
+      description: Issue a refund against a completed payment.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - payment_id
+                - amount
+              properties:
+                payment_id:
+                  type: string
+                  description: Payment to refund.
+                  example: pay_123
+                amount:
+                  type: number
+                  description: Refund amount in major currency units.
+                  example: 25
+                reason:
+                  type: string
+                  description: Optional human-readable refund reason.
+                  example: duplicate charge
+      responses:
+        '201':
+          description: Refund created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  refund_id:
+                    type: string
+                    example: ref_123
+                  payment_id:
+                    type: string
+                    example: pay_123
+                  status:
+                    type: string
+                    example: pending
+        '400':
+          description: Invalid refund request
+        '401':
+          description: Unauthorized
+        '404':
+          description: Payment not found
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

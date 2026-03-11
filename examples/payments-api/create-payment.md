@@ -1,7 +1,7 @@
 ---
 title: "Create Payment"
-description: "Endpoint example for creating a payment in the complete-system sample"
-service: "payments-platform"
+description: "Endpoint documentation for creating a new payment"
+service: "startup-payments"
 component: "endpoint"
 owner: "platform-docs"
 api_version: "v1"
@@ -9,7 +9,7 @@ status: stable
 dependencies:
   - auth-service
   - ledger-service
-last_reviewed: 2026-03-11
+last_reviewed: 2026-03-12
 security_impact: high
 ---
 
@@ -17,7 +17,7 @@ security_impact: high
 
 ## Summary
 
-Create a new payment record for checkout processing.
+Create a payment for a customer checkout session.
 
 ## Endpoint
 
@@ -41,14 +41,15 @@ Bearer authentication is required.
 | amount | number | yes | Payment amount in major currency units |
 | currency | string | yes | ISO 4217 currency code |
 | customer_id | string | yes | Unique customer identifier |
+| payment_method_id | string | no | Saved payment method identifier |
 
 ## Request Example
 
 ```bash
-curl -X POST "https://api.example.com/payments/v1/payments" \
+curl -X POST "https://api.startup-payments.example/v1/payments" \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"amount":125.5,"currency":"USD","customer_id":"cus_123"}'
+  -d '{"amount":125.5,"currency":"USD","customer_id":"cus_123","payment_method_id":"pm_123"}'
 ```
 
 ## Response Example
@@ -56,7 +57,9 @@ curl -X POST "https://api.example.com/payments/v1/payments" \
 ```json
 {
   "payment_id": "pay_123",
-  "status": "pending"
+  "status": "pending",
+  "amount": 125.5,
+  "currency": "USD"
 }
 ```
 
@@ -66,7 +69,8 @@ curl -X POST "https://api.example.com/payments/v1/payments" \
 | --- | --- |
 | 400 | Invalid payment request |
 | 401 | Unauthorized |
+| 409 | Duplicate payment submission |
 
 ## Performance Notes
 
-Create operations should be monitored for latency and duplicate-submission risk.
+Monitor this endpoint for latency spikes and duplicate-submission retries during peak checkout traffic.

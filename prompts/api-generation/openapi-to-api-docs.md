@@ -15,12 +15,15 @@ Act as a senior technical writer for an API-first SaaS platform.
 
 Generate documentation using the API overview and endpoint templates in this repository.
 
+Follow the template headings exactly.
+
 Include:
 
 - purpose and intended consumers
 - authentication requirements
 - endpoint behavior
 - parameters table
+- request body fields table when the operation accepts a body
 - request and response examples
 - error codes
 - versioning notes when present
