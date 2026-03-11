@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { createClient } from "redis";
 import { pathExists, repoRoot } from "./lib/docs-automation-utils.mjs";
 
 const port = Number(process.env.REPODOCS_CONTROL_PLANE_PORT || 4312);
@@ -17,6 +18,9 @@ const queueStateFilePath = path.join(dataDir, "queue-state.json");
 const bootstrapAdminUser = process.env.REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER || "admin";
 const bootstrapAdminDisplayName = process.env.REPODOCS_CONTROL_PLANE_BOOTSTRAP_DISPLAY_NAME || "RepoDocs Admin";
 const bootstrapAdminKey = process.env.REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY || "";
+const redisUrl = process.env.REDIS_URL || "redis://127.0.0.1:6379";
+const workerId = `${process.pid}-${crypto.randomBytes(3).toString("hex")}`;
+const queuePollTimeoutSeconds = 1;
 const artifactTargets = [
   "agents/output/last-run.json",
   "analytics/output/report.json",
@@ -33,16 +37,17 @@ const jobs = {
   export: ["run", "export"]
 };
 
-let activeRun = null;
-let queuedRuns = [];
-let runHistory = [];
-let users = [];
+const redisKeys = {
+  users: "repodocs:control-plane:users",
+  queue: "repodocs:control-plane:queue",
+  runs: "repodocs:control-plane:runs",
+  history: "repodocs:control-plane:history",
+  running: "repodocs:control-plane:running"
+};
 
-function getAuthEnabled() {
-  return users.some((user) =>
-    user.status !== "disabled" && Array.isArray(user.api_keys) && user.api_keys.some((key) => !key.revoked_at)
-  );
-}
+const redis = createClient({ url: redisUrl });
+let workerLoopStarted = false;
+let shutdownRequested = false;
 
 function nowIso() {
   return new Date().toISOString();
@@ -101,29 +106,6 @@ async function readJsonFile(filePath, fallbackValue) {
   }
 }
 
-async function writeJsonFile(filePath, payload) {
-  await ensureDataDir();
-  const tempFilePath = `${filePath}.tmp`;
-  await fs.writeFile(tempFilePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-  await fs.rename(tempFilePath, filePath);
-}
-
-async function persistUsers() {
-  await writeJsonFile(usersFilePath, {
-    version: 1,
-    users
-  });
-}
-
-async function persistQueueState() {
-  await writeJsonFile(queueStateFilePath, {
-    version: 1,
-    active_run: activeRun,
-    queued_runs: queuedRuns,
-    run_history: runHistory
-  });
-}
-
 function createApiKeyRecord(label = "default") {
   const plainTextKey = buildApiKey();
   return {
@@ -153,8 +135,142 @@ function createUserRecord({ username, displayName, role = "operator", status = "
   };
 }
 
-function findUserById(userId) {
+function createRun(jobName, requestedBy = "api", requestedByUser = null) {
+  return {
+    id: `${jobName}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    job: jobName,
+    requested_by: requestedBy,
+    requested_by_user: requestedByUser
+      ? {
+          id: requestedByUser.id,
+          username: requestedByUser.username,
+          role: requestedByUser.role
+        }
+      : null,
+    accepted_at: nowIso(),
+    started_at: null,
+    finished_at: null,
+    status: "queued",
+    exit_code: null,
+    queue_position: null,
+    stdout: "",
+    stderr: "",
+    worker_id: null
+  };
+}
+
+async function getUsers() {
+  const raw = await redis.get(redisKeys.users);
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function setUsers(users) {
+  await redis.set(redisKeys.users, JSON.stringify(users));
+}
+
+async function getRun(runId) {
+  const raw = await redis.hGet(redisKeys.runs, runId);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+async function saveRun(run) {
+  await redis.hSet(redisKeys.runs, run.id, JSON.stringify(run));
+}
+
+async function getQueueRunIds() {
+  return redis.lRange(redisKeys.queue, 0, -1);
+}
+
+async function getQueuedRuns() {
+  const runIds = await getQueueRunIds();
+  const runs = [];
+
+  for (let index = 0; index < runIds.length; index += 1) {
+    const run = await getRun(runIds[index]);
+    if (!run) {
+      continue;
+    }
+    run.queue_position = index + 1;
+    runs.push(run);
+  }
+
+  return runs;
+}
+
+async function getRecentRuns() {
+  const runIds = await redis.lRange(redisKeys.history, 0, 24);
+  const runs = [];
+
+  for (const runId of runIds) {
+    const run = await getRun(runId);
+    if (run) {
+      runs.push(run);
+    }
+  }
+
+  return runs;
+}
+
+async function getActiveRuns() {
+  const entries = await redis.hGetAll(redisKeys.running);
+  const runs = [];
+
+  for (const runId of Object.keys(entries)) {
+    const run = await getRun(runId);
+    if (run && run.status === "running") {
+      runs.push(run);
+    }
+  }
+
+  runs.sort((left, right) => String(left.started_at || "").localeCompare(String(right.started_at || "")));
+  return runs;
+}
+
+async function getPrimaryActiveRun() {
+  const activeRuns = await getActiveRuns();
+  return activeRuns[0] || null;
+}
+
+async function getAuthEnabled() {
+  const users = await getUsers();
+  return users.some((user) =>
+    user.status !== "disabled" && Array.isArray(user.api_keys) && user.api_keys.some((key) => !key.revoked_at)
+  );
+}
+
+async function findUserById(userId) {
+  const users = await getUsers();
   return users.find((user) => user.id === userId) || null;
+}
+
+async function updateUser(userId, updater) {
+  const users = await getUsers();
+  const index = users.findIndex((candidate) => candidate.id === userId);
+  if (index < 0) {
+    return null;
+  }
+
+  const updatedUser = updater(users[index]);
+  users[index] = updatedUser;
+  await setUsers(users);
+  return updatedUser;
 }
 
 function issueKeyForUser(user, label = "default") {
@@ -165,8 +281,8 @@ function issueKeyForUser(user, label = "default") {
 }
 
 async function bootstrapAdminIfNeeded() {
-  const hasAnyUsers = users.length > 0;
-  if (hasAnyUsers || !bootstrapAdminKey) {
+  const users = await getUsers();
+  if (users.length > 0 || !bootstrapAdminKey) {
     return;
   }
 
@@ -184,16 +300,26 @@ async function bootstrapAdminIfNeeded() {
     last_used_at: null,
     revoked_at: null
   });
-  users = [adminUser];
-  await persistUsers();
+  await setUsers([adminUser]);
 }
 
-async function loadPersistedState() {
+async function migrateFileStateToRedisIfNeeded() {
   await ensureDataDir();
 
-  const userState = await readJsonFile(usersFilePath, { version: 1, users: [] });
-  users = Array.isArray(userState.users) ? userState.users : [];
-  await bootstrapAdminIfNeeded();
+  const currentUsers = await getUsers();
+  if (currentUsers.length === 0) {
+    const userState = await readJsonFile(usersFilePath, { version: 1, users: [] });
+    if (Array.isArray(userState.users) && userState.users.length > 0) {
+      await setUsers(userState.users);
+    }
+  }
+
+  const hasRuns = await redis.hLen(redisKeys.runs);
+  const hasQueue = await redis.lLen(redisKeys.queue);
+  const hasHistory = await redis.lLen(redisKeys.history);
+  if (hasRuns > 0 || hasQueue > 0 || hasHistory > 0) {
+    return;
+  }
 
   const queueState = await readJsonFile(queueStateFilePath, {
     version: 1,
@@ -202,28 +328,32 @@ async function loadPersistedState() {
     run_history: []
   });
 
-  queuedRuns = Array.isArray(queueState.queued_runs) ? queueState.queued_runs : [];
-  runHistory = Array.isArray(queueState.run_history) ? queueState.run_history : [];
-
-  if (queueState.active_run) {
-    const recoveredRun = {
-      ...queueState.active_run,
-      finished_at: nowIso(),
-      status: "interrupted",
-      stderr: `${queueState.active_run.stderr || ""}\nRecovered after process restart before completion.`.trim()
-    };
-    runHistory.unshift(recoveredRun);
-    if (runHistory.length > 25) {
-      runHistory.length = 25;
-    }
+  const pipeline = redis.multi();
+  for (const queuedRun of Array.isArray(queueState.queued_runs) ? queueState.queued_runs : []) {
+    pipeline.hSet(redisKeys.runs, queuedRun.id, JSON.stringify({ ...queuedRun, status: "queued" }));
+    pipeline.rPush(redisKeys.queue, queuedRun.id);
   }
 
-  activeRun = null;
-  refreshQueuePositions();
-  await persistQueueState();
-}
+  if (queueState.active_run?.id) {
+    const interruptedRun = {
+      ...queueState.active_run,
+      worker_id: "migration",
+      status: "interrupted",
+      finished_at: nowIso(),
+      stderr: `${queueState.active_run.stderr || ""}\nRecovered from legacy filesystem queue state during Redis migration.`.trim()
+    };
+    pipeline.hSet(redisKeys.runs, interruptedRun.id, JSON.stringify(interruptedRun));
+    pipeline.lPush(redisKeys.history, interruptedRun.id);
+  }
 
-const stateReady = loadPersistedState();
+  for (const historicalRun of Array.isArray(queueState.run_history) ? queueState.run_history : []) {
+    pipeline.hSet(redisKeys.runs, historicalRun.id, JSON.stringify(historicalRun));
+    pipeline.rPush(redisKeys.history, historicalRun.id);
+  }
+
+  pipeline.lTrim(redisKeys.history, 0, 24);
+  await pipeline.exec();
+}
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
@@ -253,6 +383,7 @@ async function findAuthenticatedPrincipal(request) {
   }
 
   const hashedApiKey = hashApiKey(presentedApiKey);
+  const users = await getUsers();
 
   for (const user of users) {
     if (user.status === "disabled") {
@@ -267,7 +398,7 @@ async function findAuthenticatedPrincipal(request) {
       if (keyRecord.key_hash === hashedApiKey) {
         keyRecord.last_used_at = nowIso();
         user.updated_at = nowIso();
-        await persistUsers();
+        await setUsers(users);
         return { user, key: keyRecord };
       }
     }
@@ -282,7 +413,7 @@ async function requireAuth(request, response) {
     return principal;
   }
 
-  if (!getAuthEnabled()) {
+  if (!(await getAuthEnabled())) {
     return { user: null, key: null };
   }
 
@@ -292,7 +423,7 @@ async function requireAuth(request, response) {
   });
   response.end(JSON.stringify({
     error: "Authentication required",
-    auth_enabled: getAuthEnabled(),
+    auth_enabled: true,
     accepted_headers: ["Authorization: Bearer <token>", "X-API-Key: <token>"]
   }, null, 2));
   return null;
@@ -331,32 +462,48 @@ async function parseJsonBody(request) {
   return JSON.parse(rawBody);
 }
 
-function createRun(jobName, requestedBy = "api", requestedByUser = null) {
-  return {
-    id: `${jobName}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    job: jobName,
-    requested_by: requestedBy,
-    requested_by_user: requestedByUser ? {
-      id: requestedByUser.id,
-      username: requestedByUser.username,
-      role: requestedByUser.role
-    } : null,
-    accepted_at: new Date().toISOString(),
-    started_at: null,
-    finished_at: null,
-    status: "queued",
-    exit_code: null,
-    queue_position: queuedRuns.length + (activeRun ? 1 : 0) + 1,
-    stdout: "",
-    stderr: ""
-  };
+async function enqueueJob(jobName, requestedBy = "api", requestedByUser = null) {
+  if (!(jobName in jobs)) {
+    throw new Error(`Unknown job '${jobName}'`);
+  }
+
+  const run = createRun(jobName, requestedBy, requestedByUser);
+  await saveRun(run);
+  await redis.rPush(redisKeys.queue, run.id);
+  return run;
+}
+
+async function appendRunHistory(run) {
+  await saveRun(run);
+  await redis.multi().lPush(redisKeys.history, run.id).lTrim(redisKeys.history, 0, 24).exec();
+}
+
+async function markRunStarted(run) {
+  run.started_at = nowIso();
+  run.status = "running";
+  run.queue_position = 0;
+  run.worker_id = workerId;
+  await redis.multi().hSet(redisKeys.runs, run.id, JSON.stringify(run)).hSet(redisKeys.running, run.id, workerId).exec();
+}
+
+async function markRunFinished(run, exitCode, stderrAppend = "") {
+  run.finished_at = nowIso();
+  run.exit_code = exitCode;
+  run.status = exitCode === 0 ? "succeeded" : "failed";
+  if (stderrAppend) {
+    run.stderr = `${run.stderr}\n${stderrAppend}`.trim();
+  }
+  await redis.multi().hDel(redisKeys.running, run.id).hSet(redisKeys.runs, run.id, JSON.stringify(run)).exec();
+  await appendRunHistory(run);
 }
 
 async function executeRun(run) {
   const jobName = run.job;
   if (!(jobName in jobs)) {
-    return Promise.reject(new Error(`Unknown job '${jobName}'`));
+    throw new Error(`Unknown job '${jobName}'`);
   }
+
+  await markRunStarted(run);
 
   return new Promise((resolve, reject) => {
     const child = process.platform === "win32"
@@ -371,95 +518,35 @@ async function executeRun(run) {
           stdio: ["ignore", "pipe", "pipe"]
         });
 
-    run.started_at = new Date().toISOString();
-    run.status = "running";
-    run.queue_position = 0;
-    activeRun = run;
-    persistQueueState().catch((error) => {
-      console.error("Failed to persist queue state for running job", error);
-    });
-
     child.stdout.on("data", (chunk) => {
       run.stdout += chunk.toString();
     });
+
     child.stderr.on("data", (chunk) => {
       run.stderr += chunk.toString();
     });
 
-    child.on("exit", (code) => {
-      run.finished_at = new Date().toISOString();
-      run.exit_code = code;
-      run.status = code === 0 ? "succeeded" : "failed";
-      runHistory.unshift(run);
-      if (runHistory.length > 25) {
-        runHistory.length = 25;
-      }
-      activeRun = null;
-      persistQueueState().catch((error) => {
-        console.error("Failed to persist queue state after job completion", error);
-      });
-      processQueue().catch((error) => {
-        console.error("Failed to continue queued job processing", error);
-      });
-
-      if (code === 0) {
-        resolve(run);
-      } else {
+    child.on("exit", async (code) => {
+      try {
+        await markRunFinished(run, code ?? 1);
+        if ((code ?? 1) === 0) {
+          resolve(run);
+          return;
+        }
         reject(Object.assign(new Error(run.stderr || run.stdout || `Job '${jobName}' failed`), { run }));
+      } catch (error) {
+        reject(error);
       }
     });
 
-    child.on("error", (error) => {
-      run.finished_at = nowIso();
-      run.status = "failed";
-      run.exit_code = 1;
-      run.stderr = `${run.stderr}\n${error.message}`.trim();
-      runHistory.unshift(run);
-      if (runHistory.length > 25) {
-        runHistory.length = 25;
+    child.on("error", async (error) => {
+      try {
+        await markRunFinished(run, 1, error.message);
+      } catch {
+        // ignore secondary persistence errors here and return the original process error
       }
-      activeRun = null;
-      persistQueueState().catch((persistError) => {
-        console.error("Failed to persist queue state after process error", persistError);
-      });
       reject(Object.assign(error, { run }));
     });
-  });
-}
-
-function refreshQueuePositions() {
-  queuedRuns.forEach((run, index) => {
-    run.queue_position = index + (activeRun ? 2 : 1);
-  });
-}
-
-function enqueueJob(jobName, requestedBy = "api", requestedByUser = null) {
-  if (!(jobName in jobs)) {
-    throw new Error(`Unknown job '${jobName}'`);
-  }
-
-  const run = createRun(jobName, requestedBy, requestedByUser);
-  queuedRuns.push(run);
-  refreshQueuePositions();
-  persistQueueState().catch((error) => {
-    console.error("Failed to persist queued jobs", error);
-  });
-  processQueue().catch((error) => {
-    console.error("Failed to process queued jobs", error);
-  });
-  return run;
-}
-
-async function processQueue() {
-  if (activeRun || queuedRuns.length === 0) {
-    return;
-  }
-
-  const run = queuedRuns.shift();
-  refreshQueuePositions();
-  await persistQueueState();
-  await executeRun(run).catch(() => {
-    return null;
   });
 }
 
@@ -501,19 +588,35 @@ function renderDashboard() {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RepoDocs AI Control Plane</title>
     <style>
-      body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: #f4efe7; color: #1f1a14; }
-      main { max-width: 1100px; margin: 0 auto; padding: 32px 24px 64px; }
-      .hero { display: grid; gap: 20px; grid-template-columns: 2fr 1fr; }
-      .panel, .card { background: #fffaf3; border: 1px solid #e5d7bd; border-radius: 18px; padding: 20px; }
-      .panel input { width: min(360px, 100%); padding: 12px 14px; border-radius: 12px; border: 1px solid #ccb89a; margin-top: 12px; }
-      .button-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
-      button { border: 0; border-radius: 999px; padding: 12px 18px; background: #99611f; color: white; cursor: pointer; }
+      :root { color-scheme: light; }
+      body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: linear-gradient(180deg, #f5efe6 0%, #efe8de 100%); color: #1f1a14; }
+      main { max-width: 1240px; margin: 0 auto; padding: 28px 24px 64px; }
+      .hero, .grid { display: grid; gap: 20px; }
+      .hero { grid-template-columns: 2fr 1fr; }
+      .grid { grid-template-columns: 1fr 1fr; margin-top: 20px; }
+      .panel, .card { background: rgba(255, 250, 243, 0.95); border: 1px solid #e5d7bd; border-radius: 20px; padding: 20px; box-shadow: 0 10px 30px rgba(81, 52, 15, 0.08); }
+      .status { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: #7e6e5d; }
+      h1, h2, h3 { margin-top: 0; }
+      .button-row, .form-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+      .form-grid { margin-top: 14px; }
+      .field { display: grid; gap: 6px; min-width: 180px; flex: 1; }
+      .field.compact { min-width: 120px; }
+      input, select { width: 100%; box-sizing: border-box; padding: 11px 12px; border-radius: 12px; border: 1px solid #ccb89a; background: white; }
+      button { border: 0; border-radius: 999px; padding: 11px 16px; background: #99611f; color: white; cursor: pointer; }
       button.secondary { background: #4d5b6a; }
+      button.ghost { background: #e6d7bf; color: #533918; }
+      button.warn { background: #8b3a22; }
       pre { padding: 16px; border-radius: 16px; background: #1f1a14; color: #f7ecdc; overflow: auto; }
-      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
-      .status { font-size: 14px; color: #6d6153; }
+      code { background: rgba(31, 26, 20, 0.08); padding: 2px 6px; border-radius: 6px; }
       ul { padding-left: 18px; }
-      @media (max-width: 800px) { .hero, .grid { grid-template-columns: 1fr; } }
+      .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; background: #e8dbc6; font-size: 12px; margin-right: 8px; }
+      .user-card { border: 1px solid #eadbc6; border-radius: 16px; padding: 16px; margin-top: 12px; background: #fffdf9; }
+      .user-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+      .keys { margin-top: 10px; display: grid; gap: 8px; }
+      .key-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 12px; background: #f4ede2; }
+      .muted { color: #726454; }
+      .flash { margin-top: 12px; min-height: 20px; color: #5f3c16; }
+      @media (max-width: 900px) { .hero, .grid { grid-template-columns: 1fr; } .user-head, .key-row { flex-direction: column; align-items: flex-start; } }
     </style>
   </head>
   <body>
@@ -521,22 +624,27 @@ function renderDashboard() {
       <section class="hero">
         <article class="panel">
           <p class="status">Hosted Control Plane</p>
-          <h1>RepoDocs AI automation can now run behind an HTTP endpoint.</h1>
-          <p>This service exposes validation, export, agent, analytics, and graph jobs through a small control plane intended for lightweight hosted deployment with durable queue state and per-user keys.</p>
-          <label for="api-key">User API key</label>
-          <input id="api-key" type="password" placeholder="Paste a user key or bearer token" />
-          <div class="button-row">${jobButtons}</div>
-          <div class="button-row">
+          <h1>RepoDocs AI automation runs behind an HTTP endpoint with shared Redis state.</h1>
+          <p>This service exposes validation, export, agent, analytics, and graph jobs through a small control plane intended for lightweight hosted deployment with Redis-backed queue persistence and per-user API keys.</p>
+          <div class="field">
+            <label for="api-key">User API key</label>
+            <input id="api-key" type="password" placeholder="Paste a user key or bearer token" />
+          </div>
+          <div class="button-row" style="margin-top: 16px;">${jobButtons}</div>
+          <div class="button-row" style="margin-top: 12px;">
             <button class="secondary" id="refresh">Refresh overview</button>
           </div>
+          <div class="flash" id="flash"></div>
         </article>
         <article class="card">
           <p class="status">Overview</p>
           <h2 id="overview-title">Loading overview…</h2>
-          <p id="overview-status">Use a user API key to load protected run and artifact data.</p>
+          <p id="overview-status">Use a user API key to load protected run, artifact, and admin data.</p>
           <p>JSON endpoints: <code>/health</code>, <code>/jobs</code>, <code>/artifacts</code>, <code>/runs</code>, <code>/auth/status</code>, <code>/users</code></p>
+          <p class="muted" id="overview-storage">Redis-backed queue and user store.</p>
         </article>
       </section>
+
       <section class="grid">
         <article class="card">
           <p class="status">Recent Runs</p>
@@ -547,25 +655,49 @@ function renderDashboard() {
           <div id="artifacts"><p>No artifacts loaded yet.</p></div>
         </article>
       </section>
+
+      <section class="card" style="margin-top: 20px;">
+        <p class="status">Admin</p>
+        <h2>User and key management</h2>
+        <p class="muted">Create users, change roles and status, rotate keys, and revoke old credentials without leaving the control plane.</p>
+        <div class="form-grid">
+          <div class="field"><label for="new-username">Username</label><input id="new-username" placeholder="operator2" /></div>
+          <div class="field"><label for="new-display-name">Display name</label><input id="new-display-name" placeholder="Operator Two" /></div>
+          <div class="field compact"><label for="new-role">Role</label><select id="new-role"><option value="operator">operator</option><option value="admin">admin</option></select></div>
+          <div class="field"><label for="new-key-label">Initial key label</label><input id="new-key-label" value="initial" /></div>
+        </div>
+        <div class="button-row" style="margin-top: 12px;">
+          <button id="create-user">Create user</button>
+        </div>
+        <div id="users" style="margin-top: 16px;"><p>No users loaded yet.</p></div>
+      </section>
+
       <section class="card" style="margin-top: 20px;">
         <p class="status">Response</p>
-        <pre id="response">POST /jobs/:name will stream back run metadata here.</pre>
+        <pre id="response">POST /jobs/:name and admin actions will stream metadata here.</pre>
       </section>
     </main>
     <script>
       const apiKeyInput = document.getElementById('api-key');
       const response = document.getElementById('response');
+      const flash = document.getElementById('flash');
       const overviewTitle = document.getElementById('overview-title');
       const overviewStatus = document.getElementById('overview-status');
+      const overviewStorage = document.getElementById('overview-storage');
       const recentRuns = document.getElementById('recent-runs');
       const artifacts = document.getElementById('artifacts');
+      const users = document.getElementById('users');
 
       apiKeyInput.value = localStorage.getItem('repodocsApiKey') || '';
 
       function headers() {
         const key = apiKeyInput.value.trim();
         localStorage.setItem('repodocsApiKey', key);
-        return key ? { 'X-API-Key': key } : {};
+        return key ? { 'X-API-Key': key, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+      }
+
+      function showFlash(message) {
+        flash.textContent = message || '';
       }
 
       function renderList(items, emptyText, formatter) {
@@ -575,58 +707,156 @@ function renderDashboard() {
         return '<ul>' + items.map(formatter).join('') + '</ul>';
       }
 
+      function userCard(user) {
+        const keys = (user.api_keys || []).map((key) => {
+          const revokeButton = key.revoked_at
+            ? '<span class="pill">revoked</span>'
+            : '<button class="warn" data-action="revoke-key" data-user-id="' + user.id + '" data-key-id="' + key.id + '">Revoke</button>';
+          return '<div class="key-row">'
+            + '<div><strong>' + key.label + '</strong> <span class="pill">••••' + key.key_hint + '</span><div class="muted">created ' + key.created_at + (key.last_used_at ? ' • used ' + key.last_used_at : '') + '</div></div>'
+            + '<div>' + revokeButton + '</div>'
+            + '</div>';
+        }).join('');
+
+        return '<article class="user-card">'
+          + '<div class="user-head">'
+          + '<div><h3>' + user.display_name + '</h3><p class="muted">@' + user.username + ' • ' + user.id + '</p></div>'
+          + '<div><span class="pill">' + user.role + '</span><span class="pill">' + user.status + '</span></div>'
+          + '</div>'
+          + '<div class="form-grid">'
+          + '<div class="field"><label>Display name</label><input data-field="display_name" data-user-id="' + user.id + '" value="' + user.display_name.replace(/"/g, '&quot;') + '" /></div>'
+          + '<div class="field compact"><label>Role</label><select data-field="role" data-user-id="' + user.id + '"><option value="operator"' + (user.role === 'operator' ? ' selected' : '') + '>operator</option><option value="admin"' + (user.role === 'admin' ? ' selected' : '') + '>admin</option></select></div>'
+          + '<div class="field compact"><label>Status</label><select data-field="status" data-user-id="' + user.id + '"><option value="active"' + (user.status === 'active' ? ' selected' : '') + '>active</option><option value="disabled"' + (user.status === 'disabled' ? ' selected' : '') + '>disabled</option></select></div>'
+          + '<div class="field"><label>New key label</label><input data-field="key_label" data-user-id="' + user.id + '" value="rotated" /></div>'
+          + '</div>'
+          + '<div class="button-row" style="margin-top: 12px;">'
+          + '<button class="ghost" data-action="save-user" data-user-id="' + user.id + '">Save user</button>'
+          + '<button data-action="rotate-key" data-user-id="' + user.id + '">Rotate key</button>'
+          + '</div>'
+          + '<div class="keys">' + (keys || '<p class="muted">No keys issued yet.</p>') + '</div>'
+          + '</article>';
+      }
+
+      async function apiRequest(path, options) {
+        const result = await fetch(path, { ...options, headers: { ...headers(), ...(options && options.headers ? options.headers : {}) } });
+        const text = await result.text();
+        response.textContent = text;
+        let parsed = null;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          parsed = text;
+        }
+        if (!result.ok) {
+          throw new Error(typeof parsed === 'string' ? parsed : (parsed.error || text));
+        }
+        return parsed;
+      }
+
       async function refreshOverview() {
         try {
-          const [authResult, jobsResult, runsResult, artifactsResult] = await Promise.all([
-            fetch('/auth/status'),
-            fetch('/jobs', { headers: headers() }),
-            fetch('/runs', { headers: headers() }),
-            fetch('/artifacts', { headers: headers() })
+          const [authData, jobsData, runsData, artifactsData, usersData] = await Promise.all([
+            fetch('/auth/status', { headers: headers() }).then((result) => result.json()),
+            apiRequest('/jobs'),
+            apiRequest('/runs'),
+            apiRequest('/artifacts'),
+            apiRequest('/users')
           ]);
 
-          const authData = await authResult.json();
-          if (!jobsResult.ok || !runsResult.ok || !artifactsResult.ok) {
-            const failed = !jobsResult.ok ? jobsResult : (!runsResult.ok ? runsResult : artifactsResult);
-            const errorText = await failed.text();
-            throw new Error(errorText);
-          }
-
-          const jobsData = await jobsResult.json();
-          const runsData = await runsResult.json();
-          const artifactsData = await artifactsResult.json();
           overviewTitle.textContent = authData.auth_enabled
-            ? ((jobsData.active_run ? 'Active: ' + jobsData.active_run.job : 'No active run') + ' • ' + jobsData.queue_depth + ' queued')
+            ? (((jobsData.active_run ? 'Active: ' + jobsData.active_run.job : 'No active run')) + ' • ' + jobsData.queue_depth + ' queued')
             : 'Auth disabled • local development mode';
           overviewStatus.textContent = authData.authenticated_user
             ? ('Signed in as ' + authData.authenticated_user.username + ' (' + authData.authenticated_user.role + ')')
             : 'Accepted headers: X-API-Key or Authorization: Bearer <token>.';
+          overviewStorage.textContent = 'Redis-backed queue/users • queue depth ' + jobsData.queue_depth + ' • workers ' + ((jobsData.active_runs || []).length || 0);
+
           recentRuns.innerHTML = renderList(
-            (runsData.recent_runs || []).concat(runsData.queued_runs || []),
+            (runsData.active_runs || []).concat(runsData.queued_runs || []).concat(runsData.recent_runs || []),
             'No runs available yet.',
-            (run) => '<li><strong>' + run.job + '</strong> ' + run.status + (run.queue_position ? ' (queue #' + run.queue_position + ')' : '') + '</li>'
+            (run) => '<li><strong>' + run.job + '</strong> ' + run.status + (run.queue_position ? ' (queue #' + run.queue_position + ')' : '') + (run.worker_id ? ' • ' + run.worker_id : '') + '</li>'
           );
+
           artifacts.innerHTML = renderList(
             artifactsData.artifacts || [],
             'No artifacts available yet.',
             (artifact) => '<li><strong>' + artifact.path + '</strong></li>'
           );
+
+          users.innerHTML = (usersData.users || []).length
+            ? usersData.users.map(userCard).join('')
+            : '<p>No users available yet.</p>';
+          bindUserActions();
+          showFlash('');
         } catch (error) {
-          overviewTitle.textContent = 'Protected endpoints require a valid API key';
+          overviewTitle.textContent = 'Protected endpoints require a valid admin API key';
           overviewStatus.textContent = error.message;
           recentRuns.innerHTML = '<p>Run data unavailable.</p>';
           artifacts.innerHTML = '<p>Artifact data unavailable.</p>';
+          users.innerHTML = '<p>User data unavailable.</p>';
         }
       }
 
-      document.getElementById('refresh').addEventListener('click', refreshOverview);
+      async function createUser() {
+        const payload = {
+          username: document.getElementById('new-username').value.trim(),
+          display_name: document.getElementById('new-display-name').value.trim(),
+          role: document.getElementById('new-role').value,
+          key_label: document.getElementById('new-key-label').value.trim() || 'initial'
+        };
+        const result = await apiRequest('/users', { method: 'POST', body: JSON.stringify(payload) });
+        showFlash('Created user ' + result.user.username + '. New key: ' + result.api_key);
+        await refreshOverview();
+      }
+
+      async function saveUser(userId) {
+        const payload = {
+          display_name: document.querySelector('[data-field="display_name"][data-user-id="' + userId + '"]').value.trim(),
+          role: document.querySelector('[data-field="role"][data-user-id="' + userId + '"]').value,
+          status: document.querySelector('[data-field="status"][data-user-id="' + userId + '"]').value
+        };
+        await apiRequest('/users/' + userId, { method: 'PATCH', body: JSON.stringify(payload) });
+        showFlash('Updated user ' + userId + '.');
+        await refreshOverview();
+      }
+
+      async function rotateKey(userId) {
+        const keyLabel = document.querySelector('[data-field="key_label"][data-user-id="' + userId + '"]').value.trim() || 'rotated';
+        const result = await apiRequest('/users/' + userId + '/keys', { method: 'POST', body: JSON.stringify({ key_label: keyLabel }) });
+        showFlash('Issued new key for ' + result.user.username + ': ' + result.api_key);
+        await refreshOverview();
+      }
+
+      async function revokeKey(userId, keyId) {
+        await apiRequest('/users/' + userId + '/keys/' + keyId, { method: 'DELETE' });
+        showFlash('Revoked key ' + keyId + '.');
+        await refreshOverview();
+      }
+
+      function bindUserActions() {
+        document.querySelectorAll('[data-action="save-user"]').forEach((button) => {
+          button.addEventListener('click', () => saveUser(button.dataset.userId).catch((error) => showFlash(error.message)));
+        });
+        document.querySelectorAll('[data-action="rotate-key"]').forEach((button) => {
+          button.addEventListener('click', () => rotateKey(button.dataset.userId).catch((error) => showFlash(error.message)));
+        });
+        document.querySelectorAll('[data-action="revoke-key"]').forEach((button) => {
+          button.addEventListener('click', () => revokeKey(button.dataset.userId, button.dataset.keyId).catch((error) => showFlash(error.message)));
+        });
+      }
+
+      document.getElementById('refresh').addEventListener('click', () => refreshOverview().catch((error) => showFlash(error.message)));
+      document.getElementById('create-user').addEventListener('click', () => createUser().catch((error) => showFlash(error.message)));
       document.querySelectorAll('button[data-job]').forEach((button) => {
         button.addEventListener('click', async () => {
-          const job = button.dataset.job;
-          response.textContent = 'Queueing ' + job + '...';
-          const result = await fetch('/jobs/' + job, { method: 'POST', headers: headers() });
-          const text = await result.text();
-          response.textContent = text;
-          refreshOverview();
+          try {
+            const job = button.dataset.job;
+            showFlash('Queueing ' + job + '...');
+            await apiRequest('/jobs/' + job, { method: 'POST' });
+            await refreshOverview();
+          } catch (error) {
+            showFlash(error.message);
+          }
         });
       });
       refreshOverview();
@@ -635,19 +865,64 @@ function renderDashboard() {
 </html>`;
 }
 
+async function startWorkerLoop() {
+  if (workerLoopStarted) {
+    return;
+  }
+
+  workerLoopStarted = true;
+  while (!shutdownRequested) {
+    try {
+      const next = await redis.blPop(redisKeys.queue, queuePollTimeoutSeconds);
+      if (!next?.element) {
+        continue;
+      }
+
+      const run = await getRun(next.element);
+      if (!run || run.status !== "queued") {
+        continue;
+      }
+
+      await executeRun(run).catch(() => null);
+    } catch (error) {
+      console.error("Control-plane worker loop error", error);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+}
+
+async function shutdown() {
+  shutdownRequested = true;
+  try {
+    await redis.quit();
+  } catch {
+    await redis.disconnect();
+  }
+}
+
+const stateReady = (async () => {
+  await redis.connect();
+  await migrateFileStateToRedisIfNeeded();
+  await bootstrapAdminIfNeeded();
+  await startWorkerLoop();
+})();
+
 const server = http.createServer(async (request, response) => {
   try {
     await stateReady;
     const url = new URL(request.url || "/", `http://${request.headers.host || `${host}:${port}`}`);
 
     if (request.method === "GET" && url.pathname === "/health") {
+      const activeRuns = await getActiveRuns();
       return sendJson(response, 200, {
         status: "ok",
-        active_run: activeRun,
-        queue_depth: queuedRuns.length,
-        auth_enabled: getAuthEnabled(),
-        durable_queue_storage: queueStateFilePath,
-        user_store: usersFilePath,
+        active_run: activeRuns[0] || null,
+        active_runs: activeRuns,
+        queue_depth: await redis.lLen(redisKeys.queue),
+        auth_enabled: await getAuthEnabled(),
+        storage_backend: "redis",
+        redis_url: redisUrl.replace(/:[^:@/]+@/, ":***@"),
+        migration_source: dataDir,
         uptime_seconds: Math.round(process.uptime())
       });
     }
@@ -655,14 +930,16 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/auth/status") {
       const principal = await findAuthenticatedPrincipal(request);
       return sendJson(response, 200, {
-        auth_enabled: getAuthEnabled(),
+        auth_enabled: await getAuthEnabled(),
         accepted_headers: ["Authorization: Bearer <token>", "X-API-Key: <token>"],
         provided_header: getPresentedApiKey(request) ? "present" : "absent",
-        authenticated_user: principal?.user ? {
-          id: principal.user.id,
-          username: principal.user.username,
-          role: principal.user.role
-        } : null
+        authenticated_user: principal?.user
+          ? {
+              id: principal.user.id,
+              username: principal.user.username,
+              role: principal.user.role
+            }
+          : null
       });
     }
 
@@ -671,9 +948,12 @@ const server = http.createServer(async (request, response) => {
       if (!principal) {
         return;
       }
+      const activeRuns = await getActiveRuns();
+      const queuedRuns = await getQueuedRuns();
       return sendJson(response, 200, {
         jobs: Object.keys(jobs),
-        active_run: activeRun,
+        active_run: activeRuns[0] || null,
+        active_runs: activeRuns,
         queue_depth: queuedRuns.length,
         queued_runs: queuedRuns.map((run) => ({
           id: run.id,
@@ -690,7 +970,12 @@ const server = http.createServer(async (request, response) => {
       if (!principal) {
         return;
       }
-      return sendJson(response, 200, { active_run: activeRun, queued_runs: queuedRuns, recent_runs: runHistory });
+      return sendJson(response, 200, {
+        active_run: await getPrimaryActiveRun(),
+        active_runs: await getActiveRuns(),
+        queued_runs: await getQueuedRuns(),
+        recent_runs: await getRecentRuns()
+      });
     }
 
     if (request.method === "GET" && url.pathname === "/artifacts") {
@@ -709,7 +994,7 @@ const server = http.createServer(async (request, response) => {
       if (!requireAdmin(principal, response)) {
         return;
       }
-      return sendJson(response, 200, { users: users.map(sanitizeUser) });
+      return sendJson(response, 200, { users: (await getUsers()).map(sanitizeUser) });
     }
 
     if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/dashboard")) {
@@ -731,6 +1016,7 @@ const server = http.createServer(async (request, response) => {
         return sendJson(response, 400, { error: "username is required" });
       }
 
+      const users = await getUsers();
       if (users.some((user) => user.username === username)) {
         return sendJson(response, 409, { error: `User '${username}' already exists` });
       }
@@ -743,7 +1029,7 @@ const server = http.createServer(async (request, response) => {
       });
       const keyBundle = issueKeyForUser(user, String(body.key_label || "default").trim() || "default");
       users.push(user);
-      await persistUsers();
+      await setUsers(users);
       return sendJson(response, 201, {
         user: sanitizeUser(user),
         api_key: keyBundle.plain_text_key
@@ -760,23 +1046,25 @@ const server = http.createServer(async (request, response) => {
       }
 
       const userId = url.pathname.replace(/^\/users\//, "");
-      const user = findUserById(userId);
-      if (!user) {
+      const existingUser = await findUserById(userId);
+      if (!existingUser) {
         return sendJson(response, 404, { error: "User not found" });
       }
 
       const body = await parseJsonBody(request);
-      if (body.display_name) {
-        user.display_name = String(body.display_name).trim();
-      }
-      if (body.role === "admin" || body.role === "operator") {
-        user.role = body.role;
-      }
-      if (body.status === "active" || body.status === "disabled") {
-        user.status = body.status;
-      }
-      user.updated_at = nowIso();
-      await persistUsers();
+      const user = await updateUser(userId, (candidate) => {
+        if (body.display_name) {
+          candidate.display_name = String(body.display_name).trim();
+        }
+        if (body.role === "admin" || body.role === "operator") {
+          candidate.role = body.role;
+        }
+        if (body.status === "active" || body.status === "disabled") {
+          candidate.status = body.status;
+        }
+        candidate.updated_at = nowIso();
+        return candidate;
+      });
       return sendJson(response, 200, { user: sanitizeUser(user) });
     }
 
@@ -790,17 +1078,21 @@ const server = http.createServer(async (request, response) => {
       }
 
       const userId = url.pathname.match(/^\/users\/([^/]+)\/keys$/)?.[1] || "";
-      const user = findUserById(userId);
-      if (!user) {
+      const existingUser = await findUserById(userId);
+      if (!existingUser) {
         return sendJson(response, 404, { error: "User not found" });
       }
 
       const body = await parseJsonBody(request);
-      const keyBundle = issueKeyForUser(user, String(body.key_label || "rotated").trim() || "rotated");
-      await persistUsers();
+      let plainTextKey = "";
+      const user = await updateUser(userId, (candidate) => {
+        const keyBundle = issueKeyForUser(candidate, String(body.key_label || "rotated").trim() || "rotated");
+        plainTextKey = keyBundle.plain_text_key;
+        return candidate;
+      });
       return sendJson(response, 201, {
         user: sanitizeUser(user),
-        api_key: keyBundle.plain_text_key
+        api_key: plainTextKey
       });
     }
 
@@ -814,20 +1106,33 @@ const server = http.createServer(async (request, response) => {
       }
 
       const keyMatch = url.pathname.match(/^\/users\/([^/]+)\/keys\/([^/]+)$/);
-      const user = findUserById(keyMatch?.[1] || "");
-      if (!user) {
+      const existingUser = await findUserById(keyMatch?.[1] || "");
+      if (!existingUser) {
         return sendJson(response, 404, { error: "User not found" });
       }
 
-      const keyRecord = (user.api_keys || []).find((candidate) => candidate.id === keyMatch?.[2]);
-      if (!keyRecord) {
+      let revokedKeyId = "";
+      const user = await updateUser(keyMatch?.[1] || "", (candidate) => {
+        const keyRecord = (candidate.api_keys || []).find((entry) => entry.id === keyMatch?.[2]);
+        if (!keyRecord) {
+          throw new Error("KEY_NOT_FOUND");
+        }
+        keyRecord.revoked_at = nowIso();
+        candidate.updated_at = nowIso();
+        revokedKeyId = keyRecord.id;
+        return candidate;
+      }).catch((error) => {
+        if (error.message === "KEY_NOT_FOUND") {
+          return null;
+        }
+        throw error;
+      });
+
+      if (!user) {
         return sendJson(response, 404, { error: "Key not found" });
       }
 
-      keyRecord.revoked_at = nowIso();
-      user.updated_at = nowIso();
-      await persistUsers();
-      return sendJson(response, 200, { user: sanitizeUser(user), revoked_key_id: keyRecord.id });
+      return sendJson(response, 200, { user: sanitizeUser(user), revoked_key_id: revokedKeyId });
     }
 
     if (request.method === "POST" && url.pathname.startsWith("/jobs/")) {
@@ -835,9 +1140,10 @@ const server = http.createServer(async (request, response) => {
       if (!principal) {
         return;
       }
+
       const jobName = url.pathname.replace(/^\/jobs\//, "");
       await readRequestBody(request);
-      const run = enqueueJob(
+      const run = await enqueueJob(
         jobName,
         principal.user?.username || request.socket.remoteAddress || "api",
         principal.user || null
@@ -846,8 +1152,8 @@ const server = http.createServer(async (request, response) => {
         accepted: true,
         message: `Job '${jobName}' queued successfully`,
         run,
-        queue_depth: queuedRuns.length,
-        active_run: activeRun
+        queue_depth: await redis.lLen(redisKeys.queue),
+        active_run: await getPrimaryActiveRun()
       });
     }
 
@@ -858,12 +1164,21 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.on(signal, async () => {
+    server.close();
+    await shutdown();
+    process.exit(0);
+  });
+}
+
 stateReady.then(() => {
   server.listen(port, host, () => {
-    if (!getAuthEnabled()) {
-      console.warn("RepoDocs AI control plane started without user API keys. Set REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY to bootstrap an admin user.");
-    }
     console.log(`RepoDocs AI control plane listening at http://${host}:${port}`);
+    console.log(`Redis queue backend: ${redisUrl}`);
+    if (!bootstrapAdminKey) {
+      console.warn("No bootstrap admin key set. Existing Redis users will still work, but new environments should set REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY.");
+    }
   });
 }).catch((error) => {
   console.error("Failed to initialize RepoDocs AI control plane", error);

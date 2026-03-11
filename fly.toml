@@ -1,0 +1,30 @@
+app = "repodocs-ai-control-plane"
+primary_region = "bom"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  REPODOCS_CONTROL_PLANE_HOST = "0.0.0.0"
+  REPODOCS_CONTROL_PLANE_PORT = "4312"
+  REPODOCS_CONTROL_PLANE_DATA_DIR = "/data/control-plane"
+  REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER = "admin"
+  REPODOCS_CONTROL_PLANE_BOOTSTRAP_DISPLAY_NAME = "RepoDocs Admin"
+
+[http_service]
+  internal_port = 4312
+  force_https = true
+  auto_start_machines = true
+  auto_stop_machines = "stop"
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# Set these with `fly secrets set` before deploy:
+# REDIS_URL=redis://...
+# REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY=...

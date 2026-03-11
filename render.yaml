@@ -11,6 +11,8 @@ services:
         value: 0.0.0.0
       - key: REPODOCS_CONTROL_PLANE_PORT
         value: 4312
+      - key: REDIS_URL
+        sync: false
       - key: REPODOCS_CONTROL_PLANE_DATA_DIR
         value: /var/data/control-plane
       - key: REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER

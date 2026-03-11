@@ -6,7 +6,7 @@
   "scripts": {
     "lint:markdown": "markdownlint \"**/*.md\" --ignore node_modules --ignore site --ignore exports",
     "docker:control-plane:build": "docker build -t repodocs-ai-control-plane .",
-    "docker:control-plane:run": "docker run --rm -p 4312:4312 -v repodocs-ai-control-plane-data:/var/data -e REPODOCS_CONTROL_PLANE_HOST=0.0.0.0 -e REPODOCS_CONTROL_PLANE_DATA_DIR=/var/data/control-plane -e REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER=admin -e REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY=replace-me repodocs-ai-control-plane",
+    "docker:control-plane:run": "docker run --rm -p 4312:4312 --add-host=host.docker.internal:host-gateway -v repodocs-ai-control-plane-data:/var/data -e REDIS_URL=redis://host.docker.internal:6379 -e REPODOCS_CONTROL_PLANE_HOST=0.0.0.0 -e REPODOCS_CONTROL_PLANE_DATA_DIR=/var/data/control-plane -e REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER=admin -e REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY=replace-me repodocs-ai-control-plane",
     "generate:openapi:all": "node scripts/generate-all-openapi-docs.mjs",
     "agent:run": "node scripts/run-documentation-agent.mjs examples/openapi/payments-openapi.yaml",
     "analytics:report": "node scripts/generate-analytics-report.mjs",
@@ -29,5 +29,8 @@
   "devDependencies": {
     "js-yaml": "^4.1.0",
     "markdownlint-cli": "^0.45.0"
+  },
+  "dependencies": {
+    "redis": "^5.11.0"
   }
 }

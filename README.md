@@ -102,9 +102,10 @@ repodocs-ai/
 - export pipelines for Confluence, Google Docs, Notion, and PDF-ready artifacts
 - small hosted control plane for running automation over HTTP
 - per-user API-key and bearer-token authentication for control-plane endpoints
-- durable queued execution so multiple automation requests can be accepted safely across restarts
+- Redis-backed durable queued execution so multiple automation requests can be accepted safely across restarts and workers
 - container packaging for hosted control-plane deployment
 - hosted deployment manifest for Render with persistent disk configuration
+- hosted deployment manifests for Fly.io and Azure Container Apps
 - pull request validation workflow
 - GitHub Pages deployment workflow
 - MkDocs starter integration
@@ -176,12 +177,15 @@ Control plane environment:
 
 - `REPODOCS_CONTROL_PLANE_HOST`
 - `REPODOCS_CONTROL_PLANE_PORT`
+- `REDIS_URL`
 - `REPODOCS_CONTROL_PLANE_DATA_DIR`
 - `REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER`
 - `REPODOCS_CONTROL_PLANE_BOOTSTRAP_DISPLAY_NAME`
 - `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY`
 - `npm run docker:control-plane:build`
 - `npm run docker:control-plane:run`
+
+The control plane now stores queue state, run metadata, and user/key records in Redis so multiple app instances can safely accept and process jobs against shared state. The legacy `.control-plane/*.json` files are only used as a one-time migration source when Redis starts empty.
 
 Control plane management endpoints:
 
@@ -190,6 +194,12 @@ Control plane management endpoints:
 - `PATCH /users/:id` to update role, display name, or status
 - `POST /users/:id/keys` to rotate or add a user key
 - `DELETE /users/:id/keys/:keyId` to revoke a key
+
+Hosted deployment manifests:
+
+- `render.yaml`
+- `fly.toml`
+- `azure-container-apps.yaml`
 
 See `docs/roadmap-spec-summary.md` for a direct map between the specification, roadmap, current phase coverage, and remaining gaps.
 See `docs/spec-scorecard.md` for a strict 17-section scorecard against the attached specification.

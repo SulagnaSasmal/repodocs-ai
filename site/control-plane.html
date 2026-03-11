@@ -26,7 +26,7 @@
         <p class="eyebrow">Control Plane</p>
         <h1>Repository automation now has a small hosted runtime surface.</h1>
         <p class="hero-text">
-          RepoDocs AI can now expose validation, export, agent, analytics, and graph jobs through a small Node control plane with HTTP endpoints, durable queue state, per-user keys, and a lightweight dashboard.
+          RepoDocs AI can now expose validation, export, agent, analytics, and graph jobs through a small Node control plane with HTTP endpoints, Redis-backed queue state, per-user keys, and a lightweight admin dashboard.
         </p>
       </header>
 
@@ -52,7 +52,7 @@
             <p class="section-label">Hosted Scope</p>
             <h2>Durable and user-managed</h2>
             <p>
-              The control plane is meant to bridge repo-native automation and a hosted deployment model without introducing a full platform stack. It now protects job and artifact endpoints with per-user API keys, persists queue state and user metadata on disk, accepts multiple requests through a durable FIFO queue, and can be packaged into a container image or deployed with the Render blueprint.
+              The control plane is meant to bridge repo-native automation and a hosted deployment model without introducing a full platform stack. It now protects job and artifact endpoints with per-user API keys, persists queue state and user metadata in Redis for multi-worker execution, exposes a small browser admin surface for user and key management, and can be deployed with the included Render, Fly.io, or Azure Container Apps manifests.
             </p>
           </article>
         </section>
@@ -61,7 +61,7 @@
           <p class="section-label">Runtime</p>
           <h2>Start it locally or run it in a container.</h2>
           <p>
-            Run <strong>npm run control-plane:start</strong> with <strong>REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY</strong> set, or build the container image with <strong>npm run docker:control-plane:build</strong> and deploy it with the included Render manifest.
+            Run <strong>npm run control-plane:start</strong> with <strong>REDIS_URL</strong> and <strong>REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY</strong> set, or build the container image with <strong>npm run docker:control-plane:build</strong> and deploy it with the included Render, Fly.io, or Azure Container Apps manifests.
           </p>
         </section>
       </main>

@@ -1,0 +1,54 @@
+location: eastus
+name: repodocs-ai-control-plane
+type: Microsoft.App/containerApps
+properties:
+  managedEnvironmentId: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.App/managedEnvironments/<environment-name>
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: true
+      targetPort: 4312
+      transport: auto
+    secrets:
+      - name: bootstrap-key
+        value: replace-me
+      - name: redis-url
+        value: redis://<redis-host>:6379
+  template:
+    containers:
+      - name: repodocs-ai-control-plane
+        image: <registry>/<image>:latest
+        env:
+          - name: NODE_ENV
+            value: production
+          - name: REPODOCS_CONTROL_PLANE_HOST
+            value: 0.0.0.0
+          - name: REPODOCS_CONTROL_PLANE_PORT
+            value: "4312"
+          - name: REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER
+            value: admin
+          - name: REPODOCS_CONTROL_PLANE_BOOTSTRAP_DISPLAY_NAME
+            value: RepoDocs Admin
+          - name: REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY
+            secretRef: bootstrap-key
+          - name: REDIS_URL
+            secretRef: redis-url
+        probes:
+          - type: Liveness
+            httpGet:
+              path: /health
+              port: 4312
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          - type: Readiness
+            httpGet:
+              path: /health
+              port: 4312
+            initialDelaySeconds: 5
+            periodSeconds: 10
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+    scale:
+      minReplicas: 1
+      maxReplicas: 3
