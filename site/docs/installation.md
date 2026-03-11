@@ -42,6 +42,47 @@ npm run validate
 - `docs/ready-to-install-system.md`
 - `site/index.html`
 
+## Quick Start For Your Own Docs Repository
+
+If your goal is not to develop RepoDocs AI itself, but to use it as a documentation system starter, do this next.
+
+1. Create a repository for your documentation.
+1. Copy the RepoDocs AI starter assets into it.
+1. Start with the API, feature, and governance template packs.
+
+On Windows PowerShell:
+
+```powershell
+mkdir company-docs
+Set-Location company-docs
+Copy-Item ..\repodocs-ai\templates -Destination . -Recurse
+Copy-Item ..\repodocs-ai\prompts -Destination . -Recurse
+Copy-Item ..\repodocs-ai\diagrams -Destination . -Recurse
+```
+
+On bash:
+
+```bash
+mkdir company-docs
+cd company-docs
+cp -R ../repodocs-ai/templates .
+cp -R ../repodocs-ai/prompts .
+cp -R ../repodocs-ai/diagrams .
+```
+
+Or from the RepoDocs AI repository root, use the one-command bootstrap path:
+
+```bash
+npm run bootstrap:docs-repo -- ../company-docs
+```
+
+After copying the assets:
+
+- start with `templates/api/` to document APIs
+- use `templates/features/` for product and workflow docs
+- use `templates/governance/` for review and QA checks
+- use `prompts/` to draft and review content with AI
+
 ## Adopt The System
 
 Start from these directories:

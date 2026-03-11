@@ -90,6 +90,12 @@ cp -R ../repodocs-ai/prompts .
 cp -R ../repodocs-ai/diagrams .
 ```
 
+Or use the one-command bootstrap script from the RepoDocs AI repo root:
+
+```bash
+npm run bootstrap:docs-repo -- ../company-docs
+```
+
 Then start with:
 
 1. `templates/api/` for API documentation

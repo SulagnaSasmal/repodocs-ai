@@ -53,8 +53,16 @@
             <p class="section-label">Start Here</p>
             <h2>The shortest path to value is now explicit.</h2>
             <p class="doc-meta">A first-time visitor should not need to hunt through specs or source files to get started.</p>
+            <pre class="code-block">mkdir company-docs
+cd company-docs
+cp -R ../repodocs-ai/templates .
+cp -R ../repodocs-ai/prompts .
+cp -R ../repodocs-ai/diagrams .</pre>
+            <p class="doc-meta">Or from the RepoDocs AI repository root:</p>
+            <pre class="code-block">npm run bootstrap:docs-repo -- ../company-docs</pre>
             <div class="doc-actions">
               <a href="../installation.html">Install in 5 Minutes</a>
+              <a href="installation.md">Bootstrap source guide</a>
               <a href="../index.html">Understand the product</a>
               <a href="../complete-system.html">See the example system</a>
             </div>

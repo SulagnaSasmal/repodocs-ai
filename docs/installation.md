@@ -70,6 +70,12 @@ cp -R ../repodocs-ai/prompts .
 cp -R ../repodocs-ai/diagrams .
 ```
 
+Or from the RepoDocs AI repository root, use the one-command bootstrap path:
+
+```bash
+npm run bootstrap:docs-repo -- ../company-docs
+```
+
 After copying the assets:
 
 - start with `templates/api/` to document APIs

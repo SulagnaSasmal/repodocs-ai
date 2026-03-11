@@ -72,15 +72,28 @@ npm run validate</pre>
         <section class="grid-section detail-grid">
           <article class="content-card">
             <p class="section-label">After Install</p>
-            <h2>Where to go next</h2>
+            <h2>Bootstrap your own docs repo</h2>
+            <p>
+              If your goal is to adopt RepoDocs AI into a real product documentation repository, create a docs repo and copy the starter assets.
+            </p>
+            <pre class="code-block">mkdir company-docs
+cd company-docs
+cp -R ../repodocs-ai/templates .
+cp -R ../repodocs-ai/prompts .
+cp -R ../repodocs-ai/diagrams .</pre>
+            <p>
+              Or from the RepoDocs AI repository root:
+            </p>
+            <pre class="code-block">npm run bootstrap:docs-repo -- ../company-docs</pre>
             <ul class="feature-list">
-              <li>Read the product guide for positioning and use cases</li>
-              <li>Open the system guide for the full walkthrough</li>
-              <li>Start from templates, prompts, and examples</li>
-              <li>Use the docs hub for source documents and deeper implementation notes</li>
+              <li>Start with templates/api/ for API documentation</li>
+              <li>Use templates/features/ for feature and workflow docs</li>
+              <li>Use templates/governance/ for review and QA guidance</li>
+              <li>Use prompts/ to draft and review content with AI</li>
             </ul>
             <div class="link-list">
               <a href="docs/index.html">Open docs hub</a>
+              <a href="docs/installation.md">View source install guide</a>
               <a href="ready-to-install-system.html">Read system guide</a>
               <a href="complete-system.html">View example system</a>
             </div>

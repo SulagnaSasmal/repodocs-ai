@@ -158,13 +158,23 @@
         <section class="grid-section detail-grid">
           <article class="content-card">
             <p class="section-label">Quickstart</p>
-            <h2>A developer should be up and running in under 5 minutes.</h2>
+            <h2>Create a docs repo, copy the starter system, and start documenting APIs.</h2>
             <p>
-              Clone the repo, install dependencies, run validation, and start from the templates and prompts. The published site now has a dedicated quickstart path so first-time visitors do not need to read the full spec first.
+              A first-time adopter should not have to reverse-engineer how to use RepoDocs AI. The shortest path is to create a docs repository, copy the starter assets, and begin with the API, feature, and governance template packs.
             </p>
+            <pre class="code-block">mkdir company-docs
+cd company-docs
+cp -R ../repodocs-ai/templates .
+cp -R ../repodocs-ai/prompts .
+cp -R ../repodocs-ai/diagrams .</pre>
+            <p>
+              Or, from the RepoDocs AI repository root, run one command:
+            </p>
+            <pre class="code-block">npm run bootstrap:docs-repo -- ../company-docs</pre>
             <div class="link-list">
               <a href="installation.html">Open install guide</a>
-              <a href="docs/installation.md">View install source</a>
+              <a href="docs/installation.md">View bootstrap source</a>
+              <a href="docs/index.html">Open docs hub</a>
             </div>
           </article>
           <article class="content-card emphasis-card">
