@@ -4,6 +4,81 @@ AI-native docs-as-code documentation system for SaaS API teams.
 
 RepoDocs AI gives engineering teams a reusable template library, structured AI prompts, diagram starters, and review guardrails for Markdown-based documentation in GitHub repositories.
 
+## Problem
+
+Most SaaS teams still document APIs with inconsistent structure, slow manual writing, and low-trust AI drafts that drift away from the source contract.
+
+## Solution
+
+RepoDocs AI gives engineering teams one repo-native documentation system that combines:
+
+- reusable templates for API, feature, governance, operations, product, and architecture docs
+- structured AI prompts for drafting and review
+- examples that show the final output shape
+- validation scripts for documentation quality and structure
+- an optional hosted control plane for automation
+
+## Example
+
+If you want to understand RepoDocs AI in under 2 minutes, start with the payments example.
+
+`examples/payments-api/` shows a complete Stripe-style API documentation set for a payments platform built from the shipped templates and API-generation prompt.
+
+It includes:
+
+- `api-overview.md`
+- `authentication.md`
+- `create-payment.md`
+- `error-handling.md`
+- `idempotency.md`
+- `retrieve-payment.md`
+- `refund-payment.md`
+- `webhooks.md`
+- `payments-openapi.yaml`
+
+This is the fastest trust check for the product: it shows what a real documentation system built with RepoDocs AI looks like.
+
+## Quick Start
+
+This is the fastest way to use RepoDocs AI as a developer adopting it into a real documentation repository.
+
+1. Create a documentation repository.
+2. Copy RepoDocs AI templates.
+3. Start documenting APIs.
+
+Example on Windows PowerShell:
+
+```powershell
+mkdir company-docs
+Set-Location company-docs
+Copy-Item ..\repodocs-ai\templates -Destination . -Recurse
+Copy-Item ..\repodocs-ai\prompts -Destination . -Recurse
+Copy-Item ..\repodocs-ai\diagrams -Destination . -Recurse
+```
+
+Example on bash:
+
+```bash
+mkdir company-docs
+cd company-docs
+cp -R ../repodocs-ai/templates .
+cp -R ../repodocs-ai/prompts .
+cp -R ../repodocs-ai/diagrams .
+```
+
+Or use the one-command bootstrap script from the RepoDocs AI repo root:
+
+```bash
+npm run bootstrap:docs-repo -- ../company-docs
+```
+
+Then start with:
+
+1. `templates/api/` for API documentation
+2. `templates/features/` for feature documentation
+3. `templates/governance/` for review and quality guardrails
+4. `prompts/` for AI-assisted drafting and review
+
 ## What This Repo Is
 
 RepoDocs AI is a developer product for teams that want to stand up a serious documentation repository quickly.
@@ -62,63 +137,6 @@ Version 1 focuses on:
 - documentation governance
 - Markdown-first repository workflows
 
-## Quick Start
-
-This is the fastest way to use RepoDocs AI as a developer adopting it into a real documentation repository.
-
-1. Create a documentation repository.
-2. Copy RepoDocs AI templates.
-3. Start documenting APIs.
-
-Example on Windows PowerShell:
-
-```powershell
-mkdir company-docs
-Set-Location company-docs
-Copy-Item ..\repodocs-ai\templates -Destination . -Recurse
-Copy-Item ..\repodocs-ai\prompts -Destination . -Recurse
-Copy-Item ..\repodocs-ai\diagrams -Destination . -Recurse
-```
-
-Example on bash:
-
-```bash
-mkdir company-docs
-cd company-docs
-cp -R ../repodocs-ai/templates .
-cp -R ../repodocs-ai/prompts .
-cp -R ../repodocs-ai/diagrams .
-```
-
-Or use the one-command bootstrap script from the RepoDocs AI repo root:
-
-```bash
-npm run bootstrap:docs-repo -- ../company-docs
-```
-
-Then start with:
-
-1. `templates/api/` for API documentation
-2. `templates/features/` for feature documentation
-3. `templates/governance/` for review and quality guardrails
-4. `prompts/` for AI-assisted drafting and review
-
-## Killer Example
-
-If you want to understand RepoDocs AI in under 2 minutes, start with the payments example.
-
-`examples/payments-api/` shows a complete Stripe-style API documentation set for a payments platform built from the shipped templates and API-generation prompt.
-
-It includes:
-
-- `api-overview.md`
-- `create-payment.md`
-- `retrieve-payment.md`
-- `refund-payment.md`
-- `payments-openapi.yaml`
-
-This is the fastest trust check for the product: it shows what a real documentation system built with RepoDocs AI looks like.
-
 ## Install RepoDocs AI
 
 The repository should be installable in under 5 minutes for a developer evaluating the system.
@@ -141,6 +159,9 @@ For the optional hosted automation runtime:
 repodocs-ai/
 ├── README.md
 ├── LICENSE
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── CODE_OF_CONDUCT.md
 ├── .github/
 ├── docs/
 │   ├── index.md
@@ -166,6 +187,12 @@ Product-facing entry points inside `docs/`:
 - `docs/developer-experience-scorecard.md`
 - `docs/ready-to-install-system.md`
 - `docs/product-specification.md`
+
+Trust and contribution files at the repository root:
+
+- `CHANGELOG.md`
+- `CONTRIBUTING.md`
+- `CODE_OF_CONDUCT.md`
 
 ## Core Principles
 
