@@ -1,0 +1,43 @@
+name: Regenerate OpenAPI Docs On Spec Change
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - examples/openapi/**
+      - scripts/generate-openapi-docs.mjs
+      - scripts/generate-all-openapi-docs.mjs
+      - scripts/validate-openapi-examples.mjs
+  workflow_dispatch:
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Regenerate docs for all OpenAPI specs
+        run: npm run generate:openapi:all
+
+      - name: Validate regenerated output
+        run: npm run validate
+
+      - name: Upload regenerated docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: regenerated-openapi-docs
+          path: generated

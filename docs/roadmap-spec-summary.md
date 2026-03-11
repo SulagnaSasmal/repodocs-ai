@@ -70,9 +70,11 @@ Implemented assets:
 - Markdown linting
 - pull request validation workflow
 - manual OpenAPI-to-Markdown generation workflow
+- automatic regeneration workflow on OpenAPI spec changes
 - GitHub Pages deployment workflow
 - static landing and docs site pages
 - MkDocs starter integration
+- Docusaurus starter integration
 
 Outcome:
 
@@ -81,7 +83,7 @@ The repository now validates core docs hygiene, supports OpenAPI-assisted docume
 Remaining automation gaps:
 
 - automatic regeneration of docs from changed OpenAPI specs
-- Docusaurus starter integration
+- multi-channel export support for systems such as Confluence or PDF
 - multi-channel export support for systems such as Confluence or PDF
 
 ## Spec Coverage Map
@@ -93,13 +95,13 @@ Remaining automation gaps:
 - AI Prompt Framework
 - basic Mermaid architecture and sequence starters
 - Documentation Validation System baseline with schema-aware API example checks
+- starter integrations for MkDocs and Docusaurus
 
 ### Partially covered
 
 - diagram coverage beyond architecture and sequence
-- end-to-end example system
-- workflow automation from OpenAPI source to generated docs
-- version compatibility and deeper semantic validation beyond current OpenAPI checks
+- deeper semantic validation beyond current OpenAPI checks
+- workflow automation from OpenAPI source to generated docs is artifact-based rather than repository-committing
 
 ### Not yet covered
 
@@ -110,7 +112,7 @@ Remaining automation gaps:
 
 ## Recommended Next Steps
 
-1. Add automatic regeneration from changed OpenAPI specs.
-2. Add a Docusaurus starter project pack.
-3. Expand the complete-system example into a full end-to-end sample.
-4. Add operations and architecture template packs.
+1. Add deeper semantic validation for request bodies and version compatibility.
+2. Add operations and architecture template packs.
+3. Add multi-channel export support.
+4. Add GitLab and Bitbucket platform support.

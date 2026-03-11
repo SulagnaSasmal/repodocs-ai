@@ -1,0 +1,7 @@
+flowchart LR
+    Client[Client App] --> Gateway[API Gateway]
+    Gateway --> Payments[Payments API]
+    Payments --> Ledger[(Ledger)]
+    Payments --> Events[(Event Stream)]
+    Events --> Notifications[Notifications]
+    Ledger --> Dashboard[Merchant Dashboard]

@@ -31,6 +31,7 @@ const requiredPaths = [
   "examples/product-docs/repodocs-ai-product-overview.md",
   "examples/product-docs/repodocs-ai-user-guide.md",
   "diagrams/data-flow/payments-data-flow.mmd",
+  "scripts/generate-all-openapi-docs.mjs",
   "scripts/generate-openapi-docs.mjs",
   "scripts/validate-doc-quality.mjs",
   "scripts/validate-openapi-examples.mjs",
@@ -38,11 +39,27 @@ const requiredPaths = [
   "site/roadmap.html",
   "site/automation.html",
   "site/styles.css",
+  ".github/workflows/regenerate-on-openapi-change.yml",
   "starters/mkdocs/README.md",
   "starters/mkdocs/mkdocs.yml",
   "starters/mkdocs/docs/index.md",
   "starters/mkdocs/docs/getting-started.md",
-  "starters/mkdocs/docs/api-reference.md"
+  "starters/mkdocs/docs/api-reference.md",
+  "starters/docusaurus/README.md",
+  "starters/docusaurus/package.json",
+  "starters/docusaurus/docusaurus.config.ts",
+  "starters/docusaurus/sidebars.ts",
+  "starters/docusaurus/docs/intro.md",
+  "starters/docusaurus/docs/adoption-workflow.md",
+  "starters/docusaurus/docs/api-docs-workflow.md",
+  "examples/complete-system/product-overview.md",
+  "examples/complete-system/feature-payment-links.md",
+  "examples/complete-system/api-overview.md",
+  "examples/complete-system/endpoint-create-payment.md",
+  "examples/complete-system/endpoint-retrieve-payment.md",
+  "examples/complete-system/review-report.md",
+  "examples/complete-system/architecture-system-context.mmd",
+  "examples/complete-system/data-flow-payments.mmd"
 ];
 
 async function exists(relativePath) {

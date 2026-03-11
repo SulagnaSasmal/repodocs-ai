@@ -1,0 +1,8 @@
+flowchart TD
+    Merchant[Merchant Operator] --> Dashboard[Merchant Dashboard]
+    Dashboard --> API[Payments API]
+    API --> Auth[Auth Service]
+    API --> Ledger[Ledger Service]
+    API --> Checkout[Checkout Service]
+    Checkout --> Customer[Customer Payment Page]
+    API --> Notifications[Notifications Service]

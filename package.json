@@ -5,6 +5,7 @@
   "description": "AI-native docs-as-code documentation system for SaaS API teams",
   "scripts": {
     "lint:markdown": "markdownlint \"**/*.md\" --ignore node_modules --ignore site",
+    "generate:openapi:all": "node scripts/generate-all-openapi-docs.mjs",
     "validate:frontmatter": "node scripts/validate-frontmatter.mjs",
     "validate:structure": "node scripts/validate-structure.mjs",
     "validate:quality": "node scripts/validate-doc-quality.mjs",

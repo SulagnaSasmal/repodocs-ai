@@ -80,9 +80,11 @@ repodocs-ai/
 - schema-aware OpenAPI validation for endpoint examples
 - Markdown linting
 - OpenAPI-to-Markdown generation script
+- automatic regeneration workflow for changed OpenAPI specs
 - pull request validation workflow
 - GitHub Pages deployment workflow
 - MkDocs starter integration
+- Docusaurus starter integration
 
 ## How To Use
 
@@ -113,6 +115,7 @@ repodocs-ai/
 - validation scripts added for frontmatter and repository structure
 - OpenAPI generation script and manual workflow added
 - schema-aware OpenAPI example validation added
+- automatic regeneration workflow added for changed OpenAPI specs
 - GitHub Actions added for pull request checks
 - static landing and docs pages added under `site/`
 - GitHub Pages deployment workflow added
@@ -121,8 +124,9 @@ repodocs-ai/
 
 - add more template packs for operations and architecture
 - add OpenAPI-to-template generation workflows
-- add Docusaurus starter integration
 - expand quality checks to cover example payload validation
+
+The repository now includes starter packs for both MkDocs and Docusaurus, plus an end-to-end sample under `examples/complete-system/`.
 
 See `docs/roadmap-spec-summary.md` for a direct map between the specification, roadmap, current phase coverage, and remaining gaps.
 

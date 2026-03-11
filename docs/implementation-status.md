@@ -8,6 +8,7 @@ RepoDocs AI now covers the requested first three build steps:
 2. Phase 3 automation now includes validation scripts, GitHub Actions, and OpenAPI-assisted generation scaffolding.
 3. A public-facing landing page and lightweight docs site have been added for presentation and GitHub Pages deployment.
 4. Schema-aware OpenAPI example validation and an MkDocs starter are now included.
+5. Automatic OpenAPI regeneration, a Docusaurus starter, and a complete end-to-end example are now included.
 
 ## Roadmap Status
 
@@ -21,7 +22,7 @@ RepoDocs AI now covers the requested first three build steps:
 ### In Progress
 
 - automatic regeneration from changed API specs
-- Docusaurus starter integration
+- deeper request-body and version-compatibility validation
 
 ### Not Started
 
@@ -45,6 +46,8 @@ RepoDocs AI now covers the requested first three build steps:
 - example documentation implemented
 - roadmap-to-spec summary documented
 - MkDocs starter integration documented
+- Docusaurus starter integration documented
+- complete-system example expanded into an end-to-end sample
 
 ### Partially implemented
 
