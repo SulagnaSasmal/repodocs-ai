@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: repodocs-ai-control-plane
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    plan: starter
+    envVars:
+      - key: REPODOCS_CONTROL_PLANE_HOST
+        value: 0.0.0.0
+      - key: REPODOCS_CONTROL_PLANE_PORT
+        value: 4312
+      - key: REPODOCS_CONTROL_PLANE_DATA_DIR
+        value: /var/data/control-plane
+      - key: REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER
+        value: admin
+      - key: REPODOCS_CONTROL_PLANE_BOOTSTRAP_DISPLAY_NAME
+        value: RepoDocs Admin
+      - key: REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY
+        sync: false
+    disk:
+      name: repodocs-ai-control-plane-data
+      mountPath: /var/data
+      sizeGB: 1

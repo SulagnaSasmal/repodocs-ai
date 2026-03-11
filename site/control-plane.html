@@ -26,7 +26,7 @@
         <p class="eyebrow">Control Plane</p>
         <h1>Repository automation now has a small hosted runtime surface.</h1>
         <p class="hero-text">
-          RepoDocs AI can now expose validation, export, agent, analytics, and graph jobs through a small Node control plane with HTTP endpoints and a lightweight dashboard.
+          RepoDocs AI can now expose validation, export, agent, analytics, and graph jobs through a small Node control plane with HTTP endpoints, durable queue state, per-user keys, and a lightweight dashboard.
         </p>
       </header>
 
@@ -41,16 +41,18 @@
               <li>GET /jobs</li>
               <li>GET /runs</li>
               <li>GET /artifacts</li>
+              <li>GET /users</li>
               <li>POST /jobs/validate</li>
               <li>POST /jobs/export</li>
               <li>POST /jobs/automation</li>
+              <li>POST /users and /users/:id/keys</li>
             </ul>
           </article>
           <article class="content-card">
             <p class="section-label">Hosted Scope</p>
-            <h2>Authenticated and queue-aware</h2>
+            <h2>Durable and user-managed</h2>
             <p>
-              The control plane is meant to bridge repo-native automation and a hosted deployment model without introducing a full platform stack. It now protects job and artifact endpoints with API keys, accepts multiple requests through a FIFO queue, keeps artifacts on disk, and can be packaged into a container image.
+              The control plane is meant to bridge repo-native automation and a hosted deployment model without introducing a full platform stack. It now protects job and artifact endpoints with per-user API keys, persists queue state and user metadata on disk, accepts multiple requests through a durable FIFO queue, and can be packaged into a container image or deployed with the Render blueprint.
             </p>
           </article>
         </section>
@@ -59,7 +61,7 @@
           <p class="section-label">Runtime</p>
           <h2>Start it locally or run it in a container.</h2>
           <p>
-            Run <strong>npm run control-plane:start</strong> with <strong>REPODOCS_CONTROL_PLANE_API_KEYS</strong> set, or build the container image with <strong>npm run docker:control-plane:build</strong>.
+            Run <strong>npm run control-plane:start</strong> with <strong>REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY</strong> set, or build the container image with <strong>npm run docker:control-plane:build</strong> and deploy it with the included Render manifest.
           </p>
         </section>
       </main>

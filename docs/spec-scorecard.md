@@ -79,10 +79,10 @@ Status: Complete with extensions
 
 ## 11. Documentation Workflow
 
-Status: Partial to strong
+Status: Strong
 
-- The workflow is documented and partially automated through generation, validation, pull-request checks, exports, and publishing.
-- It is not yet fully closed-loop as an authenticated multi-user product workflow with repository write-back orchestration.
+- The workflow is documented and strongly automated through generation, validation, pull-request checks, exports, publishing, hosted job execution, and user-managed access control.
+- It is not yet fully closed-loop as a repository write-back or externally integrated identity workflow.
 - Evidence: `docs/product-specification.md`, `.github/workflows/`, `scripts/generate-openapi-docs.mjs`, `scripts/control-plane-server.mjs`.
 
 ## 12. Validation System
@@ -101,11 +101,11 @@ Status: Complete
 
 ## 14. Packaging
 
-Status: Partial to strong
+Status: Strong
 
-- The repository includes bundle/export assets and is now container-packaged for the hosted control plane.
+- The repository includes bundle/export assets, container packaging for the hosted control plane, and a hosted deployment manifest.
 - It is still not a polished commercial installer or managed SaaS distribution.
-- Evidence: `bundle/`, `exports/`, `Dockerfile`.
+- Evidence: `bundle/`, `exports/`, `Dockerfile`, `render.yaml`.
 
 ## 15. Pricing Strategy
 
@@ -119,7 +119,7 @@ Status: Represented
 Status: Partially pulled forward
 
 - Documentation agents, OpenAPI generation, knowledge graph indexing, and analytics now exist as runnable repository automation.
-- The hosted versions of these future capabilities remain lightweight and single-process.
+- The hosted versions of these future capabilities now include durable local state and managed users, but remain lightweight and single-process.
 - Evidence: `scripts/run-documentation-agent.mjs`, `scripts/generate-analytics-report.mjs`, `scripts/build-knowledge-graph.mjs`, `docs/hosted-control-plane.md`.
 
 ## 17. Key Differentiators
@@ -133,7 +133,8 @@ Status: Complete
 
 - Complete: 8 sections
 - Complete with extensions: 6 sections
-- Partial to strong: 3 sections
+- Strong: 2 sections
+- Partial to strong: 1 section
 
 Interpretation:
 

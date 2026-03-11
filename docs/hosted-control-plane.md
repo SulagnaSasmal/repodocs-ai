@@ -7,8 +7,9 @@ RepoDocs AI now includes a small hosted control plane for repository-native auto
 - expose validation, export, agent, analytics, and graph jobs over HTTP
 - provide a lightweight dashboard for hosted deployment
 - surface generated artifacts without requiring shell access
-- protect automation endpoints with API-key or bearer-token authentication
-- accept multiple job requests safely through queued execution
+- protect automation endpoints with per-user API-key or bearer-token authentication
+- accept multiple job requests safely through durable queued execution
+- persist users, keys, queue state, and run history on disk
 
 ## Run Locally
 
@@ -24,14 +25,26 @@ Environment variables:
 
 - `REPODOCS_CONTROL_PLANE_HOST`
 - `REPODOCS_CONTROL_PLANE_PORT`
-- `REPODOCS_CONTROL_PLANE_API_KEYS`
+- `REPODOCS_CONTROL_PLANE_DATA_DIR`
+- `REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER`
+- `REPODOCS_CONTROL_PLANE_BOOTSTRAP_DISPLAY_NAME`
+- `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY`
 
 Authentication:
 
 - protected endpoints accept `X-API-Key: <token>`
 - protected endpoints also accept `Authorization: Bearer <token>`
-- set `REPODOCS_CONTROL_PLANE_API_KEYS` to a comma-separated list of valid tokens
+- bootstrap the first admin account with `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY`
+- user records and key metadata are stored in `users.json` under the control-plane data directory
 - `GET /health` and `GET /auth/status` remain available for health and auth discovery
+
+User management endpoints:
+
+- `GET /users`
+- `POST /users`
+- `PATCH /users/:id`
+- `POST /users/:id/keys`
+- `DELETE /users/:id/keys/:keyId`
 
 ## Endpoints
 
@@ -63,13 +76,18 @@ npm run docker:control-plane:build
 Run:
 
 ```bash
-docker run --rm -p 4312:4312 -e REPODOCS_CONTROL_PLANE_HOST=0.0.0.0 -e REPODOCS_CONTROL_PLANE_API_KEYS=replace-me repodocs-ai-control-plane
+docker run --rm -p 4312:4312 -v repodocs-ai-control-plane-data:/var/data -e REPODOCS_CONTROL_PLANE_HOST=0.0.0.0 -e REPODOCS_CONTROL_PLANE_DATA_DIR=/var/data/control-plane -e REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER=admin -e REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY=replace-me repodocs-ai-control-plane
 ```
+
+### Render Deployment
+
+The repository now includes a `render.yaml` manifest for deploying the control plane as a Docker-backed web service with a persistent disk mounted at `/var/data`.
 
 ## Current Limits
 
 - one active worker processes queued jobs in FIFO order
-- multiple requests can be accepted while work is already running
+- multiple requests can be accepted while work is already running or after a process restart
 - local process execution only
 - artifact storage remains filesystem-based
-- authentication is API-key based rather than user/tenant based
+- authentication is per-user and role-based, but not yet tied to an external identity provider
+- durable queue storage is filesystem-backed rather than database-backed

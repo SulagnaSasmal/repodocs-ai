@@ -89,9 +89,11 @@ Implemented assets:
 - analytics report automation
 - knowledge-graph build automation
 - hosted control plane for automation jobs and artifact inspection
-- control-plane authentication via API keys and bearer tokens
-- queued execution for multiple automation requests
+- control-plane authentication via per-user API keys and bearer tokens
+- durable queued execution for multiple automation requests
+- control-plane user and key management endpoints
 - container deployment packaging for the hosted control plane
+- Render deployment manifest for hosted rollout
 
 Outcome:
 
@@ -99,9 +101,9 @@ The repository now validates core docs hygiene, supports OpenAPI-assisted docume
 
 Remaining automation gaps:
 
-- authentication, tenancy, and queueing for the hosted control plane
+- identity-provider integration and tenancy for the hosted control plane
 - hosted application delivery for analytics, agent execution, and knowledge graph services beyond a single-process runtime
-- durable queue storage and multi-worker orchestration for control-plane jobs
+- database-backed queue storage and multi-worker orchestration for control-plane jobs
 
 ## Spec Coverage Map
 
@@ -121,6 +123,7 @@ Remaining automation gaps:
 - multi-channel exports for Confluence, Google Docs, Notion, and PDF
 - hosted control plane for running repository automation through HTTP
 - authenticated and queue-aware hosted control plane for running repository automation through HTTP
+- hosted deployment manifest for a production-style container target
 
 ### Partially covered
 

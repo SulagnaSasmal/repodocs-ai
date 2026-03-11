@@ -4,6 +4,8 @@ AI-native docs-as-code documentation system for SaaS API teams.
 
 RepoDocs AI gives engineering teams a reusable template library, structured AI prompts, diagram starters, and review guardrails for Markdown-based documentation in GitHub repositories.
 
+For a product-style walkthrough of the installable system, see `docs/ready-to-install-system.md`.
+
 The repository currently implements the Phase 1 and Phase 2 foundation of the product, plus a baseline of Phase 3 automation:
 
 - product specification and scope definition
@@ -99,9 +101,10 @@ repodocs-ai/
 - runnable knowledge-graph generation from frontmatter, dependencies, and endpoints
 - export pipelines for Confluence, Google Docs, Notion, and PDF-ready artifacts
 - small hosted control plane for running automation over HTTP
-- API-key and bearer-token authentication for control-plane endpoints
-- queued execution so multiple automation requests can be accepted safely
+- per-user API-key and bearer-token authentication for control-plane endpoints
+- durable queued execution so multiple automation requests can be accepted safely across restarts
 - container packaging for hosted control-plane deployment
+- hosted deployment manifest for Render with persistent disk configuration
 - pull request validation workflow
 - GitHub Pages deployment workflow
 - MkDocs starter integration
@@ -171,11 +174,22 @@ Yes. RepoDocs AI already includes a lightweight static UI in `site/` for GitHub 
 
 Control plane environment:
 
-- `REPODOCS_CONTROL_PLANE_API_KEYS` as a comma-separated list of accepted tokens
 - `REPODOCS_CONTROL_PLANE_HOST`
 - `REPODOCS_CONTROL_PLANE_PORT`
+- `REPODOCS_CONTROL_PLANE_DATA_DIR`
+- `REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER`
+- `REPODOCS_CONTROL_PLANE_BOOTSTRAP_DISPLAY_NAME`
+- `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY`
 - `npm run docker:control-plane:build`
 - `npm run docker:control-plane:run`
+
+Control plane management endpoints:
+
+- `GET /users` for admin user inventory
+- `POST /users` to create a user and initial key
+- `PATCH /users/:id` to update role, display name, or status
+- `POST /users/:id/keys` to rotate or add a user key
+- `DELETE /users/:id/keys/:keyId` to revoke a key
 
 See `docs/roadmap-spec-summary.md` for a direct map between the specification, roadmap, current phase coverage, and remaining gaps.
 See `docs/spec-scorecard.md` for a strict 17-section scorecard against the attached specification.
