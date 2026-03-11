@@ -58,12 +58,17 @@ function spawnJob(jobName) {
 
   return new Promise((resolve, reject) => {
     const startedAt = new Date().toISOString();
-    const child = spawn(npmCommand, jobs[jobName], {
-      cwd: repoRoot,
-      env: process.env,
-      shell: process.platform === "win32",
-      stdio: ["ignore", "pipe", "pipe"]
-    });
+    const child = process.platform === "win32"
+      ? spawn(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `${npmCommand} ${jobs[jobName].join(" ")}`], {
+          cwd: repoRoot,
+          env: process.env,
+          stdio: ["ignore", "pipe", "pipe"]
+        })
+      : spawn(npmCommand, jobs[jobName], {
+          cwd: repoRoot,
+          env: process.env,
+          stdio: ["ignore", "pipe", "pipe"]
+        });
 
     const run = {
       id: `${jobName}-${Date.now()}`,
