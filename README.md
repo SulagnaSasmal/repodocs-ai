@@ -97,7 +97,8 @@ repodocs-ai/
 - runnable documentation-agent orchestration for OpenAPI sources
 - runnable analytics report generation for repository coverage and freshness
 - runnable knowledge-graph generation from frontmatter, dependencies, and endpoints
-- export pipelines for Confluence, Google Docs, and PDF-ready artifacts
+- export pipelines for Confluence, Google Docs, Notion, and PDF-ready artifacts
+- small hosted control plane for running automation over HTTP
 - pull request validation workflow
 - GitHub Pages deployment workflow
 - MkDocs starter integration
@@ -162,6 +163,8 @@ Yes. RepoDocs AI already includes a lightweight static UI in `site/` for GitHub 
 - `npm run graph:build`
 - `npm run automation:run`
 - `npm run export`
+- `npm run export:notion`
+- `npm run control-plane:start`
 
 See `docs/roadmap-spec-summary.md` for a direct map between the specification, roadmap, current phase coverage, and remaining gaps.
 

@@ -13,6 +13,20 @@ import {
 const supportedFormats = new Set(["all", "confluence", "gdocs", "pdf"]);
 const sourceDirectories = ["docs", "examples"];
 
+function buildNotionMarkdown(document) {
+  const metadataEntries = Object.entries(document.frontmatter || {}).filter(([, value]) => value !== undefined && value !== null && value !== "");
+  const metadataBlock = metadataEntries.length === 0
+    ? ""
+    : [
+        "## Metadata",
+        "",
+        ...metadataEntries.map(([key, value]) => `- ${key}: ${Array.isArray(value) ? value.join(", ") : value}`),
+        ""
+      ].join("\n");
+
+  return `${document.frontmatter?.title ? `# ${document.frontmatter.title}\n\n` : ""}${metadataBlock}${document.body.trim()}\n`;
+}
+
 function buildMetadataHtml(frontmatter = {}) {
   const entries = Object.entries(frontmatter || {}).filter(([, value]) => value !== undefined && value !== null && value !== "");
   if (entries.length === 0) {
@@ -37,7 +51,7 @@ function normalizeFormatArg(value) {
 }
 
 function getFormats(formatArg) {
-  return formatArg === "all" ? ["confluence", "gdocs", "pdf"] : [formatArg];
+  return formatArg === "all" ? ["confluence", "gdocs", "notion", "pdf"] : [formatArg];
 }
 
 async function writeHtmlExport(baseDirectory, relativePath, suffix, html) {
@@ -80,6 +94,14 @@ async function main() {
 
       if (format === "gdocs") {
         exportRecord.formats.gdocs = await writeHtmlExport(formatRoot, document.relativePath, ".html", html);
+        continue;
+      }
+
+      if (format === "notion") {
+        const notionPath = path.join(formatRoot, document.relativePath.replace(/\.md$/i, ".notion.md"));
+        await ensureDirectory(path.dirname(notionPath));
+        await fs.writeFile(notionPath, buildNotionMarkdown(document), "utf8");
+        exportRecord.formats.notion = path.relative(repoRoot, notionPath).replace(/\\/g, "/");
         continue;
       }
 

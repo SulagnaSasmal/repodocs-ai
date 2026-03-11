@@ -27,9 +27,9 @@ RepoDocs AI now covers the requested first three build steps:
 
 ### Not Started
 
-- Notion export support
 - hosted analytics service beyond repository-generated reports
 - AI-assisted draft writing against a live LLM provider
+- authenticated multi-user control-plane access
 
 ## Spec Coverage
 
@@ -56,17 +56,16 @@ RepoDocs AI now covers the requested first three build steps:
 - documentation-agent automation added
 - analytics report automation added
 - knowledge-graph automation added
-- export pipelines added for Confluence, Google Docs, and PDF
+- export pipelines added for Confluence, Google Docs, Notion, and PDF
 - deprecation and migration validation added
+- hosted control plane added for automation jobs and artifact inspection
 
 ### Partially implemented
 
 - documentation workflow is documented and partially automated
 - packaging exists as repository assets but not as a sellable release bundle
-- multi-channel export covers Confluence, Google Docs, and PDF, but not Notion
-- automation runs locally and in CI artifacts, but not as a hosted application tier
+- automation runs in a small hosted control plane, but not yet as an authenticated multi-tenant service
 
 ### Not yet implemented
 
-- Notion output support
 - advanced lifecycle automation beyond repository workflows

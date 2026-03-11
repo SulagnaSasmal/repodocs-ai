@@ -84,10 +84,11 @@ Implemented assets:
 - Bitbucket support starter
 - pricing and bundle manifest assets
 - deprecation and migration validation for versioned docs
-- export pipelines for Confluence, Google Docs, and PDF artifacts
+- export pipelines for Confluence, Google Docs, Notion, and PDF artifacts
 - documentation-agent automation
 - analytics report automation
 - knowledge-graph build automation
+- hosted control plane for automation jobs and artifact inspection
 
 Outcome:
 
@@ -95,8 +96,8 @@ The repository now validates core docs hygiene, supports OpenAPI-assisted docume
 
 Remaining automation gaps:
 
-- Notion export support
-- hosted application delivery for analytics, agent execution, and knowledge graph services
+- authentication, tenancy, and queueing for the hosted control plane
+- hosted application delivery for analytics, agent execution, and knowledge graph services beyond a single-process runtime
 
 ## Spec Coverage Map
 
@@ -113,7 +114,8 @@ Remaining automation gaps:
 - platform-support assets for GitLab and Bitbucket
 - packaging and pricing assets represented in the repository
 - runnable repository automation for agents, knowledge graph indexing, and analytics
-- multi-channel exports for Confluence, Google Docs, and PDF
+- multi-channel exports for Confluence, Google Docs, Notion, and PDF
+- hosted control plane for running repository automation through HTTP
 
 ### Partially covered
 
@@ -134,12 +136,11 @@ The remaining partial areas are:
 ### Not yet covered
 
 - workflow packaging for sellable distribution
-- Notion output support
 - advanced lifecycle automation and maintenance workflows
 
 ## Recommended Next Steps
 
-1. Add Notion export support to close the remaining output-channel gap.
-2. Turn repository automation into a hosted control plane if product direction stays platform-oriented.
-3. Add live LLM execution behind the documentation agent with review-safe guardrails.
-4. Expand lifecycle checks from version/deprecation alignment into SDK and changelog compatibility.
+1. Add authentication and queue-backed execution to the hosted control plane.
+2. Add live LLM execution behind the documentation agent with review-safe guardrails.
+3. Expand lifecycle checks from version/deprecation alignment into SDK and changelog compatibility.
+4. Package the control plane for container deployment and managed hosting.

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RepoDocs AI Control Plane</title>
+    <meta
+      name="description"
+      content="Hosted control plane overview for RepoDocs AI automation and export jobs."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <nav class="topbar">
+        <a class="brand" href="index.html">RepoDocs AI</a>
+        <div class="topbar-links">
+          <a href="roadmap.html">Roadmap</a>
+          <a href="automation.html">Automation</a>
+          <a href="control-plane.html">Control Plane</a>
+          <a href="complete-system.html">Example System</a>
+        </div>
+      </nav>
+
+      <header class="subpage-hero">
+        <p class="eyebrow">Control Plane</p>
+        <h1>Repository automation now has a small hosted runtime surface.</h1>
+        <p class="hero-text">
+          RepoDocs AI can now expose validation, export, agent, analytics, and graph jobs through a small Node control plane with HTTP endpoints and a lightweight dashboard.
+        </p>
+      </header>
+
+      <main>
+        <section class="grid-section detail-grid">
+          <article class="content-card">
+            <p class="section-label">Endpoints</p>
+            <h2>Runnable over HTTP</h2>
+            <ul class="feature-list">
+              <li>GET /health</li>
+              <li>GET /jobs</li>
+              <li>GET /runs</li>
+              <li>GET /artifacts</li>
+              <li>POST /jobs/validate</li>
+              <li>POST /jobs/export</li>
+              <li>POST /jobs/automation</li>
+            </ul>
+          </article>
+          <article class="content-card">
+            <p class="section-label">Hosted Scope</p>
+            <h2>Small by design</h2>
+            <p>
+              The control plane is meant to bridge repo-native automation and a hosted deployment model without introducing a full platform stack. It runs one job at a time, keeps artifacts on disk, and exposes the results through JSON.
+            </p>
+          </article>
+        </section>
+
+        <section class="cta-section">
+          <p class="section-label">Runtime</p>
+          <h2>Start it with one command.</h2>
+          <p>
+            Run <strong>npm run control-plane:start</strong> to launch the dashboard and API on port 4312 by default.
+          </p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
