@@ -41,6 +41,24 @@ function buildMetadataHtml(frontmatter = {}) {
     .join("")}</section>`;
 }
 
+// audience routing rules:
+//   internal  → internal platforms (confluence, gdocs, notion) + pdf
+//   external  → pdf only among current formats; reserved for future developer-portal pipeline
+//   both      → all formats (default when field is absent)
+function audienceAllowsFormat(frontmatter, format) {
+  const audience = frontmatter?.audience;
+  if (!audience || audience === "both") {
+    return true;
+  }
+  if (audience === "internal") {
+    return true;
+  }
+  if (audience === "external") {
+    return format === "pdf";
+  }
+  return true;
+}
+
 function normalizeFormatArg(value) {
   const format = (value || "all").toLowerCase();
   if (!supportedFormats.has(format)) {
@@ -85,6 +103,10 @@ async function main() {
     };
 
     for (const format of formats) {
+      if (!audienceAllowsFormat(document.frontmatter, format)) {
+        continue;
+      }
+
       const formatRoot = path.join(outputRoot, format);
       if (format === "confluence") {
         const wrapped = html.replace("RepoDocs AI Export", "RepoDocs AI Confluence Export");

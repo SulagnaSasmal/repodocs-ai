@@ -105,8 +105,11 @@ const requiredPaths = [
   ".github/pull_request_template.md",
   ".github/CODEOWNERS",
   "scripts/detect-undocumented-endpoints.mjs",
+  "scripts/aggregate-analytics.mjs",
+  "scripts/check-template-version.mjs",
   "schema/owners-registry.md",
-  "docs/multi-repo-guide.md"
+  "docs/multi-repo-guide.md",
+  "TEMPLATE_VERSION"
 ];
 
 async function exists(relativePath) {

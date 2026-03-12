@@ -8,6 +8,11 @@ const repoRoot = path.resolve(__dirname, "..");
 
 const assetsToCopy = ["templates", "prompts", "diagrams", "schema", "validation"];
 
+const githubGovernanceFiles = [
+  ".github/CODEOWNERS",
+  ".github/pull_request_template.md"
+];
+
 function printUsage() {
   console.log("Usage: npm run bootstrap:docs-repo -- <target-directory>");
   console.log("Example: npm run bootstrap:docs-repo -- ../company-docs");
@@ -34,6 +39,31 @@ async function copyAssetDirectory(sourceName, targetRoot) {
   const sourcePath = path.join(repoRoot, sourceName);
   const destinationPath = path.join(targetRoot, sourceName);
   await fs.cp(sourcePath, destinationPath, { recursive: true, force: true });
+}
+
+async function copyGithubGovernanceFiles(targetRoot) {
+  const githubDir = path.join(targetRoot, ".github");
+  await ensureDirectory(githubDir);
+  for (const relPath of githubGovernanceFiles) {
+    const sourcePath = path.join(repoRoot, relPath);
+    const destPath = path.join(targetRoot, relPath);
+    await fs.copyFile(sourcePath, destPath);
+  }
+}
+
+async function writeTemplateVersionFile(targetRoot) {
+  const versionSourcePath = path.join(repoRoot, "TEMPLATE_VERSION");
+  let version = "unknown";
+  try {
+    version = (await fs.readFile(versionSourcePath, "utf8")).trim();
+  } catch {
+    // TEMPLATE_VERSION file not present — skip
+  }
+  if (version === "unknown") {
+    return false;
+  }
+  await fs.writeFile(path.join(targetRoot, ".repodocs-version"), version, "utf8");
+  return version;
 }
 
 function buildStarterReadme(targetName) {
@@ -66,18 +96,25 @@ async function main() {
     await copyAssetDirectory(asset, targetRoot);
   }
 
+  await copyGithubGovernanceFiles(targetRoot);
+  const templateVersion = await writeTemplateVersionFile(targetRoot);
   const createdReadme = await writeStarterReadme(targetRoot);
   const relativeTarget = toPosix(path.relative(process.cwd(), targetRoot) || ".");
 
   console.log(`Bootstrapped docs repository assets into ${relativeTarget}`);
   console.log("Copied: templates/, prompts/, diagrams/, schema/, validation/");
+  console.log("Copied: .github/CODEOWNERS, .github/pull_request_template.md");
+  if (templateVersion) {
+    console.log(`Wrote: .repodocs-version (${templateVersion})`);
+  }
   if (createdReadme) {
     console.log("Created starter README.md");
   }
   console.log("Next steps:");
-  console.log("1. Start with templates/api/, templates/features/, and templates/governance/");
-  console.log("2. Use prompts/ to draft and review content");
-  console.log("3. Add the copied validation and schema assets to your CI workflow");
+  console.log("1. Update .github/CODEOWNERS with your organization's GitHub team handles");
+  console.log("2. Start with templates/api/, templates/features/, and templates/governance/");
+  console.log("3. Use prompts/ to draft and review content");
+  console.log("4. Add the copied validation and schema assets to your CI workflow");
 }
 
 main().catch((error) => {

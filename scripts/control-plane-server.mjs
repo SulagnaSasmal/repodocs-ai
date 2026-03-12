@@ -83,6 +83,7 @@ function sanitizeUser(user) {
     display_name: user.display_name,
     role: user.role,
     status: user.status,
+    service_scope: user.service_scope || "",
     created_at: user.created_at,
     updated_at: user.updated_at,
     api_keys: (user.api_keys || []).map(sanitizeKeyRecord)
@@ -122,13 +123,16 @@ function createApiKeyRecord(label = "default") {
   };
 }
 
-function createUserRecord({ username, displayName, role = "operator", status = "active" }) {
+function createUserRecord({ username, displayName, role = "operator", status = "active", serviceScope = "" }) {
   return {
     id: randomId("user"),
     username,
     display_name: displayName || username,
     role,
     status,
+    // service_scope restricts this user to jobs whose name contains the scope string.
+    // Empty string means unrestricted access to all jobs (admin behaviour).
+    service_scope: serviceScope,
     created_at: nowIso(),
     updated_at: nowIso(),
     api_keys: []
@@ -1024,10 +1028,12 @@ const server = http.createServer(async (request, response) => {
       }
 
       const role = body.role === "admin" ? "admin" : "operator";
+      const serviceScope = String(body.service_scope || "").trim();
       const user = createUserRecord({
         username,
         displayName: String(body.display_name || username).trim(),
-        role
+        role,
+        serviceScope
       });
       const keyBundle = issueKeyForUser(user, String(body.key_label || "default").trim() || "default");
       users.push(user);
@@ -1063,6 +1069,9 @@ const server = http.createServer(async (request, response) => {
         }
         if (body.status === "active" || body.status === "disabled") {
           candidate.status = body.status;
+        }
+        if (body.service_scope !== undefined) {
+          candidate.service_scope = String(body.service_scope).trim();
         }
         candidate.updated_at = nowIso();
         return candidate;
@@ -1144,6 +1153,13 @@ const server = http.createServer(async (request, response) => {
       }
 
       const jobName = url.pathname.replace(/^\/jobs\//, "");
+      const serviceScope = principal.user?.service_scope || "";
+      if (serviceScope && !jobName.includes(serviceScope)) {
+        return sendJson(response, 403, {
+          error: `User '${principal.user?.username}' is scoped to service '${serviceScope}' and cannot trigger job '${jobName}'`
+        });
+      }
+
       await readRequestBody(request);
       const run = await enqueueJob(
         jobName,
