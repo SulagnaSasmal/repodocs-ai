@@ -1,12 +1,12 @@
 ---
 title: "Endpoint Template"
 description: "Reusable endpoint-level API documentation template"
-service: ""
+service: "" # e.g. payments-api, fraud-service, customer-service
 component: "endpoint"
-owner: ""
+owner: "" # e.g. platform-team, payments-eng, docs-team
 api_version: "v1"
 status: draft
-dependencies: []
+dependencies: [] # e.g. [auth-service, ledger-service]
 last_reviewed: 2026-03-11
 security_impact: medium
 ---
@@ -69,4 +69,6 @@ curl -X GET "https://api.example.com/path" \
 
 ## Performance Notes
 
-Document latency, pagination, rate-limit implications, or payload considerations.
+Document rate limits, maximum payload sizes, or latency targets for this endpoint. Leave blank if not applicable.
+
+Example: This endpoint is rate-limited to 100 requests per minute per API key. Maximum payload size is 1 MB. P99 latency target is under 500 ms.

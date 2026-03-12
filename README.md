@@ -44,6 +44,48 @@ It includes:
 
 This is the fastest trust check for the product: it shows what a real documentation system built with RepoDocs AI looks like.
 
+Here is what a single endpoint document looks like when built from the template:
+
+```markdown
+# Endpoint: Create Payment
+
+## Summary
+Create a payment for a customer checkout session.
+
+## Endpoint
+- Method: `POST`
+- URL: `/payments`
+
+## Authentication Requirements
+Bearer authentication is required. See `authentication.md` for token handling and scope guidance.
+
+## Request Body
+| Field            | Type   | Required | Description                        |
+| ---------------- | ------ | -------- | ---------------------------------- |
+| amount           | number | yes      | Payment amount in major currency units |
+| currency         | string | yes      | ISO 4217 currency code             |
+| customer_id      | string | yes      | Unique customer identifier         |
+| payment_method_id| string | no       | Saved payment method identifier    |
+
+## Request Example
+curl -X POST "https://api.example.com/v1/payments" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"amount":125.5,"currency":"USD","customer_id":"cus_123"}'
+
+## Response Example
+{ "payment_id": "pay_123", "status": "pending", "amount": 125.5, "currency": "USD" }
+
+## Error Codes
+| Code | Description               |
+| ---- | ------------------------- |
+| 400  | Invalid payment request   |
+| 401  | Unauthorized              |
+| 409  | Duplicate payment submission |
+```
+
+The full output is in [`examples/payments-api/create-payment.md`](examples/payments-api/create-payment.md).
+
 ## Quick Start
 
 This is the fastest way to use RepoDocs AI as a developer adopting it into a real documentation repository.
@@ -73,6 +115,8 @@ Copy-Item repodocs-ai\diagrams -Destination company-docs\ -Recurse
 ```
 
 Or use the one-command bootstrap from inside the cloned repo:
+
+> Requires Node.js 20 or later. Check with `node --version` before running.
 
 ```bash
 git clone https://github.com/SulagnaSasmal/repodocs-ai.git

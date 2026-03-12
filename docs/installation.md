@@ -71,6 +71,8 @@ Copy-Item repodocs-ai\diagrams -Destination company-docs\ -Recurse
 
 Or use the one-command bootstrap from inside the cloned repo:
 
+> Requires Node.js 20 or later. Check with `node --version` before running.
+
 ```bash
 git clone https://github.com/SulagnaSasmal/repodocs-ai.git
 cd repodocs-ai
