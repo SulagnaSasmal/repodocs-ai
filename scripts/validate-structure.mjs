@@ -101,7 +101,12 @@ const requiredPaths = [
   "examples/complete-system/endpoint-retrieve-payment.md",
   "examples/complete-system/review-report.md",
   "examples/complete-system/architecture-system-context.mmd",
-  "examples/complete-system/data-flow-payments.mmd"
+  "examples/complete-system/data-flow-payments.mmd",
+  ".github/pull_request_template.md",
+  ".github/CODEOWNERS",
+  "scripts/detect-undocumented-endpoints.mjs",
+  "schema/owners-registry.md",
+  "docs/multi-repo-guide.md"
 ];
 
 async function exists(relativePath) {

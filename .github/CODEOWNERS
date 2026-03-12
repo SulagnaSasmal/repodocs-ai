@@ -1,0 +1,30 @@
+# CODEOWNERS — Documentation Ownership Map
+#
+# Maps documentation directories to the teams responsible for review.
+# Update these paths and team handles to match your organization.
+#
+# Format: <path-pattern> <github-team-or-user>
+# Reference: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for all documentation not matched by a more specific rule
+*   @docs-team
+
+# API documentation by service — assign to the owning engineering team
+docs/api/payments/          @payments-team
+docs/api/fraud/             @fraud-team
+docs/api/customers/         @customers-team
+docs/api/notifications/     @notifications-team
+
+# Governance files — documentation platform team must approve all changes
+templates/                  @docs-platform
+schema/                     @docs-platform
+validation/                 @docs-platform
+prompts/                    @docs-platform
+
+# Operations and architecture
+docs/operations/            @platform-infra
+docs/architecture/          @architecture-team
+
+# Security-sensitive documentation — requires security review
+docs/authentication/        @security-team @docs-team
+docs/authorization/         @security-team @docs-team

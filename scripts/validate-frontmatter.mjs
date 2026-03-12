@@ -22,6 +22,7 @@ const requiredFields = [
 ];
 const allowedStatus = new Set(["draft", "beta", "stable", "deprecated"]);
 const allowedSecurityImpact = new Set(["low", "medium", "high"]);
+const allowedAudience = new Set(["internal", "external", "both"]);
 
 async function collectMarkdownFiles(directory) {
   const entries = await fs.readdir(directory, { withFileTypes: true });
@@ -90,6 +91,14 @@ async function main() {
 
     if (parsed.dependencies && !Array.isArray(parsed.dependencies)) {
       errors.push(`${relativePath}: dependencies must be an array`);
+    }
+
+    if (parsed.audience !== undefined && !allowedAudience.has(parsed.audience)) {
+      errors.push(`${relativePath}: invalid audience '${parsed.audience}' — use 'internal', 'external', or 'both'`);
+    }
+
+    if (parsed.reviewed_by !== undefined && (typeof parsed.reviewed_by !== "string" || parsed.reviewed_by.trim() === "")) {
+      errors.push(`${relativePath}: 'reviewed_by' must be a non-empty string when present`);
     }
   }
 
