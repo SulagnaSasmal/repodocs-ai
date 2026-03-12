@@ -7,6 +7,111 @@ servers:
   - url: https://api.example.com/payments/v1
 paths:
   /payments:
+    get:
+      summary: List payments
+      description: Return a paginated list of payments, optionally filtered by status, customer, or date range.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          required: false
+          description: Filter by payment lifecycle status.
+          schema:
+            type: string
+            enum: [pending, completed, failed, refunded]
+            example: completed
+        - in: query
+          name: customer_id
+          required: false
+          description: Filter to payments belonging to a specific customer.
+          schema:
+            type: string
+            example: cus_123
+        - in: query
+          name: from_date
+          required: false
+          description: Return payments created on or after this ISO 8601 date.
+          schema:
+            type: string
+            format: date
+            example: '2026-01-01'
+        - in: query
+          name: to_date
+          required: false
+          description: Return payments created on or before this ISO 8601 date.
+          schema:
+            type: string
+            format: date
+            example: '2026-03-31'
+        - in: query
+          name: page
+          required: false
+          description: Page number for pagination. Defaults to 1.
+          schema:
+            type: integer
+            minimum: 1
+            example: 1
+        - in: query
+          name: per_page
+          required: false
+          description: Number of results per page. Maximum 100. Defaults to 20.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            example: 20
+      responses:
+        '200':
+          description: Paginated list of payments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        payment_id:
+                          type: string
+                          example: pay_123
+                        status:
+                          type: string
+                          example: completed
+                        amount:
+                          type: number
+                          example: 125.5
+                        currency:
+                          type: string
+                          example: USD
+                        customer_id:
+                          type: string
+                          example: cus_123
+                        created_at:
+                          type: string
+                          format: date-time
+                          example: '2026-03-11T10:00:00Z'
+                  pagination:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                        example: 1
+                      per_page:
+                        type: integer
+                        example: 20
+                      total:
+                        type: integer
+                        example: 143
+                      total_pages:
+                        type: integer
+                        example: 8
+        '400':
+          description: Invalid query parameters
+        '401':
+          description: Unauthorized
     post:
       summary: Create payment
       description: Create a new payment record for checkout processing.

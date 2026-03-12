@@ -10,6 +10,7 @@ dependencies:
   - auth-service
   - ledger-service
 last_reviewed: 2026-03-12
+reviewed_by: "docs-platform"
 security_impact: high
 ---
 
@@ -30,17 +31,19 @@ Bearer authentication is required.
 
 See `authentication.md` for token handling and scope guidance.
 
-## Parameters
+## Path Parameters
 
 | Name | Type | Required | Description |
 | --- | --- | --- | --- |
-| id | string | yes | Unique payment identifier |
+| id | string | yes | Unique payment identifier returned when the payment was created |
+
+## Query Parameters
+
+Not applicable.
 
 ## Request Body
 
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| None | n/a | no | No request body |
+Not applicable.
 
 ## Request Example
 

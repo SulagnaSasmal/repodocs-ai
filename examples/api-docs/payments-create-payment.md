@@ -10,6 +10,7 @@ dependencies:
   - auth-service
   - ledger-service
 last_reviewed: 2026-03-11
+reviewed_by: "docs-platform"
 security_impact: high
 ---
 

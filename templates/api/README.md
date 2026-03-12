@@ -5,7 +5,7 @@ service: "repodocs-ai"
 component: "api-templates"
 owner: "product-docs"
 api_version: "n/a"
-status: stable
+status: draft
 dependencies: []
 last_reviewed: 2026-03-12
 security_impact: low

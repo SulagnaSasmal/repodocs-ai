@@ -10,6 +10,7 @@ dependencies:
   - api-overview.md
   - retrieve-payment.md
 last_reviewed: 2026-03-12
+reviewed_by: "docs-platform"
 security_impact: high
 ---
 

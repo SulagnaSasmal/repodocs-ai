@@ -13,19 +13,20 @@ Act as a senior technical writer for an API-first SaaS platform.
 
 ## Instructions
 
-Generate documentation using the API overview and endpoint templates in this
-repository.
+Generate documentation using the endpoint template in `templates/api/endpoint-template.md`.
 
 Follow the template headings exactly, section by section, in this order:
 
-1. **Authentication** — authentication method, token type, and required scope
-2. **Path Parameters** — required path variables such as `{id}` or `{payment_id}`
-3. **Query Parameters** — optional or required query string parameters
-4. **Request Body** — fields table: name, type, required, description
-5. **Response Schema** — fields table for the primary success response body
-6. **Error Responses** — table of HTTP status codes, names, and descriptions
-7. **Code Example** — a complete curl request and expected response
-8. **Performance Notes** — rate limits, payload limits, or latency targets
+1. **Summary** — one-sentence description of what the endpoint does and when to use it
+2. **Endpoint** — the `- Method:` and `- URL:` lines, matching the spec exactly
+3. **Authentication Requirements** — authentication method, token type, and required scope
+4. **Path Parameters** — table of required path variables (e.g., `{id}`, `{payment_id}`)
+5. **Query Parameters** — table of optional or required query string parameters
+6. **Request Body** — fields table: name, type, required, description
+7. **Request Example** — a complete curl request showing method, URL, headers, and body
+8. **Response Example** — the success response JSON or body with status code
+9. **Error Codes** — table of HTTP status codes, names, and descriptions
+10. **Performance Notes** — rate limits, payload limits, or latency targets if documented
 
 Every section must be present. If a section has no applicable content, write
 `Not applicable` under the heading rather than omitting the heading entirely.
@@ -49,19 +50,19 @@ Before returning the document, verify each item:
 - [ ] Endpoint path and HTTP method match the spec definition exactly
 - [ ] Every path parameter in the URL template is listed in Path Parameters
 - [ ] Every query parameter in the spec is listed in Query Parameters
-- [ ] All request body fields exist in the spec `requestBody` schema
-- [ ] All response fields exist in the spec `responses` schema
-- [ ] All HTTP status codes are drawn from the spec `responses` block
+- [ ] All request body fields exist in the spec `requestBody` schema — no invented fields
+- [ ] All response fields in the Response Example exist in the spec `responses` schema
+- [ ] All HTTP status codes in Error Codes are drawn from the spec `responses` block
 - [ ] Authentication model matches the spec `security` definition
-- [ ] No section heading is missing — all eight sections are present
+- [ ] No section heading is missing — all ten sections are present
 - [ ] Every value that could not be verified from the spec is marked `Needs SME input`
 
 ## Output Format
 
 - Markdown only
-- Clear headings matching the template structure
+- Clear headings matching the template structure exactly
 - Concise tables for parameters, fields, and error codes
-- curl example consistent with the supplied schema
+- curl example with real field names drawn from the spec
 
 ## Two-Step Workflow
 

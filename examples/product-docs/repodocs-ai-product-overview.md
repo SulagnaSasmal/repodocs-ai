@@ -11,6 +11,7 @@ dependencies:
   - markdown
   - documentation-site-generator
 last_reviewed: 2026-03-11
+reviewed_by: "docs-platform"
 security_impact: low
 ---
 

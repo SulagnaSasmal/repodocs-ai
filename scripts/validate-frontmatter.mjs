@@ -100,6 +100,15 @@ async function main() {
     if (parsed.reviewed_by !== undefined && (typeof parsed.reviewed_by !== "string" || parsed.reviewed_by.trim() === "")) {
       errors.push(`${relativePath}: 'reviewed_by' must be a non-empty string when present`);
     }
+
+    // Stable and beta documents require an approver — reviewed_by is mandatory.
+    // Draft and deprecated documents may omit reviewed_by.
+    if ((parsed.status === "stable" || parsed.status === "beta") && !parsed.reviewed_by) {
+      errors.push(
+        `${relativePath}: '${parsed.status}' documents require 'reviewed_by' — ` +
+        `add the approver's identifier before setting status to '${parsed.status}'`
+      );
+    }
   }
 
   if (errors.length > 0) {

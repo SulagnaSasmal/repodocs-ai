@@ -14,8 +14,9 @@ const githubGovernanceFiles = [
 ];
 
 function printUsage() {
-  console.log("Usage: npm run bootstrap:docs-repo -- <target-directory>");
+  console.log("Usage: npm run bootstrap:docs-repo -- <target-directory> [--with-examples]");
   console.log("Example: npm run bootstrap:docs-repo -- ../company-docs");
+  console.log("         npm run bootstrap:docs-repo -- ../company-docs --with-examples");
 }
 
 function toPosix(relativePath) {
@@ -82,7 +83,10 @@ async function writeStarterReadme(targetRoot) {
 }
 
 async function main() {
-  const targetArgument = process.argv[2];
+  const args = process.argv.slice(2);
+  const targetArgument = args.find((a) => !a.startsWith("--"));
+  const withExamples = args.includes("--with-examples");
+
   if (!targetArgument) {
     printUsage();
     process.exitCode = 1;
@@ -96,6 +100,10 @@ async function main() {
     await copyAssetDirectory(asset, targetRoot);
   }
 
+  if (withExamples) {
+    await copyAssetDirectory("examples", targetRoot);
+  }
+
   await copyGithubGovernanceFiles(targetRoot);
   const templateVersion = await writeTemplateVersionFile(targetRoot);
   const createdReadme = await writeStarterReadme(targetRoot);
@@ -103,6 +111,9 @@ async function main() {
 
   console.log(`Bootstrapped docs repository assets into ${relativeTarget}`);
   console.log("Copied: templates/, prompts/, diagrams/, schema/, validation/");
+  if (withExamples) {
+    console.log("Copied: examples/ (payments API examples, product docs, complete system)");
+  }
   console.log("Copied: .github/CODEOWNERS, .github/pull_request_template.md");
   if (templateVersion) {
     console.log(`Wrote: .repodocs-version (${templateVersion})`);
@@ -114,6 +125,9 @@ async function main() {
   console.log("1. Update .github/CODEOWNERS with your organization's GitHub team handles");
   console.log("2. Start with templates/api/, templates/features/, and templates/governance/");
   console.log("3. Use prompts/ to draft and review content");
+  if (!withExamples) {
+    console.log("   Tip: rerun with --with-examples to also copy the payments API example set");
+  }
   console.log("4. Add the copied validation and schema assets to your CI workflow");
 }
 

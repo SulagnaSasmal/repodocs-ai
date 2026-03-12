@@ -10,6 +10,7 @@ dependencies:
   - checkout-service
   - notifications-service
 last_reviewed: 2026-03-11
+reviewed_by: "docs-platform"
 security_impact: medium
 ---
 

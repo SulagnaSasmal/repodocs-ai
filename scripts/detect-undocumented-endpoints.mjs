@@ -7,7 +7,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 
-const specDirectories = ["examples/openapi"];
+// Scan all directories that may contain OpenAPI specifications.
+// This must align with docDirectories to avoid phantom endpoint false positives.
+const specDirectories = ["examples/openapi", "examples/payments-api", "examples/api-docs"];
 const docDirectories = ["examples/api-docs", "examples/payments-api", "examples/complete-system", "generated", "docs"];
 const supportedMethods = new Set(["get", "post", "put", "patch", "delete"]);
 
@@ -83,7 +85,15 @@ async function loadSpecEndpoints() {
     }
   }
 
-  return endpoints;
+  // Deduplicate by normalized route — multiple spec files may define the same endpoint.
+  const seen = new Set();
+  return endpoints.filter((e) => {
+    if (seen.has(e.normalized)) {
+      return false;
+    }
+    seen.add(e.normalized);
+    return true;
+  });
 }
 
 async function loadDocumentedEndpoints() {

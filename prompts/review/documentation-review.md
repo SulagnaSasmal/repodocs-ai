@@ -21,22 +21,25 @@ Compare every value in the document against the source specification:
 - [ ] HTTP method matches the spec operation (`get`, `post`, `put`, `patch`, `delete`)
 - [ ] Every path parameter in the URL exists in the spec `parameters` list with `in: path`
 - [ ] Every query parameter listed exists in the spec `parameters` list with `in: query`
-- [ ] Every request body field listed exists in the spec `requestBody.content.*.schema`
-- [ ] Every response field listed exists in the spec `responses.*.content.*.schema`
-- [ ] Every HTTP status code listed exists in the spec `responses` block
+- [ ] Every request body field in the Request Example and Request Body table exists in the spec `requestBody.content.*.schema`
+- [ ] Every response field in the Response Example exists in the spec `responses.*.content.*.schema`
+- [ ] Every HTTP status code in the Error Codes table exists in the spec `responses` block
 - [ ] Authentication method matches the spec `security` or `securitySchemes` definition
 
 ### 2. Completeness
 
-Check that no required section is missing:
+Check that no required section is missing. All ten sections must be present:
 
-- [ ] Authentication section is present
-- [ ] Path Parameters section is present (even if `Not applicable`)
-- [ ] Query Parameters section is present (even if `Not applicable`)
-- [ ] Request Body section is present (even if `Not applicable`)
-- [ ] Response Schema section is present
-- [ ] Error Responses section is present
-- [ ] Code Example section is present
+- [ ] Summary
+- [ ] Endpoint (Method and URL lines)
+- [ ] Authentication Requirements
+- [ ] Path Parameters (even if `Not applicable`)
+- [ ] Query Parameters (even if `Not applicable`)
+- [ ] Request Body (even if `Not applicable`)
+- [ ] Request Example
+- [ ] Response Example
+- [ ] Error Codes
+- [ ] Performance Notes
 
 ### 3. Hallucination Indicators
 
@@ -56,7 +59,7 @@ gap that must be resolved by a subject matter expert before publication.
 ### 5. Language and Usability
 
 - [ ] No unclear abbreviations without expansion on first use
-- [ ] Code examples are syntactically valid
+- [ ] curl example is syntactically valid and runnable
 - [ ] Tables are complete — no empty required cells
 - [ ] Descriptions are specific, not generic placeholder text
 

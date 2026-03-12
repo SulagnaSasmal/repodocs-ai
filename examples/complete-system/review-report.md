@@ -10,6 +10,7 @@ dependencies:
   - examples/complete-system/api-overview.md
   - examples/complete-system/endpoint-create-payment.md
 last_reviewed: 2026-03-11
+reviewed_by: "docs-platform"
 security_impact: medium
 ---
 

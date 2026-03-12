@@ -38,6 +38,7 @@ const requiredPaths = [
   "examples/payments-api/create-payment.md",
   "examples/payments-api/retrieve-payment.md",
   "examples/payments-api/refund-payment.md",
+  "examples/payments-api/list-payments.md",
   "examples/product-docs/repodocs-ai-product-overview.md",
   "examples/product-docs/repodocs-ai-user-guide.md",
   "diagrams/data-flow/payments-data-flow.mmd",
