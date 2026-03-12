@@ -1,8 +1,14 @@
 # RepoDocs AI
 
+[![Build](https://github.com/SulagnaSasmal/repodocs-ai/actions/workflows/validate.yml/badge.svg)](https://github.com/SulagnaSasmal/repodocs-ai/actions/workflows/validate.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](CHANGELOG.md)
+
 AI-native docs-as-code documentation system for SaaS API teams.
 
 RepoDocs AI gives engineering teams a reusable template library, structured AI prompts, diagram starters, and review guardrails for Markdown-based documentation in GitHub repositories.
+
+**[See it live →](https://sulagnasasmal.github.io/repodocs-ai/)**
 
 ## Problem
 
@@ -42,33 +48,36 @@ This is the fastest trust check for the product: it shows what a real documentat
 
 This is the fastest way to use RepoDocs AI as a developer adopting it into a real documentation repository.
 
-1. Create a documentation repository.
-2. Copy RepoDocs AI templates.
-3. Start documenting APIs.
+1. Clone RepoDocs AI.
+1. Copy the starter assets into your new docs repository.
+1. Start documenting APIs.
 
-Example on Windows PowerShell:
+On bash:
+
+```bash
+git clone https://github.com/SulagnaSasmal/repodocs-ai.git
+mkdir company-docs
+cp -R repodocs-ai/templates company-docs/
+cp -R repodocs-ai/prompts company-docs/
+cp -R repodocs-ai/diagrams company-docs/
+```
+
+On Windows PowerShell:
 
 ```powershell
-mkdir company-docs
-Set-Location company-docs
-Copy-Item ..\repodocs-ai\templates -Destination . -Recurse
-Copy-Item ..\repodocs-ai\prompts -Destination . -Recurse
-Copy-Item ..\repodocs-ai\diagrams -Destination . -Recurse
+git clone https://github.com/SulagnaSasmal/repodocs-ai.git
+New-Item -ItemType Directory -Name company-docs
+Copy-Item repodocs-ai\templates -Destination company-docs\ -Recurse
+Copy-Item repodocs-ai\prompts -Destination company-docs\ -Recurse
+Copy-Item repodocs-ai\diagrams -Destination company-docs\ -Recurse
 ```
 
-Example on bash:
+Or use the one-command bootstrap from inside the cloned repo:
 
 ```bash
-mkdir company-docs
-cd company-docs
-cp -R ../repodocs-ai/templates .
-cp -R ../repodocs-ai/prompts .
-cp -R ../repodocs-ai/diagrams .
-```
-
-Or use the one-command bootstrap script from the RepoDocs AI repo root:
-
-```bash
+git clone https://github.com/SulagnaSasmal/repodocs-ai.git
+cd repodocs-ai
+npm install
 npm run bootstrap:docs-repo -- ../company-docs
 ```
 
@@ -333,43 +342,6 @@ Yes. RepoDocs AI already includes a lightweight static UI in `site/` for GitHub 
 - `npm run automation:run`
 - `npm run export`
 - `npm run export:notion`
-- `npm run control-plane:start`
-- `npm run control-plane:smoke`
-- `npm run control-plane:stack:up`
-- `npm run control-plane:stack:smoke`
-- `npm run control-plane:stack:down`
-
-Control plane environment:
-
-- `REPODOCS_CONTROL_PLANE_HOST`
-- `REPODOCS_CONTROL_PLANE_PORT`
-- `REDIS_URL`
-- `REPODOCS_CONTROL_PLANE_DATA_DIR`
-- `REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER`
-- `REPODOCS_CONTROL_PLANE_BOOTSTRAP_DISPLAY_NAME`
-- `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY`
-- `npm run docker:control-plane:build`
-- `npm run docker:control-plane:run`
-
-The control plane now stores queue state, run metadata, and user/key records in Redis so multiple app instances can safely accept and process jobs against shared state. The legacy `.control-plane/*.json` files are only used as a one-time migration source when Redis starts empty.
-
-For local development, the repository now includes a `compose.yaml` stack that runs Redis and the control plane together. Both services publish Docker health checks, so `docker compose ps` shows when Redis is ready and when the control plane is answering `/health`. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY` in your shell or environment, then run `npm run control-plane:stack:up`.
-
-To run a repeatable end-to-end verification against a live stack, use `npm run control-plane:smoke`. To boot the compose stack and run the smoke test in one step, use `npm run control-plane:stack:smoke`.
-
-Control plane management endpoints:
-
-- `GET /users` for admin user inventory
-- `POST /users` to create a user and initial key
-- `PATCH /users/:id` to update role, display name, or status
-- `POST /users/:id/keys` to rotate or add a user key
-- `DELETE /users/:id/keys/:keyId` to revoke a key
-
-Hosted deployment manifests:
-
-- `render.yaml`
-- `fly.toml`
-- `azure-container-apps.yaml`
 
 See `docs/roadmap-spec-summary.md` for a direct map between the specification, roadmap, current phase coverage, and remaining gaps.
 For the published Pages version, use `site/spec-summary.html`.
@@ -383,3 +355,47 @@ RepoDocs AI is designed for:
 - heads of engineering
 - developer relations leads
 - technical writers in API-first SaaS teams
+
+## Advanced: Hosted Control Plane
+
+The optional hosted control plane enables running automation over HTTP with Redis-backed durable queued execution. It is not required for using the template and prompt system.
+
+### Control Plane Commands
+
+- `npm run control-plane:start`
+- `npm run control-plane:smoke`
+- `npm run control-plane:stack:up`
+- `npm run control-plane:stack:smoke`
+- `npm run control-plane:stack:down`
+- `npm run docker:control-plane:build`
+- `npm run docker:control-plane:run`
+
+### Control Plane Environment
+
+- `REPODOCS_CONTROL_PLANE_HOST`
+- `REPODOCS_CONTROL_PLANE_PORT`
+- `REDIS_URL`
+- `REPODOCS_CONTROL_PLANE_DATA_DIR`
+- `REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER`
+- `REPODOCS_CONTROL_PLANE_BOOTSTRAP_DISPLAY_NAME`
+- `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY`
+
+The control plane stores queue state, run metadata, and user/key records in Redis so multiple app instances can safely accept and process jobs against shared state. The legacy `.control-plane/*.json` files are only used as a one-time migration source when Redis starts empty.
+
+For local development, the repository includes a `compose.yaml` stack that runs Redis and the control plane together. Both services publish Docker health checks, so `docker compose ps` shows when Redis is ready and when the control plane is answering `/health`. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY` in your shell or environment, then run `npm run control-plane:stack:up`.
+
+To run a repeatable end-to-end verification against a live stack, use `npm run control-plane:smoke`. To boot the compose stack and run the smoke test in one step, use `npm run control-plane:stack:smoke`.
+
+### Management Endpoints
+
+- `GET /users` for admin user inventory
+- `POST /users` to create a user and initial key
+- `PATCH /users/:id` to update role, display name, or status
+- `POST /users/:id/keys` to rotate or add a user key
+- `DELETE /users/:id/keys/:keyId` to revoke a key
+
+### Hosted Deployment Manifests
+
+- `render.yaml`
+- `fly.toml`
+- `azure-container-apps.yaml`

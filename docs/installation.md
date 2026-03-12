@@ -46,33 +46,35 @@ npm run validate
 
 If your goal is not to develop RepoDocs AI itself, but to use it as a documentation system starter, do this next.
 
-1. Create a repository for your documentation.
-1. Copy the RepoDocs AI starter assets into it.
+1. Clone RepoDocs AI and copy the starter assets into your new docs repository.
 1. Start with the API, feature, and governance template packs.
-
-On Windows PowerShell:
-
-```powershell
-mkdir company-docs
-Set-Location company-docs
-Copy-Item ..\repodocs-ai\templates -Destination . -Recurse
-Copy-Item ..\repodocs-ai\prompts -Destination . -Recurse
-Copy-Item ..\repodocs-ai\diagrams -Destination . -Recurse
-```
 
 On bash:
 
 ```bash
+git clone https://github.com/SulagnaSasmal/repodocs-ai.git
 mkdir company-docs
-cd company-docs
-cp -R ../repodocs-ai/templates .
-cp -R ../repodocs-ai/prompts .
-cp -R ../repodocs-ai/diagrams .
+cp -R repodocs-ai/templates company-docs/
+cp -R repodocs-ai/prompts company-docs/
+cp -R repodocs-ai/diagrams company-docs/
 ```
 
-Or from the RepoDocs AI repository root, use the one-command bootstrap path:
+On Windows PowerShell:
+
+```powershell
+git clone https://github.com/SulagnaSasmal/repodocs-ai.git
+New-Item -ItemType Directory -Name company-docs
+Copy-Item repodocs-ai\templates -Destination company-docs\ -Recurse
+Copy-Item repodocs-ai\prompts -Destination company-docs\ -Recurse
+Copy-Item repodocs-ai\diagrams -Destination company-docs\ -Recurse
+```
+
+Or use the one-command bootstrap from inside the cloned repo:
 
 ```bash
+git clone https://github.com/SulagnaSasmal/repodocs-ai.git
+cd repodocs-ai
+npm install
 npm run bootstrap:docs-repo -- ../company-docs
 ```
 

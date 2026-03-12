@@ -31,6 +31,8 @@ Include:
 Do not invent fields or endpoints that are not present in the source specification.
 If information is missing, explicitly label it as `Needs SME input`.
 
+If no OpenAPI specification is available yet, document only what the source material explicitly states. Label every field, response, and error code as `Needs SME input` and note at the top of the document: `Source specification not yet available — all content requires SME review before publication.`
+
 ## Output Format
 
 - Markdown only

@@ -26,11 +26,17 @@ Briefly describe what the endpoint does and when it should be used.
 
 Describe required credentials, scopes, or roles.
 
-## Parameters
+## Path Parameters
 
 | Name | Type | Required | Description |
 | --- | --- | --- | --- |
-| example | string | yes | Replace with actual parameter details |
+| example_id | string | yes | Replace with actual path parameter details, or say `No path parameters` |
+
+## Query Parameters
+
+| Name | Type | Required | Description |
+| --- | --- | --- | --- |
+| example | string | no | Replace with actual query parameter details, or say `No query parameters` |
 
 ## Request Body
 
