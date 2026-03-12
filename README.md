@@ -125,7 +125,30 @@ npm install
 npm run bootstrap:docs-repo -- ../company-docs
 ```
 
-Then start with:
+To include the payments example set as a starting reference, add `--with-examples`:
+
+```bash
+npm run bootstrap:docs-repo -- ../company-docs --with-examples
+```
+
+### Generate Docs From Your OpenAPI Spec
+
+Once you have a bootstrapped repo and an OpenAPI spec, generate endpoint documentation in one command (run from inside the repodocs-ai clone):
+
+```bash
+node scripts/generate-openapi-docs.mjs ../company-docs/openapi/my-api.yaml ../company-docs/generated/my-api
+```
+
+This produces a `generated/my-api/` directory in your docs repo containing:
+
+- `api-overview.md` — service overview with authentication, base URL, and versioning
+- `endpoints/` — one Markdown file per endpoint, fully structured and ready for SME review
+
+Then open `prompts/review/documentation-review.md` with an AI tool to review each generated doc against the source spec before merging.
+
+### Manual Documentation
+
+For hand-authored endpoint docs, start with:
 
 1. `templates/api/` for API documentation
 2. `templates/features/` for feature documentation

@@ -183,9 +183,16 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`Validated documentation quality for ${markdownFiles.length} Markdown files.`);
   if (warnings.length > 0) {
-    console.log(`${warnings.length} warning(s) above require attention before publication.`);
+    console.log(
+      `\nQuality check: ${markdownFiles.length} files — MERGE-SAFE (0 errors), ` +
+      `NOT PUBLICATION-READY (${warnings.length} warning(s) above must be resolved before publishing).`
+    );
+  } else {
+    console.log(
+      `Validated documentation quality for ${markdownFiles.length} Markdown files. ` +
+      `MERGE-SAFE and PUBLICATION-READY.`
+    );
   }
 }
 

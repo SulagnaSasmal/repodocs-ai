@@ -109,6 +109,17 @@ async function main() {
         `add the approver's identifier before setting status to '${parsed.status}'`
       );
     }
+
+    // owner must be a non-empty slug (lowercase letters, numbers, hyphens).
+    // Free-form strings fragment analytics grouping — see schema/owners-registry.md.
+    if (parsed.owner !== undefined && parsed.owner !== "") {
+      if (!/^[a-z0-9][a-z0-9-]*$/.test(String(parsed.owner))) {
+        errors.push(
+          `${relativePath}: 'owner' must be a lowercase slug (e.g. 'payments-eng') — ` +
+          `see schema/owners-registry.md for valid identifiers`
+        );
+      }
+    }
   }
 
   if (errors.length > 0) {
