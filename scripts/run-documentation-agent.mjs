@@ -71,12 +71,14 @@ async function main() {
   const generatedDirectory = `generated/${inputSlug}`;
   const execution = {
     generated_docs: null,
-    validation: null
+    openapi_validation: null,
+    quality_validation: null
   };
 
   if (workflow.mode === "api-generation") {
     execution.generated_docs = await runNodeScript(path.join(repoRoot, "scripts", "generate-openapi-docs.mjs"), [inputArg, generatedDirectory]);
-    execution.validation = await runNodeScript(path.join(repoRoot, "scripts", "validate-openapi-examples.mjs"), []);
+    execution.openapi_validation = await runNodeScript(path.join(repoRoot, "scripts", "validate-openapi-examples.mjs"), []);
+    execution.quality_validation = await runNodeScript(path.join(repoRoot, "scripts", "validate-doc-quality.mjs"), []);
   }
 
   const result = {
@@ -85,7 +87,9 @@ async function main() {
     workflow,
     outputs: {
       generated_directory: workflow.mode === "api-generation" ? generatedDirectory : null,
-      validation_command: workflow.mode === "api-generation" ? "node scripts/validate-openapi-examples.mjs" : null
+      validation_commands: workflow.mode === "api-generation"
+        ? ["node scripts/validate-openapi-examples.mjs", "node scripts/validate-doc-quality.mjs"]
+        : null
     },
     execution
   };
@@ -98,13 +102,15 @@ async function main() {
     `- Template: ${workflow.template}`,
     `- Prompt: ${workflow.prompt}`,
     workflow.mode === "api-generation" ? `- Generated docs: ${generatedDirectory}` : "- Generated docs: not applicable",
-    workflow.mode === "api-generation" ? `- Validation: ${normalizeText(execution.validation?.stdout, "completed")}` : "- Validation: not applicable",
+    workflow.mode === "api-generation" ? `- OpenAPI validation: ${normalizeText(execution.openapi_validation?.stdout, "completed")}` : "- OpenAPI validation: not applicable",
+    workflow.mode === "api-generation" ? `- Quality validation: ${normalizeText(execution.quality_validation?.stdout, "completed")}` : "- Quality validation: not applicable",
     "",
     "## Next Review Tasks",
     "",
     "1. Confirm the generated output with an SME.",
-    "2. Fill any Needs SME input placeholders before publication.",
-    "3. Run npm run validate before merge."
+    "2. Fill any `Needs SME input` placeholders before publication.",
+    "3. Pass the output through `prompts/review/documentation-review.md` with the source spec.",
+    "4. Run `npm run validate` before merge."
   ].join("\n");
 
   await ensureDirectory(outputRoot);

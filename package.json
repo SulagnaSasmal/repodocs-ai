@@ -12,7 +12,7 @@
     "agent:run": "node scripts/run-documentation-agent.mjs examples/openapi/payments-openapi.yaml",
     "analytics:report": "node scripts/generate-analytics-report.mjs",
     "graph:build": "node scripts/build-knowledge-graph.mjs",
-    "automation:run": "npm run agent:run && npm run analytics:report && npm run graph:build",
+    "automation:run": "npm run agent:run && npm run validate:quality && npm run analytics:report && npm run graph:build",
     "export": "node scripts/export-docs.mjs all",
     "export:confluence": "node scripts/export-docs.mjs confluence",
     "export:gdocs": "node scripts/export-docs.mjs gdocs",
