@@ -21,6 +21,7 @@ import {
 const ANTHROPIC_API_KEY = (process.env.ANTHROPIC_API_KEY || "").trim();
 const AI_MODEL = process.env.REPODOCS_AI_MODEL || "claude-opus-4-6";
 const AI_REVIEW_ENABLED = Boolean(ANTHROPIC_API_KEY);
+const AI_REVIEW_MAX_TOKENS = Number.parseInt(process.env.REPODOCS_AI_REVIEW_MAX_TOKENS || "3072", 10);
 
 function formatAiReviewError(error) {
   const message = error instanceof Error ? error.message : String(error || "Unknown AI review error");
@@ -143,7 +144,7 @@ function parseAiReviewResponse(rawResponse) {
 async function repairAiReviewJson(anthropic, rawResponse) {
   const repairMessage = await anthropic.messages.create({
     model: AI_MODEL,
-    max_tokens: 1024,
+    max_tokens: Math.min(AI_REVIEW_MAX_TOKENS, 2048),
     system: [
       "You repair malformed JSON.",
       "Return only a valid JSON object with the same semantic content as the input.",
@@ -201,6 +202,7 @@ async function runAiReview(anthropic, { specContent, generatedContent, promptCon
       "5. Language and usability — curl examples syntactically valid, tables complete, descriptions specific",
       "",
       "Return concise results. Keep each array to at most 5 items and each item must be a plain string, not an object.",
+      "Keep each string under 180 characters and avoid quoting large document excerpts.",
       "If more issues exist, summarize the highest-severity ones first.",
       "",
       "Return ONLY a valid JSON object:",
@@ -234,7 +236,7 @@ async function runAiReview(anthropic, { specContent, generatedContent, promptCon
 
     const message = await anthropic.messages.create({
       model: AI_MODEL,
-      max_tokens: 1024,
+      max_tokens: AI_REVIEW_MAX_TOKENS,
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }]
     });
