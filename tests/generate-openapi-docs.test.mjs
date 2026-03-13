@@ -35,6 +35,12 @@ describe("generate-openapi-docs", () => {
     expect(apiOverview).toContain("HTTP Bearer token (JWT)");
   });
 
+  it("pulls overview metadata from spec extensions", () => {
+    expect(apiOverview).toContain("checkout applications");
+    expect(apiOverview).toContain("60 requests per minute per client token");
+    expect(apiOverview).toContain("official JavaScript and Python SDKs");
+  });
+
   it("expands response examples from nested schemas", () => {
     expect(getPayments).toContain('"payment_id": "pay_123"');
     expect(getPayments).toContain('"pagination": {');
@@ -48,10 +54,10 @@ describe("generate-openapi-docs", () => {
     expect(getPayments).toContain("Maximum: 100");
   });
 
-  it("states request body requirements and uses example values when descriptions are absent", () => {
+  it("states request body requirements and uses schema descriptions when present", () => {
     expect(postPayments).toContain("Request body is required. Fields not listed as required in the schema are optional.");
-    expect(postPayments).toContain("Example value: `125.5`");
-    expect(postPayments).toContain("Example value: `USD`");
+    expect(postPayments).toContain("| amount | number | yes | Total payment amount in major currency units. |");
+    expect(postPayments).toContain("| currency | string | yes | ISO 4217 currency code for the payment. |");
   });
 
   it("uses concrete example identifiers and query values in curl examples", () => {

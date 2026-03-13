@@ -3,6 +3,16 @@ info:
   title: Startup Payments API
   version: v1
   description: API for creating payments, retrieving payment details, and issuing refunds.
+  x-intended-consumers:
+    - checkout applications
+    - finance and reconciliation tooling
+    - customer support operations tools
+  x-versioning-strategy: Breaking changes are introduced in new major API versions. Backward-compatible additions remain within the current version.
+  x-rate-limits: Payment creation and refund operations are limited to 60 requests per minute per client, while read endpoints support 120 requests per minute.
+  x-error-handling: The API uses standard HTTP status codes with a JSON error envelope that includes `code`, `message`, and `request_id`.
+  x-sdk-support: Official JavaScript and Python SDKs are available for payment creation, retrieval, and refund workflows.
+  x-example-use-case: A checkout client creates a payment during purchase, retrieves the payment state after processing, and submits a partial refund when a duplicate charge is reported.
+  x-security-impact: high
 servers:
   - url: https://api.startup-payments.example/v1
 paths:
@@ -10,6 +20,7 @@ paths:
     post:
       summary: Create payment
       description: Create a payment for a customer checkout session.
+      x-performance-notes: Write requests should include an idempotency key and should complete within 5 seconds under normal load.
       security:
         - bearerAuth: []
       requestBody:
@@ -69,6 +80,7 @@ paths:
     get:
       summary: Retrieve payment
       description: Retrieve the current state and metadata for a payment.
+      x-performance-notes: Suitable for payment detail screens and audit lookups. Short-lived client-side caching is recommended for polling workflows.
       security:
         - bearerAuth: []
       parameters:
@@ -106,6 +118,7 @@ paths:
     post:
       summary: Refund payment
       description: Issue a refund against a completed payment.
+      x-performance-notes: Refund creation is asynchronous for downstream ledger settlement and should be retried with the same idempotency key on timeout.
       security:
         - bearerAuth: []
       requestBody:

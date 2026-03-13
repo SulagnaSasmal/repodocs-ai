@@ -3,6 +3,16 @@ info:
   title: Payments Platform API
   version: v1
   description: API for creating and retrieving payment records.
+  x-intended-consumers:
+    - checkout applications
+    - finance and reconciliation tooling
+    - customer support operations dashboards
+  x-versioning-strategy: Breaking changes ship in a new major version, while additive changes remain within the current major version.
+  x-rate-limits: Write operations are limited to 60 requests per minute per client token and list endpoints are limited to 120 requests per minute per client token.
+  x-error-handling: Errors return standard HTTP status codes with a JSON body containing `code`, `message`, and `request_id` for support escalation.
+  x-sdk-support: REST API support is production-ready and the platform team maintains official JavaScript and Python SDKs for common payment flows.
+  x-example-use-case: A checkout service creates a payment, polls for the latest status during authorization, and surfaces the final state in an operations dashboard.
+  x-security-impact: high
 servers:
   - url: https://api.example.com/payments/v1
 paths:
@@ -10,6 +20,7 @@ paths:
     get:
       summary: List payments
       description: Return a paginated list of payments, optionally filtered by status, customer, or date range.
+      x-performance-notes: Optimized for dashboard and reconciliation workloads. Use `page` and `per_page` to keep responses under 250 KB.
       security:
         - bearerAuth: []
       parameters:
@@ -115,6 +126,7 @@ paths:
     post:
       summary: Create payment
       description: Create a new payment record for checkout processing.
+      x-performance-notes: Keep synchronous creation requests under 5 seconds and retry transient failures only after confirming whether a payment record was created.
       security:
         - bearerAuth: []
       requestBody:
@@ -123,15 +135,22 @@ paths:
           application/json:
             schema:
               type: object
+              required:
+                - amount
+                - currency
+                - customer_id
               properties:
                 amount:
                   type: number
+                  description: Total payment amount in major currency units.
                   example: 125.5
                 currency:
                   type: string
+                  description: ISO 4217 currency code for the payment.
                   example: USD
                 customer_id:
                   type: string
+                  description: Unique customer identifier from the billing system.
                   example: cus_123
       responses:
         '201':
@@ -155,6 +174,7 @@ paths:
     get:
       summary: Retrieve payment
       description: Fetch the current state of a payment by identifier.
+      x-performance-notes: Suitable for payment detail screens and audit lookups. Cache reads for short-lived polling clients when possible.
       deprecated: true
       x-deprecated-since: v1
       x-sunset-version: v2
@@ -186,12 +206,21 @@ paths:
                   amount:
                     type: number
                     example: 125.5
+                  currency:
+                    type: string
+                    example: USD
+                  customer_id:
+                    type: string
+                    example: cus_123
         '404':
           description: Payment not found
+        '401':
+          description: Unauthorized
   /payments/{payment_id}/status:
     get:
       summary: Retrieve payment status
       description: Fetch the current lifecycle status of a payment by identifier.
+      x-performance-notes: Preferred for polling clients because the response is smaller than the full payment resource.
       security:
         - bearerAuth: []
       parameters:
@@ -221,6 +250,8 @@ paths:
                     example: '2026-03-11T10:15:00Z'
         '404':
           description: Payment not found
+        '401':
+          description: Unauthorized
 components:
   securitySchemes:
     bearerAuth:

@@ -390,14 +390,17 @@ async function main() {
       r.parser_warning ? `Parser warning: ${r.parser_warning}` : null,
       "",
       "### Critical Issues",
+      "",
       fmt(r.critical_issues),
       "",
       "### Moderate Issues",
+      "",
       fmt(r.moderate_issues),
       "",
       "### SME Inputs Required",
+      "",
       fmt(r.sme_inputs_required)
-    ].filter(Boolean).join("\n");
+    ].filter((line) => line !== null && line !== undefined).join("\n");
   }
 
   const summary = [

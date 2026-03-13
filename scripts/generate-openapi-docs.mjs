@@ -54,6 +54,20 @@ function stringifyYamlLines(fields) {
   return lines.join("\n");
 }
 
+function pickAllowedValue(value, allowedValues, fallback) {
+  return allowedValues.has(value) ? value : fallback;
+}
+
+function formatOverviewValue(value, fallback = "Needs SME input") {
+  if (Array.isArray(value)) {
+    const items = value.map((item) => normalizeText(item)).filter(Boolean);
+    return items.length > 0 ? items.map((item) => `- ${item}`).join("\n") : fallback;
+  }
+
+  const text = normalizeText(value);
+  return text || fallback;
+}
+
 function resolveReference(spec, value) {
   if (!value || typeof value !== "object" || !value.$ref || !value.$ref.startsWith("#/")) {
     return value;
@@ -200,6 +214,18 @@ function joinSentenceParts(parts) {
   }, "");
 }
 
+function formatRequiredValue(isExplicitlyRequired, requestBodyIsRequired, hasRequiredList) {
+  if (isExplicitlyRequired) {
+    return "yes";
+  }
+
+  if (requestBodyIsRequired && !hasRequiredList) {
+    return "unspecified";
+  }
+
+  return "no";
+}
+
 function buildSchemaDescription(spec, schema) {
   const resolved = resolveSchema(spec, schema);
   const explicitDescription = normalizeText(resolved?.description);
@@ -331,8 +357,13 @@ function buildRequestBodyIntro(operation) {
     return "";
   }
 
+  const resolvedSchema = schema;
+  const hasRequiredList = Array.isArray(resolvedSchema?.required) && resolvedSchema.required.length > 0;
+
   return operation.requestBody?.required
-    ? "Request body is required. Fields not listed as required in the schema are optional."
+    ? (hasRequiredList
+      ? "Request body is required. Fields not listed as required in the schema are optional."
+      : "Request body is required. The schema does not declare which individual fields are required.")
     : "Request body is optional.";
 }
 
@@ -340,6 +371,8 @@ function buildRequestBodyRows(spec, operation) {
   const schema = resolveSchema(spec, operation.requestBody?.content?.["application/json"]?.schema);
   const properties = schema?.properties;
   const requiredFields = new Set(Array.isArray(schema?.required) ? schema.required : []);
+  const hasRequiredList = requiredFields.size > 0;
+  const requestBodyIsRequired = operation.requestBody?.required === true;
 
   if (!properties || Object.keys(properties).length === 0) {
     return "| None | n/a | no | No request body |";
@@ -348,7 +381,7 @@ function buildRequestBodyRows(spec, operation) {
   return Object.entries(properties)
     .map(([name, propertySchema]) => {
       const type = schemaTypeLabel(spec, propertySchema);
-      const required = requiredFields.has(name) ? "yes" : "no";
+      const required = formatRequiredValue(requiredFields.has(name), requestBodyIsRequired, hasRequiredList);
       const description = buildSchemaDescription(spec, propertySchema);
       return `| ${name} | ${type} | ${required} | ${description} |`;
     })
@@ -475,6 +508,7 @@ function buildApiOverview(spec, serviceName, owner) {
   const version = normalizeText(spec.info?.version, "v1");
   const description = normalizeText(spec.info?.description, "Generated API overview from an OpenAPI specification");
   const baseUrl = normalizeText(spec.servers?.[0]?.url, "Needs SME input");
+  const securityImpact = pickAllowedValue(normalizeText(spec.info?.["x-security-impact"]), new Set(["low", "medium", "high"]), "medium");
 
   const frontmatter = stringifyYamlLines({
     title: `${serviceName} API Overview`,
@@ -486,7 +520,7 @@ function buildApiOverview(spec, serviceName, owner) {
     status: "draft",
     dependencies: [],
     last_reviewed: new Date().toISOString().slice(0, 10),
-    security_impact: "medium"
+    security_impact: securityImpact
   });
 
   return `${frontmatter}# API Overview
@@ -497,7 +531,7 @@ ${description}
 
 ## Intended Consumers
 
-Needs SME input
+${formatOverviewValue(spec.info?.["x-intended-consumers"])}
 
 ## Authentication
 
@@ -509,23 +543,23 @@ ${buildOverviewAuthentication(spec)}
 
 ## Versioning Strategy
 
-Source specification version: ${version}
+${formatOverviewValue(spec.info?.["x-versioning-strategy"], `Source specification version: ${version}`)}
 
 ## Rate Limits
 
-Needs SME input
+${formatOverviewValue(spec.info?.["x-rate-limits"])}
 
 ## Error Handling
 
-Generated from the source OpenAPI paths and responses. Validate response semantics with an SME before publishing.
+${formatOverviewValue(spec.info?.["x-error-handling"], "Generated from the source OpenAPI paths and responses. Validate response semantics with an SME before publishing.")}
 
 ## SDK Support
 
-Needs SME input
+${formatOverviewValue(spec.info?.["x-sdk-support"])}
 
 ## Example Use Case
 
-Needs SME input
+${formatOverviewValue(spec.info?.["x-example-use-case"])}
 `.replace(/\u0000/g, "`");
 }
 
@@ -538,6 +572,7 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
   const sunsetVersion = normalizeText(operation["x-sunset-version"]);
   const replacement = normalizeText(operation["x-replaced-by"]);
   const migrationGuide = normalizeText(operation["x-migration-guide"]);
+  const securityImpact = pickAllowedValue(normalizeText(operation["x-security-impact"] || spec.info?.["x-security-impact"]), new Set(["low", "medium", "high"]), "medium");
   const frontmatter = stringifyYamlLines({
     title: `${summary}`,
     description: `Generated endpoint documentation for ${method.toUpperCase()} ${route}`,
@@ -548,7 +583,7 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
     status: isDeprecated ? "deprecated" : "draft",
     dependencies: [],
     last_reviewed: new Date().toISOString().slice(0, 10),
-    security_impact: "medium",
+    security_impact: securityImpact,
     ...(isDeprecated
       ? {
           deprecated_since: deprecatedSince,
@@ -562,6 +597,10 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
   const { pathSection, querySection } = buildSplitParameterSections(spec, parameters);
   const requestBodyIntro = buildRequestBodyIntro(operation);
   const requestBodyExample = buildRequestBodyExample(spec, operation);
+  const requestBodyRows = buildRequestBodyRows(spec, operation);
+  const requestBodySection = requestBodyRows === "| None | n/a | no | No request body |"
+    ? "Not applicable."
+    : `${requestBodyIntro ? `${requestBodyIntro}\n\n` : ""}| Field | Type | Required | Description |\n| --- | --- | --- | --- |\n${requestBodyRows}`;
   const exampleUrl = buildExampleUrl(spec, route, operation, pathItem);
   const requestExample = requestBodyExample
     ? `curl -X ${method.toUpperCase()} "${exampleUrl}" \\
@@ -613,9 +652,7 @@ ${querySection}
 
 ## Request Body
 
-${requestBodyIntro ? `${requestBodyIntro}\n\n` : ""}| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-${buildRequestBodyRows(spec, operation)}
+${requestBodySection}
 
 ## Request Example
 

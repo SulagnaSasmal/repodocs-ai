@@ -65,7 +65,7 @@ See `webhooks.md` for the event model and example payloads.
 
 ## SDK Support
 
-SDK support is `Needs SME input`.
+Official JavaScript and Python SDKs are available for payment creation, retrieval, and refund workflows.
 
 ## Example Use Case
 
