@@ -10,8 +10,8 @@ import {
   repoRoot
 } from "./lib/docs-automation-utils.mjs";
 
-const supportedFormats = new Set(["all", "confluence", "gdocs", "pdf"]);
-const sourceDirectories = ["docs", "examples"];
+const supportedFormats = new Set(["all", "confluence", "gdocs", "notion", "pdf"]);
+const defaultSourceDirectories = ["docs", "examples"];
 
 function buildNotionMarkdown(document) {
   const metadataEntries = Object.entries(document.frontmatter || {}).filter(([, value]) => value !== undefined && value !== null && value !== "");
@@ -82,11 +82,13 @@ async function writeHtmlExport(baseDirectory, relativePath, suffix, html) {
 async function main() {
   const formatArg = normalizeFormatArg(process.argv[2]);
   const formats = getFormats(formatArg);
+  const sourceDirectories = process.argv.slice(3).filter(Boolean);
+  const directoriesToExport = sourceDirectories.length > 0 ? sourceDirectories : defaultSourceDirectories;
   const outputRoot = path.join(repoRoot, "exports");
-  const documents = await loadMarkdownDocuments(sourceDirectories);
+  const documents = await loadMarkdownDocuments(directoriesToExport);
   const manifest = {
     generated_at: new Date().toISOString(),
-    source_directories: sourceDirectories,
+    source_directories: directoriesToExport,
     formats,
     documents: []
   };

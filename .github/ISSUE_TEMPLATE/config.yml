@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability
+    url: https://github.com/SulagnaSasmal/repodocs-ai/security/advisories/new
+    about: Report a security vulnerability using a private advisory — do not use a public issue.
+  - name: Question or Discussion
+    url: https://github.com/SulagnaSasmal/repodocs-ai/discussions
+    about: Ask a question or discuss how to use RepoDocs AI.

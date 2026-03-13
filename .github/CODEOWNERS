@@ -1,30 +1,31 @@
 # CODEOWNERS — Documentation Ownership Map
 #
-# Maps documentation directories to the teams responsible for review.
-# Update these paths and team handles to match your organization.
+# This repository is currently maintained by a single owner.
+# Adopters who copy this file into their own docs repositories should replace
+# the ownership rules below with their real GitHub users or teams.
 #
 # Format: <path-pattern> <github-team-or-user>
 # Reference: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
 
 # Default owner for all documentation not matched by a more specific rule
-*   @docs-team
+*   @SulagnaSasmal
 
-# API documentation by service — assign to the owning engineering team
-docs/api/payments/          @payments-team
-docs/api/fraud/             @fraud-team
-docs/api/customers/         @customers-team
-docs/api/notifications/     @notifications-team
+# API documentation by service
+docs/api/payments/          @SulagnaSasmal
+docs/api/fraud/             @SulagnaSasmal
+docs/api/customers/         @SulagnaSasmal
+docs/api/notifications/     @SulagnaSasmal
 
-# Governance files — documentation platform team must approve all changes
-templates/                  @docs-platform
-schema/                     @docs-platform
-validation/                 @docs-platform
-prompts/                    @docs-platform
+# Governance files
+templates/                  @SulagnaSasmal
+schema/                     @SulagnaSasmal
+validation/                 @SulagnaSasmal
+prompts/                    @SulagnaSasmal
 
 # Operations and architecture
-docs/operations/            @platform-infra
-docs/architecture/          @architecture-team
+docs/operations/            @SulagnaSasmal
+docs/architecture/          @SulagnaSasmal
 
-# Security-sensitive documentation — requires security review
-docs/authentication/        @security-team @docs-team
-docs/authorization/         @security-team @docs-team
+# Security-sensitive documentation
+docs/authentication/        @SulagnaSasmal
+docs/authorization/         @SulagnaSasmal

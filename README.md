@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](CHANGELOG.md)
 
-AI-native docs-as-code documentation system for SaaS API teams.
+AI-prompt-powered docs-as-code documentation system for SaaS API teams.
 
 RepoDocs AI gives engineering teams a reusable template library, structured AI prompts, diagram starters, and review guardrails for Markdown-based documentation in GitHub repositories.
 
@@ -220,14 +220,36 @@ The repository should be installable in under 5 minutes for a developer evaluati
 1. Clone the repository.
 2. Run `npm install`.
 3. Run `npm run validate` to verify the template packs, prompts, examples, and docs structure.
-4. Open `docs/index.md` for the source documentation hub or `site/index.html` for the published product walkthrough.
-5. Use the Quick Start section above if your goal is to create your own documentation repository from these assets.
+4. Run `npm run proof:path` to verify the end-to-end bootstrap, generation, validation, and export path.
+5. Open `docs/index.md` for the source documentation hub or `site/index.html` for the published product walkthrough.
+6. Use the Quick Start section above if your goal is to create your own documentation repository from these assets.
+
+### Live AI Review
+
+If you want to exercise the optional live AI review path rather than prompt-only generation, install dependencies, set an Anthropic API key, and run the documentation agent:
+
+```bash
+npm install
+export ANTHROPIC_API_KEY=<your-key>
+npm run agent:run
+```
+
+On Windows PowerShell:
+
+```powershell
+npm install
+$env:ANTHROPIC_API_KEY = '<your-key>'
+npm run agent:run
+```
+
+Without `ANTHROPIC_API_KEY`, the agent still runs generation and validation, but records that live AI review was skipped.
 
 For the optional hosted automation runtime:
 
 1. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY`.
 2. Run `npm run control-plane:stack:smoke`.
 3. Confirm the Redis-backed control plane and admin flow pass the smoke test.
+4. Treat the hosted control plane as an evaluation and internal automation surface, not an enterprise platform. Enterprise features such as external identity, tenancy isolation, audit logging, and broader operational controls are still roadmap items.
 
 ## Repository Layout
 
@@ -411,7 +433,7 @@ Yes. RepoDocs AI already includes a lightweight static UI in `site/` for GitHub 
 - `npm run export:notion`
 
 See `docs/roadmap-spec-summary.md` for a direct map between the specification, roadmap, current phase coverage, and remaining gaps.
-For the published Pages version, use `site/spec-summary.html`.
+For the published Pages version, open [sulagnasasmal.github.io/repodocs-ai/spec-summary.html](https://sulagnasasmal.github.io/repodocs-ai/spec-summary.html).
 See `docs/spec-scorecard.md` for a strict 17-section scorecard against the attached specification.
 
 ## Buyer Fit

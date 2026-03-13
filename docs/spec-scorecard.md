@@ -126,7 +126,7 @@ Status: Partially pulled forward
 
 Status: Complete
 
-- AI-native prompts, metadata-driven structure, governance workflows, diagram starters, and repo-native automation are all implemented and visible in the repository.
+- AI-prompt-powered prompts, metadata-driven structure, governance workflows, diagram starters, and repo-native automation are all implemented and visible in the repository.
 - Evidence: `prompts/`, `schema/`, `validation/`, `diagrams/`, `.github/workflows/`, `site/`.
 
 ## Overall Score

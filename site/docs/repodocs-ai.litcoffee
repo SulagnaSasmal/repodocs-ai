@@ -3,7 +3,7 @@
 ## A Ready-to-Install Documentation System for Engineering Teams
 
 Version: 1.0
-Category: AI-Native Docs-as-Code Documentation System
+Category: AI-Prompt-Powered Docs-as-Code Documentation System
 Target Audience: SaaS Engineering Teams, API Platforms, DevRel Teams, Technical Writers
 
 ---

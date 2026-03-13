@@ -53,6 +53,7 @@ const requiredPaths = [
   "scripts/validate-openapi-examples.mjs",
   "scripts/validate-version-compatibility.mjs",
   "site/index.html",
+  "site/spec-summary.html",
   "site/roadmap.html",
   "site/automation.html",
   "site/control-plane.html",
@@ -110,7 +111,10 @@ const requiredPaths = [
   "scripts/check-template-version.mjs",
   "schema/owners-registry.md",
   "docs/multi-repo-guide.md",
-  "TEMPLATE_VERSION"
+  "TEMPLATE_VERSION",
+  "ROADMAP.md",
+  "SECURITY.md",
+  "docs/archive/README.md"
 ];
 
 async function exists(relativePath) {

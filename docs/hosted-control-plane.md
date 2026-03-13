@@ -2,6 +2,8 @@
 
 RepoDocs AI now includes a small hosted control plane for repository-native automation.
 
+It is intentionally scoped as an evaluation and internal automation surface, not as a finished enterprise platform.
+
 ## Purpose
 
 - expose validation, export, agent, analytics, and graph jobs over HTTP
@@ -102,3 +104,4 @@ The repository now includes a `render.yaml` manifest for deploying the control p
 - artifact storage remains filesystem-based
 - authentication is per-user and role-based, but not yet tied to an external identity provider
 - Redis-backed queue storage is in place, but the runtime is still intentionally lightweight rather than a full tenant-isolated orchestration platform
+- identity-provider integration, tenancy isolation, audit logging, and broader operational controls are not yet implemented

@@ -7,3 +7,4 @@ agents/output/
 analytics/output/
 knowledge-graph/output/
 .control-plane/
+tmp/

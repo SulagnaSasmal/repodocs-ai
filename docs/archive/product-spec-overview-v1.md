@@ -1,3 +1,8 @@
+> **Archived.** This is the original v1 product overview specification preserved for historical reference.
+> The current canonical specification is [`docs/product-specification.md`](../product-specification.md).
+
+---
+
 # RepoDocs AI
 
 ## A Ready-to-Install Documentation System for Engineering Teams

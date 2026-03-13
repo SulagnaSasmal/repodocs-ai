@@ -1,0 +1,80 @@
+name: Bug Report
+description: Report a problem with RepoDocs AI scripts, templates, or validation
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+
+        **Before submitting:** please check [existing issues](https://github.com/SulagnaSasmal/repodocs-ai/issues) to avoid duplicates.
+
+        For security vulnerabilities, use the [Security Advisory form](https://github.com/SulagnaSasmal/repodocs-ai/security/advisories/new) instead.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      description: Which part of RepoDocs AI is affected?
+      options:
+        - Validation scripts (validate-frontmatter, validate-structure, validate-quality)
+        - OpenAPI generation (generate-openapi-docs, generate-all-openapi-docs)
+        - Documentation agent (run-documentation-agent)
+        - Control plane server
+        - Bootstrap script
+        - Export scripts (Confluence, Notion, Google Docs, PDF)
+        - CI / GitHub Actions workflows
+        - Templates
+        - Prompts
+        - Examples
+        - Site / GitHub Pages
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: What happened? What did you expect to happen instead?
+      placeholder: "When I run `npm run validate`, it reports an error on a file that has valid frontmatter..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Exact steps to reproduce the bug
+      placeholder: |
+        1. Clone the repository
+        2. Run `npm install`
+        3. Run `npm run validate`
+        4. See error: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Node.js version, OS, and any relevant configuration
+      placeholder: |
+        - Node.js: 20.x
+        - OS: macOS 14 / Windows 11 / Ubuntu 22.04
+        - RepoDocs AI version: 1.0.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error Output or Logs
+      description: Paste any relevant error output (use code blocks)
+      render: shell
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other information that might help — screenshots, related issues, or workarounds you found

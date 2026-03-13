@@ -2,7 +2,7 @@
 
 ## What RepoDocs AI Is
 
-RepoDocs AI is an AI-native docs-as-code documentation system for SaaS teams building APIs.
+RepoDocs AI is an AI-prompt-powered docs-as-code documentation system for SaaS teams building APIs.
 
 It is designed for teams that want more than a folder of templates. The repository combines documentation structure, AI prompt workflows, validation, examples, publishing support, and automation in one installable product.
 

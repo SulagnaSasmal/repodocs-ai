@@ -1,6 +1,6 @@
 # RepoDocs AI Product Specification
 
-## AI-Native Docs-as-Code Documentation System for SaaS APIs
+## AI-Prompt-Powered Docs-as-Code Documentation System for SaaS APIs
 
 Version: 1.0  
 Product Type: Documentation Template System + AI Prompt Framework  
@@ -356,7 +356,7 @@ Future versions may include:
 
 RepoDocs AI differentiates from typical documentation templates by providing:
 
-- AI-native prompt integration
+- AI-prompt-powered prompt integration
 - metadata-driven documentation architecture
 - documentation governance workflows
 - diagram templates for developer documentation

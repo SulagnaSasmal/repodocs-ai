@@ -35,6 +35,12 @@ npm install
 npm run validate
 ```
 
+1. Verify the end-to-end proof path.
+
+```bash
+npm run proof:path
+```
+
 1. Review the product-facing documentation.
 
 - `README.md`

@@ -2,10 +2,17 @@
   "name": "repodocs-ai",
   "version": "1.0.0",
   "private": true,
-  "description": "AI-native docs-as-code documentation system for SaaS API teams",
+  "description": "AI-prompt-powered docs-as-code documentation system for SaaS API teams",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "bootstrap:docs-repo": "node scripts/bootstrap-docs-repo.mjs",
-    "lint:markdown": "markdownlint \"**/*.md\" --ignore node_modules --ignore site --ignore exports",
+    "lint:markdown": "markdownlint \"**/*.md\" --ignore node_modules --ignore site --ignore exports --ignore docs/archive",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "docker:control-plane:build": "docker build -t repodocs-ai-control-plane .",
     "docker:control-plane:run": "docker run --rm -p 4312:4312 --add-host=host.docker.internal:host-gateway -v repodocs-ai-control-plane-data:/var/data -e REDIS_URL=redis://host.docker.internal:6379 -e REPODOCS_CONTROL_PLANE_HOST=0.0.0.0 -e REPODOCS_CONTROL_PLANE_DATA_DIR=/var/data/control-plane -e REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER=admin -e REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY=replace-me repodocs-ai-control-plane",
     "generate:openapi:all": "node scripts/generate-all-openapi-docs.mjs",
@@ -32,13 +39,16 @@
     "coverage:check": "node scripts/detect-undocumented-endpoints.mjs",
     "analytics:aggregate": "node scripts/aggregate-analytics.mjs",
     "version:check": "node scripts/check-template-version.mjs",
+    "proof:path": "node scripts/run-proof-path.mjs",
     "validate": "npm run validate:frontmatter && npm run validate:structure && npm run validate:quality && npm run validate:openapi && npm run validate:versions && npm run lint:markdown"
   },
   "devDependencies": {
     "js-yaml": "^4.1.0",
-    "markdownlint-cli": "^0.45.0"
+    "markdownlint-cli": "^0.45.0",
+    "vitest": "^2.1.0"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.0",
     "redis": "^5.11.0"
   }
 }

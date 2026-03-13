@@ -37,7 +37,7 @@ Observed result:
 - output is usable as a first draft
 - minimal editing is still needed for SME-owned details such as exact authentication scope language, rate limits, and performance guidance
 
-Direct execution inside ChatGPT, Claude, and GitHub Copilot could not be performed from this workspace session, but the prompt-fit test against the shipped template system passed and the new `examples/payments-api/` sample reflects the expected output shape.
+Live AI execution is supported through `npm run agent:run` when `ANTHROPIC_API_KEY` is set. Without that key, the repository still supports prompt-fit testing and non-live generation and validation. The shipped `examples/payments-api/` sample reflects the expected output shape.
 
 ## Developer Trust Test
 
@@ -61,7 +61,7 @@ RepoDocs AI is product-ready only if these conditions are true:
 - example documentation system
 - clean repository structure
 
-Current assessment: the repository meets this baseline for an installable developer product, with the main remaining proof point being external hands-on evaluation by additional developers or writers.
+Current assessment: the repository meets this baseline for an installable developer product, with the main remaining proof point being repeatable hands-on evaluation by additional developers or writers.
 
 ## Self-Test
 

@@ -8,6 +8,35 @@ import { pathExists, repoRoot } from "./lib/docs-automation-utils.mjs";
 
 const port = Number(process.env.REPODOCS_CONTROL_PLANE_PORT || 4312);
 const host = process.env.REPODOCS_CONTROL_PLANE_HOST || "127.0.0.1";
+
+// Job execution limits
+const JOB_TIMEOUT_MS = Number(process.env.REPODOCS_JOB_TIMEOUT_MS || 5 * 60 * 1000); // 5 minutes
+const JOB_MAX_RETRIES = Number(process.env.REPODOCS_JOB_MAX_RETRIES || 2);
+const JOB_RETRY_BASE_DELAY_MS = Number(process.env.REPODOCS_JOB_RETRY_DELAY_MS || 2000);
+
+// ---------------------------------------------------------------------------
+// Structured logger
+// Emits newline-delimited JSON so log aggregators (Logtail, Datadog, etc.) can
+// parse fields without regex. Falls back to plain text in development if
+// REPODOCS_LOG_FORMAT=text.
+// ---------------------------------------------------------------------------
+const LOG_FORMAT = process.env.REPODOCS_LOG_FORMAT || "json";
+
+function log(level, message, extra = {}) {
+  const entry = {
+    ts: new Date().toISOString(),
+    level,
+    message,
+    worker: workerId,
+    ...extra
+  };
+  const out = LOG_FORMAT === "json" ? JSON.stringify(entry) : `[${entry.ts}] ${level.toUpperCase()} ${message}${Object.keys(extra).length ? " " + JSON.stringify(extra) : ""}`;
+  if (level === "error" || level === "warn") {
+    process.stderr.write(out + "\n");
+  } else {
+    process.stdout.write(out + "\n");
+  }
+}
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const configuredDataDir = process.env.REPODOCS_CONTROL_PLANE_DATA_DIR || ".control-plane";
 const dataDir = path.isAbsolute(configuredDataDir)
@@ -508,6 +537,7 @@ async function executeRun(run) {
   }
 
   await markRunStarted(run);
+  log("info", "job started", { run_id: run.id, job: jobName });
 
   return new Promise((resolve, reject) => {
     const child = process.platform === "win32"
@@ -522,6 +552,19 @@ async function executeRun(run) {
           stdio: ["ignore", "pipe", "pipe"]
         });
 
+    // Job timeout — kill the child process if the job runs too long
+    const timeoutHandle = setTimeout(async () => {
+      child.kill("SIGTERM");
+      const msg = `Job '${jobName}' timed out after ${JOB_TIMEOUT_MS}ms`;
+      log("warn", "job timed out", { run_id: run.id, job: jobName, timeout_ms: JOB_TIMEOUT_MS });
+      try {
+        await markRunFinished(run, 1, msg);
+      } catch {
+        // ignore persistence error; the timeout error takes precedence
+      }
+      reject(Object.assign(new Error(msg), { run, timed_out: true }));
+    }, JOB_TIMEOUT_MS);
+
     child.stdout.on("data", (chunk) => {
       run.stdout += chunk.toString();
     });
@@ -531,12 +574,15 @@ async function executeRun(run) {
     });
 
     child.on("exit", async (code) => {
+      clearTimeout(timeoutHandle);
       try {
         await markRunFinished(run, code ?? 1);
         if ((code ?? 1) === 0) {
+          log("info", "job succeeded", { run_id: run.id, job: jobName });
           resolve(run);
           return;
         }
+        log("warn", "job failed", { run_id: run.id, job: jobName, exit_code: code ?? 1 });
         reject(Object.assign(new Error(run.stderr || run.stdout || `Job '${jobName}' failed`), { run }));
       } catch (error) {
         reject(error);
@@ -544,6 +590,8 @@ async function executeRun(run) {
     });
 
     child.on("error", async (error) => {
+      clearTimeout(timeoutHandle);
+      log("error", "job spawn error", { run_id: run.id, job: jobName, error: error.message });
       try {
         await markRunFinished(run, 1, error.message);
       } catch {
@@ -869,12 +917,55 @@ function renderDashboard() {
 </html>`;
 }
 
+async function executeRunWithRetry(run) {
+  let attempt = 0;
+  while (attempt <= JOB_MAX_RETRIES) {
+    try {
+      await executeRun(run);
+      return; // success
+    } catch (error) {
+      const isTimedOut = error.timed_out === true;
+      // Do not retry timed-out jobs — they likely have side effects
+      if (isTimedOut || attempt >= JOB_MAX_RETRIES) {
+        log("error", "job exhausted retries", {
+          run_id: run.id,
+          job: run.job,
+          attempt,
+          max_retries: JOB_MAX_RETRIES,
+          error: error.message,
+          timed_out: isTimedOut
+        });
+        return;
+      }
+      attempt += 1;
+      const delay = JOB_RETRY_BASE_DELAY_MS * (2 ** (attempt - 1)); // exponential backoff
+      log("warn", "job retrying", {
+        run_id: run.id,
+        job: run.job,
+        attempt,
+        delay_ms: delay
+      });
+      // Reset run state to queued for the retry
+      run.status = "queued";
+      run.started_at = null;
+      run.finished_at = null;
+      run.exit_code = null;
+      run.stdout = "";
+      run.stderr = "";
+      await saveRun(run);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 async function startWorkerLoop() {
   if (workerLoopStarted) {
     return;
   }
 
   workerLoopStarted = true;
+  log("info", "worker loop started", { worker: workerId });
+
   while (!shutdownRequested) {
     try {
       const next = await redis.blPop(redisKeys.queue, queuePollTimeoutSeconds);
@@ -887,12 +978,14 @@ async function startWorkerLoop() {
         continue;
       }
 
-      await executeRun(run).catch(() => null);
+      await executeRunWithRetry(run);
     } catch (error) {
-      console.error("Control-plane worker loop error", error);
+      log("error", "worker loop error", { error: error.message });
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
+
+  log("info", "worker loop stopped", { worker: workerId });
 }
 
 async function shutdown() {
@@ -909,7 +1002,7 @@ const stateReady = (async () => {
   await migrateFileStateToRedisIfNeeded();
   await bootstrapAdminIfNeeded();
   startWorkerLoop().catch((error) => {
-    console.error("Failed to start control-plane worker loop", error);
+    log("error", "failed to start control-plane worker loop", { error: error.message });
   });
 })();
 
@@ -1192,13 +1285,12 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 stateReady.then(() => {
   server.listen(port, host, () => {
-    console.log(`RepoDocs AI control plane listening at http://${host}:${port}`);
-    console.log(`Redis queue backend: ${redisUrl}`);
+    log("info", "control plane started", { url: `http://${host}:${port}`, redis: redisUrl });
     if (!bootstrapAdminKey) {
-      console.warn("No bootstrap admin key set. Existing Redis users will still work, but new environments should set REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY.");
+      log("warn", "no bootstrap admin key set — existing Redis users will still work but new environments should set REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY");
     }
   });
 }).catch((error) => {
-  console.error("Failed to initialize RepoDocs AI control plane", error);
+  log("error", "failed to initialize control plane", { error: error.message });
   process.exitCode = 1;
 });
