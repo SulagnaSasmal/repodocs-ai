@@ -189,6 +189,7 @@ Start here if you are evaluating the product:
 
 - `docs/installation.md` for the 5-minute install path
 - `docs/product-guide.md` for product positioning and fit
+- `docs/testing-strategy.md` for a practical app-testing stack to pair with RepoDocs AI
 - `docs/index.md` for the source docs hub
 - `site/installation.html` for the published quickstart page
 

@@ -41,6 +41,7 @@ If you want to decide whether RepoDocs AI is real or still just a prototype, rev
 - `roadmap-spec-summary.md`
 - `implementation-status.md`
 - `hosted-control-plane.md`
+- `testing-strategy.md`
 
 ## Product-Facing Directories
 
