@@ -181,6 +181,8 @@ The shortest path is:
 
 ## How To Install It
 
+RepoDocs AI is designed to be cloned and used directly — not installed from npm. The `"private": true` flag in `package.json` reflects this: it prevents accidental publishing and keeps the focus on the repository as the install surface.
+
 If you want to evaluate RepoDocs AI itself, clone this repository, install dependencies, and run the validation suite.
 
 If you want to adopt RepoDocs AI into your own docs repository, use the Quick Start below.
@@ -434,7 +436,7 @@ Yes. RepoDocs AI already includes a lightweight static UI in `site/` for GitHub 
 - `npm run export:notion`
 
 See `docs/roadmap-spec-summary.md` for a direct map between the specification, roadmap, current phase coverage, and remaining gaps.
-For the published Pages version, open [sulagnasasmal.github.io/repodocs-ai/spec-summary.html](https://sulagnasasmal.github.io/repodocs-ai/spec-summary.html).
+For the published Pages version, open [sulagnasasmal.github.io/repodocs-ai/spec-summary.html](https://sulagnasasmal.github.io/repodocs-ai/spec-summary.html) (live once GitHub Pages is enabled in repository settings).
 See `docs/spec-scorecard.md` for a strict 17-section scorecard against the attached specification.
 
 ## Buyer Fit

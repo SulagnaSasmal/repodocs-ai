@@ -24,12 +24,23 @@ Each tester should answer these questions:
 
 ## Scorecard
 
+### Author Self-Assessment — March 2026
+
+Tester: Sulagna Sasmal (author, Senior Technical Writer)
+Method: Reviewed README and examples as if encountering the repo for the first time, without reading the specification documents.
+
 | Category | Score (1-10) | Notes |
 | --- | --- | --- |
-| Clarity |  |  |
-| Ease of use |  |  |
-| Documentation quality |  |  |
-| AI usefulness |  |  |
+| Clarity | 8 | The problem/solution/example/quickstart flow in the README communicates the product purpose clearly. The payments example is the strongest trust signal. Score held back from 9 because the control plane section in the README adds cognitive load before a new user is ready for it. |
+| Ease of use | 7 | The bootstrap command works. The Windows PowerShell path is explicitly covered, which is unusual and appreciated. Score held back because the relationship between the tool itself and the docs repo you create with it is not immediately obvious on first read. |
+| Documentation quality | 9 | The template packs, prompt library, and payments example are internally consistent and meet the structural standard they describe. The validation suite passes cleanly. |
+| AI usefulness | 7 | The prompts are concrete and workflow-specific rather than generic. Score held back because the live AI path requires an API key that most first-time evaluators will not have ready, and the no-key fallback is not prominent enough in the README. |
+
+**Average: 7.75 — above the 7.0 pass threshold.**
+
+### Community Assessments
+
+Have you evaluated RepoDocs AI? Open a [GitHub Discussion](https://github.com/SulagnaSasmal/repodocs-ai/discussions) and share your scores. Results added here as they come in.
 
 ## Pass Threshold
 
