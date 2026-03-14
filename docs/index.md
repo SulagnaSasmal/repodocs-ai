@@ -1,4 +1,4 @@
-# RepoDocs AI Docs Hub
+# Documentation Hub
 
 This is the canonical source documentation hub for RepoDocs AI.
 
@@ -24,6 +24,10 @@ Use this path if you are evaluating RepoDocs AI as a developer product:
 - `product-guide.md`
 - `market-validation.md`
 - `developer-experience-scorecard.md`
+- `public-launch-kit.md`
+- `public-launch-checklist.md`
+- `community-feedback-discussion.md`
+- `design-partner-intake.md`
 - `ready-to-install-system.md`
 - `product-specification.md`
 
@@ -42,6 +46,13 @@ If you want to decide whether RepoDocs AI is real or still just a prototype, rev
 - `implementation-status.md`
 - `hosted-control-plane.md`
 - `testing-strategy.md`
+
+## Feedback Loop Assets
+
+- `community-feedback-discussion.md` for the pinned GitHub Discussion copy
+- `design-partner-intake.md` for the intake questions you can publish in a form tool
+- `public-launch-kit.md` for the exact outreach post drafts and launch instructions
+- `public-launch-checklist.md` for the final GitHub Pages and launch-day steps
 
 ## Product-Facing Directories
 

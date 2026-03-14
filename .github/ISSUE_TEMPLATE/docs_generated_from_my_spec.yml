@@ -1,0 +1,86 @@
+name: Docs Generated From My Spec
+description: Share generated output from your OpenAPI spec and tell us what worked or broke
+labels: ["feedback", "openapi"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying RepoDocs AI on a real spec.
+
+        Use this form if you generated docs from your own OpenAPI file and want to share the result, gaps, or blockers.
+
+  - type: input
+    id: spec_type
+    attributes:
+      label: Spec type
+      description: What kind of API spec did you use?
+      placeholder: REST API, internal platform API, partner API, payments API
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command you ran
+      description: Paste the exact command you used to generate docs
+      render: shell
+      placeholder: node scripts/generate-openapi-docs.mjs path/to/openapi.yaml generated/my-api
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What happened
+      description: Describe the output quality, missing sections, or failures you saw
+      placeholder: The overview was useful, but the endpoint docs missed auth and enum details.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: review_status
+    attributes:
+      label: AI review outcome
+      description: What did the review pass report?
+      options:
+        - PASS
+        - NEEDS_REVIEW
+        - SKIPPED
+        - I did not run the AI review
+    validations:
+      required: true
+
+  - type: textarea
+    id: sample_files
+    attributes:
+      label: Sample output
+      description: Link or paste a small excerpt from the generated Markdown if you can share it
+      placeholder: Include 1 to 3 short snippets or a repo link.
+
+  - type: textarea
+    id: blocker
+    attributes:
+      label: What would make this production-ready for you?
+      description: Tell us the top gap that still blocks adoption
+      placeholder: Better webhook coverage, clearer request schema mapping, fewer false positives in review output.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Node.js version, OS, and whether you used Anthropic live review
+      placeholder: |
+        - Node.js: 24.x
+        - OS: Windows 11
+        - Live AI review: yes
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: follow_up
+    attributes:
+      label: Follow-up
+      options:
+        - label: I am open to a follow-up conversation about using RepoDocs AI on real API docs.

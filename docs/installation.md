@@ -41,6 +41,8 @@ npm run validate
 npm run proof:path
 ```
 
+1. If you are preparing for public launch, complete `docs/public-launch-checklist.md` before announcing the repository.
+
 1. Review the product-facing documentation.
 
 - `README.md`
@@ -129,3 +131,4 @@ After installation, a developer should be able to:
 - inspect reusable templates and prompts immediately
 - validate the repository successfully
 - review the published site or run the hosted control-plane smoke test
+- know where to leave feedback or request a design-partner conversation

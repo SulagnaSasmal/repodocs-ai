@@ -10,6 +10,8 @@ RepoDocs AI gives engineering teams a reusable template library, structured AI p
 
 **[See it live →](https://sulagnasasmal.github.io/repodocs-ai/)**
 
+If the Pages link is not live yet, finish the last repository setting in `docs/public-launch-checklist.md`.
+
 ## Problem
 
 Most SaaS teams still document APIs with inconsistent structure, slow manual writing, and low-trust AI drafts that drift away from the source contract.
@@ -43,6 +45,8 @@ It includes:
 - `payments-openapi.yaml`
 
 This is the fastest trust check for the product: it shows what a real documentation system built with RepoDocs AI looks like.
+
+If you want to verify the full adopter flow, run `npm run proof:path` after install. It bootstraps a docs repo, generates API docs, validates the result, and exports artifacts end to end.
 
 Here is what a single endpoint document looks like when built from the template:
 
@@ -85,6 +89,50 @@ curl -X POST "https://api.example.com/v1/payments" \
 ```
 
 The full output is in [`examples/payments-api/create-payment.md`](examples/payments-api/create-payment.md).
+
+## How It Works
+
+```mermaid
+flowchart LR
+    A([OpenAPI spec\nor blank template]) --> B[AI prompt\ngenerates draft]
+    B --> C[SME review\nand edit]
+    C --> D{npm run validate}
+    D -->|frontmatter ✓\nstructure ✓\nquality ✓\nOpenAPI ✓| E[Merge to main]
+    D -->|gap found| C
+    E --> F([Published docs\non GitHub Pages])
+```
+
+## Validation in Practice
+
+Running `npm run validate` on this repository:
+
+```text
+$ npm run validate
+
+✓ validate:frontmatter   Validated frontmatter for 39 Markdown files.
+✓ validate:structure     Validated 108 required project files.
+✓ validate:quality       Validated documentation quality for 38 Markdown files. MERGE-SAFE and PUBLICATION-READY.
+✓ validate:openapi       Validated 17 Markdown files against OpenAPI examples.
+✓ validate:versions      Validated version compatibility for 24 Markdown files.
+✓ lint:markdown          0 linting errors.
+```
+
+Running `npm test`:
+
+```text
+$ npm test
+
+ ✓ tests/validate-frontmatter.test.mjs    (18 tests)
+ ✓ tests/agent-workflow.test.mjs          (30 tests)
+ ✓ tests/validate-structure.test.mjs      (81 tests)
+ ✓ tests/prompt-library.test.mjs          (31 tests)
+ ✓ tests/example-docs.test.mjs            (25 tests)
+ ✓ tests/generate-openapi-docs.test.mjs    (7 tests)
+
+ Test Files  6 passed (6)
+       Tests  192 passed (192)
+    Duration  3.03s
+```
 
 ## Quick Start
 
@@ -192,6 +240,9 @@ Start here if you are evaluating the product:
 - `docs/installation.md` for the 5-minute install path
 - `docs/product-guide.md` for product positioning and fit
 - `docs/testing-strategy.md` for a practical app-testing stack to pair with RepoDocs AI
+- `docs/public-launch-checklist.md` for the final Pages and launch checks
+- `docs/community-feedback-discussion.md` for the pinned feedback discussion copy
+- `docs/design-partner-intake.md` for the design-partner intake questions
 - `docs/index.md` for the source docs hub
 - `site/installation.html` for the published quickstart page
 
@@ -438,6 +489,14 @@ Yes. RepoDocs AI already includes a lightweight static UI in `site/` for GitHub 
 See `docs/roadmap-spec-summary.md` for a direct map between the specification, roadmap, current phase coverage, and remaining gaps.
 For the published Pages version, open [sulagnasasmal.github.io/repodocs-ai/spec-summary.html](https://sulagnasasmal.github.io/repodocs-ai/spec-summary.html) (live once GitHub Pages is enabled in repository settings).
 See `docs/spec-scorecard.md` for a strict 17-section scorecard against the attached specification.
+
+## Feedback Loop
+
+If you are evaluating RepoDocs AI on a real spec or want to help shape the product:
+
+- open a GitHub Discussion using `docs/community-feedback-discussion.md`
+- file the `Docs Generated From My Spec` issue form in GitHub Issues
+- use `docs/design-partner-intake.md` to start design-partner outreach
 
 ## Buyer Fit
 
