@@ -4,7 +4,7 @@ Use this as the source for a Tally, Google Form, or Notion form.
 
 ## Goal
 
-Qualify teams that may pay for an early design-partner engagement around API documentation generation and review.
+Qualify teams that may want an early design-partner conversation around API documentation generation and review.
 
 ## Questions
 
@@ -23,7 +23,7 @@ Qualify teams that may pay for an early design-partner engagement around API doc
    - building an internal workflow for AI-assisted docs
 10. How urgent is this problem?
 11. Would you be open to a 30-minute call?
-12. Would you consider a paid pilot if the workflow solves the problem?
+12. What kind of next step would be realistic for you if RepoDocs AI looks useful?
 
 ## Short Intro Copy
 
@@ -42,7 +42,7 @@ RepoDocs AI helps API teams generate, review, and validate documentation from re
 9. Would you want help with: multi-select checkboxes
 10. How urgent is this problem?: multiple choice with `Urgent this quarter`, `Important this half`, `Exploratory`
 11. Would you be open to a 30-minute call?: yes/no
-12. Would you consider a paid pilot if the workflow solves the problem?: multiple choice with `Yes`, `Maybe`, `No`
+12. What kind of next step would be realistic for you if RepoDocs AI looks useful?: multiple choice with `Just exploring`, `Feedback only`, `Future pilot when budget exists`, `Implementation help later`
 
 ## Tally Setup
 

@@ -31,6 +31,22 @@ After the setting is changed and the workflow runs successfully, the site should
 
 This is the missing public trust layer. The goal isn't broad marketing first. The goal is credible feedback from developers and technical writers who weren't involved in building the repo.
 
+## 2.5 GitHub About Alignment
+
+Align the repository About box with the README headline so the first public summary doesn't drift.
+
+### What to change in GitHub
+
+1. Open the repository homepage on GitHub.
+2. In the About box on the right, click the gear icon or Edit.
+3. Set the description to `AI-prompt-powered docs-as-code documentation system for SaaS API teams`.
+4. Keep the website as `https://sulagnasasmal.github.io/repodocs-ai/`.
+5. Save the change.
+
+### Why this matters
+
+The current README headline uses `AI-prompt-powered`, but the About box can drift over time because it's edited in GitHub settings. Keeping them aligned reduces message confusion on the repo homepage.
+
 ### Recommended launch-day sequence
 
 1. Pin a GitHub Discussion in the repository asking for first-impression feedback.
@@ -95,7 +111,7 @@ Discussion: https://github.com/SulagnaSasmal/repodocs-ai/discussions
 
 Use the Discussion thread as the primary feedback inbox.
 Use the `Docs Generated From My Spec` issue form for structured real-spec reports.
-Use the design-partner intake for teams that signal budget, urgency, or implementation help.
+Use the design-partner intake for teams that signal urgency, follow-up interest, or implementation help.
 
 ## 6. Commit History Guidance
 
