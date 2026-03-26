@@ -50,6 +50,11 @@ const config: Config = {
           position: "left"
         },
         {
+          to: "/demo",
+          label: "Demo",
+          position: "left"
+        },
+        {
           to: "/payments-example",
           label: "Payments Example",
           position: "left"
@@ -84,6 +89,10 @@ const config: Config = {
         {
           title: "Evaluate",
           items: [
+            {
+              label: "Demo",
+              to: "/demo"
+            },
             {
               label: "Payments Example",
               to: "/payments-example"

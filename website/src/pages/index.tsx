@@ -25,6 +25,7 @@ type WorkflowStep = {
 
 const actions: LinkItem[] = [
   { label: "Read the docs", href: "/docs", variant: "primary" },
+  { label: "Watch the demo", href: "/demo", variant: "primary" },
   { label: "Install in 5 minutes", href: "/docs/installation", variant: "primary" },
   {
     label: "Inspect the payments example",
@@ -203,6 +204,7 @@ export default function Home(): JSX.Element {
               That gives you enough evidence to decide whether RepoDocs AI is useful without reading every internal planning document.
             </p>
             <div className="inline-links">
+              <Link href="/demo">Product demo</Link>
               <Link href="/docs/installation">Installation</Link>
               <Link href="/docs/product-guide">Product guide</Link>
               <Link href="/docs/testing-strategy">Testing strategy</Link>
@@ -228,6 +230,9 @@ export default function Home(): JSX.Element {
             </p>
           </div>
           <div className="callout-actions">
+            <Link className="hero-action hero-action--primary" href="/demo">
+              Watch demo
+            </Link>
             <Link className="hero-action hero-action--primary" href="/docs">
               Explore docs
             </Link>
