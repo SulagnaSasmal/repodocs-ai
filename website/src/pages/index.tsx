@@ -28,7 +28,7 @@ const actions: LinkItem[] = [
   { label: "Install in 5 minutes", href: "/docs/installation", variant: "primary" },
   {
     label: "Inspect the payments example",
-    href: "https://github.com/SulagnaSasmal/repodocs-ai/tree/main/examples/payments-api",
+    href: "/payments-example",
     variant: "secondary"
   },
   {
@@ -116,10 +116,10 @@ export default function Home(): JSX.Element {
           <div className="hero-shell">
             <div className="hero-copy">
               <p className="eyebrow">Documentation system</p>
-              <h1>Build docs like product infrastructure, not a pile of templates.</h1>
+              <h1>Ship API docs with structure, proof, and review built in.</h1>
               <p className="hero-text">
-                RepoDocs AI is a repository-based documentation system for API teams that want faster drafting,
-                consistent structure, and built-in review instead of scattered Markdown files and one-off prompts.
+                RepoDocs AI gives API teams one repository-based workflow for drafting, validating, and publishing
+                documentation without stitching together templates, prompts, and review steps by hand.
               </p>
               <div className="hero-actions">
                 {actions.map((action) => (
@@ -136,10 +136,10 @@ export default function Home(): JSX.Element {
             <div className="hero-rail">
               <div className="hero-panel hero-panel--accent">
                 <p className="panel-label">What this is</p>
-                <h2>Templates, AI-assisted drafting, validation, and publishing in one repo workflow.</h2>
+                <h2>Start with the product path, then inspect the repository internals.</h2>
                 <p>
-                  Start with installation and the payments example, then decide whether the system fits your team.
-                  The site is designed to help buyers evaluate quickly instead of sorting through launch collateral.
+                  Installation, the payments example, and the docs hub are the shortest way to judge whether RepoDocs AI
+                  is useful. GitHub is still there when you want to inspect the source assets in detail.
                 </p>
               </div>
               <div className="stats-grid">

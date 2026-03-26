@@ -102,8 +102,8 @@ h4,
 
 .hero-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
-  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  gap: 1.25rem;
   align-items: stretch;
 }
 
@@ -155,10 +155,10 @@ h4,
 
 .hero-copy h1 {
   margin: 0;
-  max-width: 10ch;
-  font-size: clamp(3rem, 6vw, 5.8rem);
-  line-height: 0.92;
-  letter-spacing: -0.05em;
+  max-width: 12ch;
+  font-size: clamp(2.5rem, 5vw, 4.35rem);
+  line-height: 0.98;
+  letter-spacing: -0.04em;
 }
 
 .hero-text,
@@ -170,9 +170,9 @@ h4,
 }
 
 .hero-text {
-  max-width: 58ch;
+  max-width: 54ch;
   margin: 1.4rem 0 0;
-  font-size: 1.08rem;
+  font-size: 1.02rem;
 }
 
 .hero-actions,
@@ -237,6 +237,55 @@ h4,
   margin-bottom: 0.75rem;
   font-size: clamp(1.65rem, 3vw, 2.5rem);
   line-height: 1.04;
+}
+
+.example-page {
+  padding: 2rem 0 5rem;
+}
+
+.example-hero,
+.example-card {
+  margin-top: 1.5rem;
+}
+
+.example-hero h1 {
+  margin: 0;
+  font-size: clamp(2.3rem, 4.6vw, 4rem);
+  line-height: 0.98;
+  letter-spacing: -0.04em;
+}
+
+.example-lead {
+  max-width: 60ch;
+  margin: 1rem 0 0;
+  color: var(--site-muted);
+  font-size: 1.04rem;
+}
+
+.example-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.example-card h2 {
+  font-size: clamp(1.3rem, 2vw, 1.7rem);
+}
+
+.inline-link {
+  display: inline-flex;
+  margin-top: 0.75rem;
+  color: var(--site-moss);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.example-steps {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.8rem;
 }
 
 .stats-grid,
@@ -450,6 +499,7 @@ h4,
 
 @media (max-width: 996px) {
   .hero-shell,
+  .example-grid,
   .section-grid,
   .workflow-grid,
   .callout-band {
@@ -461,7 +511,8 @@ h4,
   }
 
   .hero-copy h1 {
-    max-width: 12ch;
+    max-width: 14ch;
+    font-size: clamp(2.2rem, 8vw, 3.4rem);
   }
 
   .hero-band {
