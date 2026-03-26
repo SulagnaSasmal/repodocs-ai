@@ -94,9 +94,9 @@ SCENES = [
         "kicker": "REAL PROOF",
         "title": "A Stripe-style payments example.\nNot just templates.",
         "body": (
-            "Inspect a complete payments API documentation set — "
+            "Inspect a complete payments API documentation set with "
             "overview, endpoints, authentication, errors, idempotency, "
-            "and webhooks — built from the shipped templates."
+            "and webhooks, built from the shipped templates."
         ),
         "narration": (
             "But don't take our word for it. RepoDocs AI ships with a complete "
@@ -110,14 +110,14 @@ SCENES = [
         "kicker": "HOW IT WORKS",
         "title": "From zero to published docs\nin four steps.",
         "bullets": [
-            "1. Install — clone, install, validate in 5 minutes",
-            "2. Inspect — review the payments example and templates",
-            "3. Adapt — copy template packs into your own repo",
-            "4. Publish — use the same workflow for review and publishing",
+            "1. Install: clone, install, validate in 5 minutes",
+            "2. Inspect: review the payments example and templates",
+            "3. Adapt: copy template packs into your own repo",
+            "4. Publish: use the same workflow for review and publishing",
         ],
         "narration": (
             "Getting started takes four steps. "
-            "First, install. Clone the repo, install dependencies, and validate — all in five minutes. "
+            "First, install. Clone the repo, install dependencies, and validate, all in five minutes. "
             "Second, inspect. Review the payments example and templates to see the quality. "
             "Third, adapt. Copy the template packs into your own docs repository. "
             "Fourth, publish. Use the same repository workflow for review, validation, and publishing."
@@ -427,10 +427,10 @@ def compose_video(scenes: list[dict], audio_paths: list[Path]) -> Path:
             overlay_label = f"ov{overlay_index}"
             next_label = f"base{overlay_index}"
             filter_steps.append(
-                f"[{overlay_index}:v]format=rgba,fade=t=in:st={reveal_time:.2f}:d=0.28:alpha=1[{overlay_label}]"
+                f"[{overlay_index}:v]format=rgba,fade=t=in:st=0:d=0.32:alpha=1,setpts=PTS-STARTPTS+{reveal_time:.2f}/TB[{overlay_label}]"
             )
             filter_steps.append(
-                f"[{current_label}][{overlay_label}]overlay=0:0:enable='between(t,{reveal_time:.2f},{duration:.2f})'[{next_label}]"
+                f"[{current_label}][{overlay_label}]overlay=0:0:eof_action=pass[{next_label}]"
             )
             current_label = next_label
 
@@ -508,7 +508,7 @@ def compose_video(scenes: list[dict], audio_paths: list[Path]) -> Path:
 
 def main():
     print("=" * 60)
-    print("  RepoDocs AI — Demo Video Generator")
+    print("  RepoDocs AI Demo Video Generator")
     print("=" * 60)
 
     _ensure_ffmpeg()
