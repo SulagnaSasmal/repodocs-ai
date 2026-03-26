@@ -120,7 +120,7 @@ export default function Home(): JSX.Element {
               <h1>Ship API docs with structure, proof, and review built in.</h1>
               <p className="hero-text">
                 RepoDocs AI gives API teams one repository-based workflow for drafting, validating, and publishing
-                documentation without stitching together templates, prompts, and review steps by hand.
+                documentation without stitching together templates, review steps, and publishing checks by hand.
               </p>
               <div className="hero-actions">
                 {actions.map((action) => (
@@ -161,7 +161,7 @@ export default function Home(): JSX.Element {
             <p className="section-kicker">Problem</p>
             <h2>Most API teams still document too slowly, too differently, and too late.</h2>
             <p>
-              Teams can generate drafts quickly, but they still struggle to keep format consistent,
+              Teams can draft quickly, but they still struggle to keep format consistent,
               tie content back to the product contract, and publish docs that survive release pressure.
             </p>
           </article>
@@ -226,7 +226,7 @@ export default function Home(): JSX.Element {
             <h2>Use the docs site to evaluate the product, and GitHub to inspect the working assets.</h2>
             <p>
               The public site now focuses on adoption and proof. GitHub remains the place to inspect the templates,
-              prompts, examples, and automation that power the system.
+              examples, and automation that power the system.
             </p>
           </div>
           <div className="callout-actions">
@@ -241,6 +241,16 @@ export default function Home(): JSX.Element {
             </Link>
           </div>
         </section>
+
+        <Link className="floating-demo" href="/demo" aria-label="Open the narrated demo">
+          <span className="floating-demo__icon" aria-hidden="true">
+            <span className="floating-demo__triangle" />
+          </span>
+          <span className="floating-demo__copy">
+            <strong>Watch demo</strong>
+            <span>Narrated product walkthrough</span>
+          </span>
+        </Link>
       </main>
     </Layout>
   );
