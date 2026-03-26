@@ -3,8 +3,8 @@ import Link from "@docusaurus/Link";
 import useBaseUrl from "@docusaurus/useBaseUrl";
 
 const demoHighlights = [
-  "Why API teams outgrow scattered templates, docs folders, and ad hoc AI drafts.",
-  "How RepoDocs AI packages templates, prompts, validation, publishing, and proof into one repository-native system.",
+  "Why API teams outgrow scattered templates, docs folders, and ad hoc documentation workflows.",
+  "How RepoDocs AI packages templates, validation, publishing, and proof into one repository-based system.",
   "What buyers can inspect immediately: install path, live docs, payments example, and working repository assets."
 ];
 
