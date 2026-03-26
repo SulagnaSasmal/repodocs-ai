@@ -5,28 +5,33 @@ type ExampleTopic = {
   title: string;
   body: string;
   href: string;
+  sourceHref: string;
 };
 
 const topics: ExampleTopic[] = [
   {
     title: "API overview",
     body: "A service-level entry point that explains the payments API before endpoint detail starts.",
-    href: "https://github.com/SulagnaSasmal/repodocs-ai/blob/main/examples/payments-api/api-overview.md"
+    href: "/payments-example/api-overview",
+    sourceHref: "https://github.com/SulagnaSasmal/repodocs-ai/blob/main/examples/payments-api/api-overview.md"
   },
   {
     title: "Authentication",
     body: "Shared guidance for auth, security expectations, and how developers gain access.",
-    href: "https://github.com/SulagnaSasmal/repodocs-ai/blob/main/examples/payments-api/authentication.md"
+    href: "/payments-example/authentication",
+    sourceHref: "https://github.com/SulagnaSasmal/repodocs-ai/blob/main/examples/payments-api/authentication.md"
   },
   {
     title: "Create and retrieve payment",
     body: "Endpoint docs that show request, response, and operational detail in a Stripe-style structure.",
-    href: "https://github.com/SulagnaSasmal/repodocs-ai/tree/main/examples/payments-api"
+    href: "/payments-example/payment-endpoints",
+    sourceHref: "https://github.com/SulagnaSasmal/repodocs-ai/tree/main/examples/payments-api"
   },
   {
     title: "Errors, idempotency, and webhooks",
     body: "The shared topics developers expect in a serious payments API documentation set.",
-    href: "https://github.com/SulagnaSasmal/repodocs-ai/tree/main/examples/payments-api"
+    href: "/payments-example/operational-model",
+    sourceHref: "https://github.com/SulagnaSasmal/repodocs-ai/tree/main/examples/payments-api"
   }
 ];
 
@@ -58,7 +63,7 @@ export default function PaymentsExamplePage(): JSX.Element {
               className="hero-action hero-action--secondary"
               href="https://github.com/SulagnaSasmal/repodocs-ai/tree/main/examples/payments-api"
             >
-              Open source files
+              View source on GitHub
             </Link>
           </div>
         </section>
@@ -68,9 +73,10 @@ export default function PaymentsExamplePage(): JSX.Element {
             <article key={topic.title} className="surface-card surface-card--plain example-card">
               <h2>{topic.title}</h2>
               <p>{topic.body}</p>
-              <Link className="inline-link" href={topic.href}>
-                Open this source
-              </Link>
+              <div className="inline-links">
+                <Link href={topic.href}>Open example page</Link>
+                <Link href={topic.sourceHref}>View source</Link>
+              </div>
             </article>
           ))}
         </section>
