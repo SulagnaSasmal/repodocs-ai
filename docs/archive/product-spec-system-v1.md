@@ -1,3 +1,7 @@
+---
+unlisted: true
+---
+
 > **Archived.** This is the original v1 system specification preserved for historical reference.
 > The current canonical specification is [`docs/product-specification.md`](../product-specification.md).
 

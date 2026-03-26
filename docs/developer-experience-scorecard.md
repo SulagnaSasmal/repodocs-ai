@@ -1,3 +1,7 @@
+---
+unlisted: true
+---
+
 # RepoDocs AI Developer Experience Scorecard
 
 ## Purpose

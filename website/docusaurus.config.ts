@@ -3,7 +3,7 @@ import type * as Preset from "@docusaurus/preset-classic";
 
 const config: Config = {
   title: "RepoDocs AI",
-  tagline: "Repository-native documentation operations for API teams.",
+  tagline: "A repository-based documentation system for API teams.",
   favicon: "img/favicon.svg",
   url: "https://sulagnasasmal.github.io",
   baseUrl: "/repodocs-ai/",
@@ -72,17 +72,17 @@ const config: Config = {
               to: "/docs/installation"
             },
             {
-              label: "Docs Hub",
-              to: "/docs"
-            },
-            {
               label: "Product Guide",
               to: "/docs/product-guide"
+            },
+            {
+              label: "Docs Hub",
+              to: "/docs"
             }
           ]
         },
         {
-          title: "Proof",
+          title: "Evaluate",
           items: [
             {
               label: "Payments Example",
@@ -93,8 +93,8 @@ const config: Config = {
               to: "/docs/testing-strategy"
             },
             {
-              label: "Implementation Status",
-              to: "/docs/implementation-status"
+              label: "Product Specification",
+              to: "/docs/product-specification"
             }
           ]
         },

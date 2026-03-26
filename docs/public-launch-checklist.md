@@ -1,3 +1,7 @@
+---
+unlisted: true
+---
+
 # RepoDocs AI Public Launch Checklist
 
 Use this checklist to finish the last public-launch tasks that cannot be completed by code changes alone.

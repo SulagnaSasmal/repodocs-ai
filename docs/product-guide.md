@@ -1,12 +1,12 @@
-# RepoDocs AI Product Guide
+# Product Guide
 
-## What RepoDocs AI Is
+## Overview
 
-RepoDocs AI is an AI-prompt-powered docs-as-code documentation system for SaaS teams building APIs.
+RepoDocs AI is a documentation system for SaaS API teams that use repositories to draft, review, and publish docs.
 
-It is designed for teams that want more than a folder of templates. The repository combines documentation structure, AI prompt workflows, validation, examples, publishing support, and automation in one installable product.
+It's designed for teams that want more than a folder of templates. The repository combines documentation structure, AI-assisted drafting workflows, validation, examples, and publishing support in one installable system.
 
-## Who It Is For
+## Audience
 
 - SaaS engineering teams
 - API platform teams
@@ -17,7 +17,7 @@ It is designed for teams that want more than a folder of templates. The reposito
 
 RepoDocs AI helps teams solve four common documentation problems:
 
-- inconsistent documentation structure across repositories
+- different services documented in different formats
 - slow manual documentation creation
 - low-trust AI-generated drafts without guardrails
 - documentation drift caused by weak validation and review workflows
@@ -32,7 +32,7 @@ RepoDocs AI adds:
 - prompt packs for drafting and review
 - frontmatter, structure, and OpenAPI-aware validation
 - example systems and published-site views
-- export pipelines and a lightweight hosted control plane for automation
+- export pipelines for teams that need broader publishing support
 
 ## Start Here
 

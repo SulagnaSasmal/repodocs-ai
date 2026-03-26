@@ -1,3 +1,7 @@
+---
+unlisted: true
+---
+
 # RepoDocs AI Roadmap And Spec Summary
 
 ## Current Position

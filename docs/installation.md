@@ -1,4 +1,4 @@
-# RepoDocs AI Installation
+# Installation Guide
 
 ## Goal
 
@@ -41,18 +41,16 @@ npm run validate
 npm run proof:path
 ```
 
-1. If you are preparing for public launch, complete `docs/public-launch-checklist.md` before announcing the repository.
-
 1. Review the product-facing documentation.
 
 - `README.md`
 - `docs/product-guide.md`
 - `docs/ready-to-install-system.md`
-- `site/index.html`
+- `docs/product-specification.md`
 
 ## Quick Start For Your Own Docs Repository
 
-If your goal is not to develop RepoDocs AI itself, but to use it as a documentation system starter, do this next.
+If your goal isn't to develop RepoDocs AI itself, but to use it as a documentation system starter, do this next.
 
 1. Clone RepoDocs AI and copy the starter assets into your new docs repository.
 1. Start with the API, feature, and governance template packs.
@@ -131,4 +129,4 @@ After installation, a developer should be able to:
 - inspect reusable templates and prompts immediately
 - validate the repository successfully
 - review the published site or run the hosted control-plane smoke test
-- know where to leave feedback or request a design-partner conversation
+- decide whether the system fits their documentation workflow
