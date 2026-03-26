@@ -1,3 +1,7 @@
+---
+unlisted: true
+---
+
 # Phase 1 and Phase 2 Build Plan
 
 This document defines the initial implementation scope currently targeted in the repository.

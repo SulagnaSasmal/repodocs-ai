@@ -1,3 +1,7 @@
+---
+unlisted: true
+---
+
 # Design-Partner Intake
 
 Use this as the source for a Tally, Google Form, or Notion form.

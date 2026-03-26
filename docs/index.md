@@ -1,60 +1,39 @@
 # Documentation Hub
 
-This is the canonical source documentation hub for RepoDocs AI.
+RepoDocs AI helps API teams document faster with shared templates, AI-assisted drafting, and repository-based validation.
 
-If you are new to the repository, follow this order:
+## Start Here
 
-1. `installation.md` to install and validate the system in under 5 minutes.
-2. `product-guide.md` to understand who the product is for and what problem it solves.
-3. `ready-to-install-system.md` to see the full product walkthrough.
-4. `product-specification.md` to review the complete specification.
+1. [Installation](installation.md) to install and validate the system in under 5 minutes.
+2. [Product Guide](product-guide.md) to understand who RepoDocs AI is for and what problem it solves.
+3. [Ready-To-Install System](ready-to-install-system.md) to see the end-to-end workflow.
+4. [Product Specification](product-specification.md) for the detailed reference.
 
-## Fast Path
+## Quick Evaluation Path
 
-Use this path if you are evaluating RepoDocs AI as a developer product:
+Use this path if you want to decide whether RepoDocs AI is credible for your team:
 
-1. Clone the repository.
-2. Run `npm install`.
-3. Run `npm run validate`.
-4. Open `templates/`, `prompts/`, and `examples/`.
+1. Read [Installation](installation.md).
+2. Inspect the [payments example](https://github.com/SulagnaSasmal/repodocs-ai/tree/main/examples/payments-api).
+3. Review [Testing Strategy](testing-strategy.md).
+4. Open the repository directories that power the system: `templates/`, `prompts/`, and `examples/`.
 
-## Core Documents
+## Core Product Docs
 
-- `installation.md`
-- `product-guide.md`
-- `market-validation.md`
-- `developer-experience-scorecard.md`
-- `public-launch-kit.md`
-- `public-launch-checklist.md`
-- `community-feedback-discussion.md`
-- `design-partner-intake.md`
-- `ready-to-install-system.md`
-- `product-specification.md`
+- [Installation](installation.md)
+- [Product Guide](product-guide.md)
+- [Ready-To-Install System](ready-to-install-system.md)
+- [Product Specification](product-specification.md)
+- [Testing Strategy](testing-strategy.md)
+- [Export Integrations](export-integrations.md)
+- [Hosted Control Plane](hosted-control-plane.md)
 
-## Fastest Trust Check
+## Adoption And Migration
 
-If you want to decide whether RepoDocs AI is real or still just a prototype, review these in order:
+- [Multi-Repo Guide](multi-repo-guide.md)
+- [Payments Migration Guide](migration-guides/payments-retrieve-status.md)
 
-1. `../examples/payments-api/README.md`
-2. `real-world-validation.md`
-3. `market-validation.md`
-4. `developer-experience-scorecard.md`
-
-## Operational Documents
-
-- `roadmap-spec-summary.md`
-- `implementation-status.md`
-- `hosted-control-plane.md`
-- `testing-strategy.md`
-
-## Feedback Loop Assets
-
-- `community-feedback-discussion.md` for the pinned GitHub Discussion copy
-- `design-partner-intake.md` for the intake questions you can publish in a form tool
-- `public-launch-kit.md` for the exact outreach post drafts and launch instructions
-- `public-launch-checklist.md` for the final GitHub Pages and launch-day steps
-
-## Product-Facing Directories
+## Repository Assets
 
 - `../templates/` contains reusable documentation packs.
 - `../prompts/` contains drafting and review prompt packs.

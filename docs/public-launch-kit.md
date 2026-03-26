@@ -1,3 +1,7 @@
+---
+unlisted: true
+---
+
 # Public Launch Kit
 
 This document turns the remaining pre-launch items into concrete actions.

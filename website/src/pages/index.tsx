@@ -40,68 +40,68 @@ const actions: LinkItem[] = [
 
 const stats: Stat[] = [
   {
-    label: "Templates",
-    value: "6 packs",
-    detail: "API, product, feature, governance, operations, and architecture documentation."
+    label: "Setup",
+    value: "5 minutes",
+    detail: "Install, validate, and inspect the system before you commit to it."
   },
   {
     label: "Proof",
-    value: "1 trust path",
-    detail: "Install, validate, inspect the payments reference, and judge the system on concrete output."
+    value: "Payments example",
+    detail: "Review a realistic API doc set instead of guessing from homepage promises."
   },
   {
-    label: "Automation",
-    value: "CI + exports",
-    detail: "Validation, generation, analytics, knowledge graph jobs, and publishing workflows."
+    label: "Quality",
+    value: "Built-in checks",
+    detail: "Use validation and review rules so documentation quality does not depend on memory."
   }
 ];
 
 const pillars: Pillar[] = [
   {
-    title: "Stop shipping template fragments",
-    body: "RepoDocs AI packages prompts, review rules, validation, examples, and publishing into one repository-native operating model."
+    title: "Standardize how your APIs are documented",
+    body: "Use one documentation structure across services instead of letting each team invent its own format."
   },
   {
-    title: "Document from evidence",
-    body: "OpenAPI generation, example systems, and documentation review prompts make it easier to verify that output matches the product contract."
+    title: "Draft from source material, not guesswork",
+    body: "Generate from OpenAPI inputs, work from reusable templates, and keep reviewers anchored in the actual product contract."
   },
   {
-    title: "Move from draft to release",
-    body: "The system covers authoring, review, CI validation, export, and hosted automation rather than stopping at Markdown scaffolding."
+    title: "Ship docs that can survive product change",
+    body: "Validation, review workflows, and publishable examples help teams keep documentation useful after the first draft."
   }
 ];
 
 const workflow: WorkflowStep[] = [
   {
-    title: "Bootstrap",
-    body: "Create a docs repo and copy the shipped template, prompt, and diagram packs."
+    title: "Install",
+    body: "Clone the repository, install dependencies, and run the validation path in a few minutes."
   },
   {
-    title: "Generate",
-    body: "Draft product or API docs with the prompt packs or generate endpoint docs from an OpenAPI spec."
+    title: "Inspect",
+    body: "Review the payments example, templates, and prompts to see the expected output quality."
   },
   {
-    title: "Validate",
-    body: "Run structural, quality, and OpenAPI checks before the content reaches production."
+    title: "Adapt",
+    body: "Copy the template packs into your own docs repository and tailor them to your APIs and workflows."
   },
   {
     title: "Publish",
-    body: "Expose the documentation through GitHub Pages and export into downstream tools when teams need broader distribution."
+    body: "Use the same repository workflow for review, validation, and documentation publishing."
   }
 ];
 
 const proofPoints: Pillar[] = [
   {
-    title: "A live docs hub",
-    body: "Core product, installation, roadmap, and implementation docs are now navigable as a real documentation site instead of a set of disconnected HTML files."
+    title: "A working payments API example",
+    body: "Start with the example output so you can judge whether the structure and quality match what your team needs."
   },
   {
-    title: "A Stripe-style sample",
-    body: "The payments example shows authentication, errors, idempotency, and webhooks so buyers can inspect the final quality bar."
+    title: "Templates and prompts in the repo",
+    body: "Inspect the actual building blocks you would copy into your own documentation workflow."
   },
   {
-    title: "Operational depth",
-    body: "Control-plane, validation, analytics, and export flows remain visible as first-class product capabilities."
+    title: "Validation before publication",
+    body: "Run the repository checks to confirm the system enforces structure instead of relying on manual review alone."
   }
 ];
 
@@ -118,8 +118,8 @@ export default function Home(): JSX.Element {
               <p className="eyebrow">Documentation system</p>
               <h1>Build docs like product infrastructure, not a pile of templates.</h1>
               <p className="hero-text">
-                RepoDocs AI gives API teams a practical documentation operating model: reusable packs,
-                guided AI drafting, review guardrails, validation, examples, and publishing paths that live in the repo.
+                RepoDocs AI is a repository-based documentation system for API teams that want faster drafting,
+                consistent structure, and built-in review instead of scattered Markdown files and one-off prompts.
               </p>
               <div className="hero-actions">
                 {actions.map((action) => (
@@ -135,11 +135,11 @@ export default function Home(): JSX.Element {
             </div>
             <div className="hero-rail">
               <div className="hero-panel hero-panel--accent">
-                <p className="panel-label">Why this rebuild is better</p>
-                <h2>Clearer structure, stronger proof, lower friction.</h2>
+                <p className="panel-label">What this is</p>
+                <h2>Templates, AI-assisted drafting, validation, and publishing in one repo workflow.</h2>
                 <p>
-                  The site now behaves like a documentation product: a focused homepage, a real docs hub,
-                  and obvious paths into installation, validation, and reference examples.
+                  Start with installation and the payments example, then decide whether the system fits your team.
+                  The site is designed to help buyers evaluate quickly instead of sorting through launch collateral.
                 </p>
               </div>
               <div className="stats-grid">
@@ -158,15 +158,15 @@ export default function Home(): JSX.Element {
         <section className="content-shell section-grid">
           <article className="surface-card surface-card--warm">
             <p className="section-kicker">Problem</p>
-            <h2>Most internal docs workflows still break at the exact points teams need trust.</h2>
+            <h2>Most API teams still document too slowly, too differently, and too late.</h2>
             <p>
-              Teams can draft faster than ever, but they still struggle to keep structure consistent,
-              prove alignment with source contracts, and publish something that survives product change.
+              Teams can generate drafts quickly, but they still struggle to keep format consistent,
+              tie content back to the product contract, and publish docs that survive release pressure.
             </p>
           </article>
           <article className="surface-card surface-card--cool">
             <p className="section-kicker">Approach</p>
-            <h2>RepoDocs AI turns documentation into a repeatable delivery system.</h2>
+            <h2>RepoDocs AI gives teams one practical system for drafting, checking, and publishing docs.</h2>
             <ul className="bullet-list">
               {pillars.map((pillar) => (
                 <li key={pillar.title}>
@@ -180,8 +180,8 @@ export default function Home(): JSX.Element {
 
         <section className="content-shell narrative-band">
           <div className="section-heading">
-            <p className="section-kicker">Workflow</p>
-            <h2>From repository bootstrap to published docs in four steps.</h2>
+            <p className="section-kicker">Evaluate</p>
+            <h2>Use the site the way a buyer would evaluate the product.</h2>
           </div>
           <div className="workflow-grid">
             {workflow.map((step, index) => (
@@ -196,16 +196,16 @@ export default function Home(): JSX.Element {
 
         <section className="content-shell section-grid">
           <article className="surface-card surface-card--dark">
-            <p className="section-kicker">Proof</p>
-            <h2>The fast trust path is built into the site.</h2>
+            <p className="section-kicker">How to evaluate</p>
+            <h2>Follow the shortest path from claim to proof.</h2>
             <p>
-              Start with installation, inspect the payments reference, then review implementation and testing artifacts.
-              The visitor no longer has to infer whether the system is real.
+              Start with installation, inspect the payments reference, and review how validation works.
+              That gives you enough evidence to decide whether RepoDocs AI is useful without reading every internal planning document.
             </p>
             <div className="inline-links">
               <Link href="/docs/installation">Installation</Link>
+              <Link href="/docs/product-guide">Product guide</Link>
               <Link href="/docs/testing-strategy">Testing strategy</Link>
-              <Link href="/docs/implementation-status">Implementation status</Link>
             </div>
           </article>
           <div className="stack-grid">
@@ -220,11 +220,11 @@ export default function Home(): JSX.Element {
 
         <section className="content-shell callout-band">
           <div>
-            <p className="section-kicker">What you can do next</p>
-            <h2>Use the docs hub as the public face, and the repository as the working system.</h2>
+            <p className="section-kicker">Choose a starting point</p>
+            <h2>Use the docs site to evaluate the product, and GitHub to inspect the working assets.</h2>
             <p>
-              The redesign keeps the product grounded in the repository. Docs pages explain the workflow,
-              while GitHub remains the place to inspect templates, prompts, generated examples, and automation code.
+              The public site now focuses on adoption and proof. GitHub remains the place to inspect the templates,
+              prompts, examples, and automation that power the system.
             </p>
           </div>
           <div className="callout-actions">

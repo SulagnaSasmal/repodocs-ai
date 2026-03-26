@@ -1,3 +1,7 @@
+---
+unlisted: true
+---
+
 # RepoDocs AI Spec Scorecard
 
 Strict section-by-section scorecard against the attached RepoDocs AI v1.0 specification.

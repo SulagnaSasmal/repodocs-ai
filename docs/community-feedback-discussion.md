@@ -1,41 +1,29 @@
-# Feedback Discussion Starter
+---
+unlisted: true
+---
 
-Use this exact content for the first pinned GitHub Discussion.
+# Community Feedback
 
-## GitHub Discussion Setup
+If you try RepoDocs AI on a real API or documentation workflow, the most useful feedback is concrete and specific.
 
-- Category: General
-- Title: RepoDocs AI feedback: what worked, what confused you, and what would make you try it on a real spec?
-- Pin to repository discussions: yes
-- Lock: no
+## Where To Respond
 
-## Exact Body To Paste
+- Open a [GitHub Discussion](https://github.com/SulagnaSasmal/repodocs-ai/discussions)
+- Open an [issue](https://github.com/SulagnaSasmal/repodocs-ai/issues/new/choose) if you hit a repeatable failure
 
-```md
-I am opening this thread to collect blunt external feedback on RepoDocs AI.
+## What Feedback Helps Most
 
-RepoDocs AI is a repo-native documentation system for API teams. It combines reusable templates, structured AI prompts, validation scripts, and OpenAPI-driven generation so teams can produce documentation faster without losing review discipline.
+Share answers to these questions:
 
-If you tried the repository or the live site, please reply with:
+1. What was clear within the first few minutes?
+2. What was confusing, slow, or too detailed?
+3. Did the payments example make the output feel credible?
+4. If you tried your own OpenAPI spec, where did the workflow help and where did it break?
+5. What would make you comfortable adopting this in a real repository?
 
-1. What did you understand within the first 2 minutes?
-2. What was confusing or slower than it should have been?
-3. Did the payments example make the output feel real and trustworthy?
-4. If you ran the proof path or the OpenAPI generation flow, what happened?
-5. What would make you comfortable trying this on a real API spec?
+## Useful Links
 
-Useful links:
-
-- Repository: https://github.com/SulagnaSasmal/repodocs-ai
-- Live site: https://sulagnasasmal.github.io/repodocs-ai/
-- Install guide: https://github.com/SulagnaSasmal/repodocs-ai/blob/main/docs/installation.md
-- Payments example: https://github.com/SulagnaSasmal/repodocs-ai/tree/main/examples/payments-api
-- Developer experience scorecard: https://github.com/SulagnaSasmal/repodocs-ai/blob/main/docs/developer-experience-scorecard.md
-- Docs Generated From My Spec issue form: https://github.com/SulagnaSasmal/repodocs-ai/issues/new/choose
-
-If you generated docs from your own OpenAPI spec, please also open the `Docs Generated From My Spec` issue form so I can track output quality, failure modes, and adoption blockers in one place.
-```
-
-## Suggested Pin Note
-
-Pinned for launch-week feedback. First-impression reviews from API and docs practitioners are the most useful right now.
+- [Repository](https://github.com/SulagnaSasmal/repodocs-ai)
+- [Live site](https://sulagnasasmal.github.io/repodocs-ai/)
+- [Installation](https://sulagnasasmal.github.io/repodocs-ai/docs/installation)
+- [Payments example](https://github.com/SulagnaSasmal/repodocs-ai/tree/main/examples/payments-api)
