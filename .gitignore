@@ -1,6 +1,9 @@
 .DS_Store
 Thumbs.db
 node_modules/
+website/node_modules/
+website/.docusaurus/
+website/build/
 generated/
 exports/
 agents/output/

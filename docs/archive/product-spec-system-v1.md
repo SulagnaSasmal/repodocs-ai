@@ -208,7 +208,7 @@ endpoint-template.md
 
 Structure:
 
-Endpoint: {endpoint-name}
+`Endpoint: {endpoint-name}`
 Summary
 
 Brief description.
@@ -249,7 +249,7 @@ feature-overview.md
 
 Structure:
 
-Feature: {feature-name}
+`Feature: {feature-name}`
 Problem Statement
 Feature Summary
 Architecture Overview

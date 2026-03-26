@@ -1,0 +1,20 @@
+{
+  "name": "repodocs-ai-website",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "start": "docusaurus start --host 0.0.0.0",
+    "build": "docusaurus build",
+    "serve": "docusaurus serve"
+  },
+  "dependencies": {
+    "@docusaurus/core": "^3.8.1",
+    "@docusaurus/preset-classic": "^3.8.1",
+    "@mdx-js/react": "^3.0.1",
+    "clsx": "^2.1.1",
+    "globby": "^14.1.0",
+    "graceful-fs": "^4.2.11",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}
