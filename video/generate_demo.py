@@ -33,6 +33,18 @@ TEXT_PRIMARY = (255, 255, 255)
 TEXT_MUTED = (180, 180, 190)
 KICKER_COLOR = ACCENT
 
+# Right-panel ring colour per scene index — gives each scene a distinct accent
+_RING_COLORS = [
+    (255, 80, 50),    # 0  THE PROBLEM     red-orange
+    (255, 120, 40),   # 1  THE PAIN        deep orange
+    (255, 200, 50),   # 2  INTRODUCING     gold
+    (80, 200, 120),   # 3  WHAT YOU GET    green
+    (56, 200, 180),   # 4  REAL PROOF      teal
+    (150, 100, 230),  # 5  HOW IT WORKS    purple
+    (100, 170, 220),  # 6  WHO IT'S FOR    steel blue
+    (255, 149, 0),    # 7  GET STARTED     brand orange
+]
+
 SCENES = [
     {
         "kicker": "THE PROBLEM",
@@ -141,7 +153,7 @@ SCENES = [
     {
         "kicker": "GET STARTED",
         "title": "Install in minutes.\nSee the product in action.",
-        "body": "sulagnasasmal.github.io/repodocs-ai",
+        "cta_url": "sulagnasasmal.github.io/repodocs-ai",
         "narration": (
             "Ready to see the difference? Install RepoDocs AI in minutes. "
             "Visit the site, watch the demo, inspect the proof, and start shipping "
@@ -152,12 +164,17 @@ SCENES = [
 ]
 
 FONT_SIZES = {
-    "logo": 24,
-    "kicker": 28,
-    "title": 64,
-    "body": 36,
-    "bullet": 32,
+    "logo": 26,
+    "kicker": 30,
+    "title": 68,
+    "body": 38,
+    "bullet": 34,
+    "cta": 52,
 }
+
+CONTENT_TOP = 120      # y start of content area (below the logo line)
+CONTENT_BOTTOM = 960   # y end of content area (above the bottom bar)
+
 
 def _get_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
     candidates = [
@@ -176,9 +193,38 @@ def _wrap_lines(text: str, width: int) -> list[str]:
     return textwrap.wrap(text, width=width) if text else []
 
 
+def _calc_content_height(scene: dict) -> int:
+    """Return the total pixel height the content block will occupy."""
+    h = 0
+    if scene.get("kicker"):
+        h += 60
+    for _ in scene.get("title", "").split("\n"):
+        h += 88
+    h += 32  # post-title spacing
+    body_lines = _wrap_lines(scene.get("body", ""), 60)
+    if body_lines:
+        h += 52 * len(body_lines)
+    if scene.get("cta_url"):
+        h += 80
+    bullets = scene.get("bullets") or []
+    if bullets:
+        h += 10
+        for bullet in bullets:
+            wrapped = textwrap.wrap(
+                bullet if bullet[0].isdigit() else f"• {bullet}",
+                width=54,
+                subsequent_indent="  ",
+            )
+            h += 54 * max(len(wrapped), 1)
+    return h
+
+
 def _scene_elements(scene: dict) -> list[dict]:
     elements: list[dict] = []
-    y_cursor = 180
+
+    content_height = _calc_content_height(scene)
+    available = CONTENT_BOTTOM - CONTENT_TOP
+    y_cursor = CONTENT_TOP + max(0, (available - content_height) // 2)
 
     kicker = scene.get("kicker")
     if kicker:
@@ -186,11 +232,11 @@ def _scene_elements(scene: dict) -> list[dict]:
             {
                 "kind": "kicker",
                 "lines": [kicker],
-                "x": 80,
+                "x": 100,
                 "y": y_cursor,
                 "font": _get_font(FONT_SIZES["kicker"], bold=True),
                 "fill": KICKER_COLOR,
-                "line_gap": 34,
+                "line_gap": 36,
             }
         )
         y_cursor += 60
@@ -200,31 +246,46 @@ def _scene_elements(scene: dict) -> list[dict]:
             {
                 "kind": "title",
                 "lines": [line],
-                "x": 80,
+                "x": 100,
                 "y": y_cursor,
                 "font": _get_font(FONT_SIZES["title"], bold=True),
                 "fill": TEXT_PRIMARY,
-                "line_gap": 72,
+                "line_gap": 78,
             }
         )
-        y_cursor += 80
+        y_cursor += 88
 
-    y_cursor += 30
+    y_cursor += 32
 
-    body_lines = _wrap_lines(scene.get("body", ""), 56)
+    body_lines = _wrap_lines(scene.get("body", ""), 60)
     if body_lines:
         elements.append(
             {
                 "kind": "body",
                 "lines": body_lines,
-                "x": 80,
+                "x": 100,
                 "y": y_cursor,
                 "font": _get_font(FONT_SIZES["body"]),
                 "fill": TEXT_MUTED,
-                "line_gap": 46,
+                "line_gap": 50,
             }
         )
-        y_cursor += 50 * len(body_lines)
+        y_cursor += 52 * len(body_lines)
+
+    cta_url = scene.get("cta_url", "")
+    if cta_url:
+        elements.append(
+            {
+                "kind": "cta",
+                "lines": [cta_url],
+                "x": 100,
+                "y": y_cursor,
+                "font": _get_font(FONT_SIZES["cta"], bold=True),
+                "fill": ACCENT,
+                "line_gap": 72,
+            }
+        )
+        y_cursor += 80
 
     bullets = scene.get("bullets") or []
     if bullets:
@@ -239,14 +300,14 @@ def _scene_elements(scene: dict) -> list[dict]:
                 {
                     "kind": "bullet",
                     "lines": wrapped,
-                    "x": 80,
+                    "x": 100,
                     "y": y_cursor,
                     "font": _get_font(FONT_SIZES["bullet"]),
                     "fill": TEXT_MUTED,
-                    "line_gap": 40,
+                    "line_gap": 44,
                 }
             )
-            y_cursor += 52 * len(wrapped)
+            y_cursor += 54 * max(len(wrapped), 1)
 
     return elements
 
@@ -260,28 +321,76 @@ def _draw_block(draw: ImageDraw.ImageDraw, element: dict) -> None:
         y_pos += element["line_gap"]
 
 
-def render_background(scene: dict) -> Image.Image:
-    bg = scene.get("bg", BG_DARK)
-    img = Image.new("RGB", (WIDTH, HEIGHT), bg)
-    draw = ImageDraw.Draw(img)
+def _draw_right_panel(draw: ImageDraw.ImageDraw, scene: dict, scene_index: int) -> None:
+    """Render the right-side decorative panel with scene-specific accent colour."""
+    ring_color = _RING_COLORS[scene_index % len(_RING_COLORS)]
+    kicker = scene.get("kicker", "")
 
-    draw.rectangle([(0, 0), (WIDTH, 6)], fill=ACCENT)
-    draw.text((80, 40), "RepoDocs AI", fill=ACCENT, font=_get_font(FONT_SIZES["logo"], bold=True))
-    draw.rectangle([(0, HEIGHT - 4), (WIDTH, HEIGHT)], fill=ACCENT)
-
+    # Orb / circle
     orb_bounds = [(WIDTH - 470, 160), (WIDTH - 80, 550)]
     draw.ellipse(orb_bounds, fill=(43, 55, 61), outline=(88, 102, 109), width=2)
-    draw.ellipse([(WIDTH - 390, 235), (WIDTH - 160, 465)], outline=ACCENT_COOL, width=4)
+    draw.ellipse([(WIDTH - 390, 235), (WIDTH - 160, 465)], outline=ring_color, width=5)
+
+    # Inner ring glow — second thinner ring for depth
+    inner_inset = 28
+    draw.ellipse(
+        [
+            (WIDTH - 390 + inner_inset, 235 + inner_inset),
+            (WIDTH - 160 - inner_inset, 465 - inner_inset),
+        ],
+        outline=(*ring_color[:3], 80) if len(ring_color) == 3 else ring_color,
+        width=2,
+    )
+
+    # Card / information panel below the orb
+    card_bounds = [(WIDTH - 510, 610), (WIDTH - 150, 850)]
     draw.rounded_rectangle(
-        [(WIDTH - 510, 610), (WIDTH - 150, 840)],
+        card_bounds,
         radius=40,
         fill=(21, 29, 35),
         outline=(86, 100, 108),
         width=2,
     )
-    draw.line([(WIDTH - 470, 665), (WIDTH - 210, 665)], fill=(104, 120, 130), width=6)
-    draw.line([(WIDTH - 470, 720), (WIDTH - 240, 720)], fill=(78, 92, 101), width=6)
-    draw.line([(WIDTH - 470, 775), (WIDTH - 280, 775)], fill=(78, 92, 101), width=6)
+
+    base_x = WIDTH - 470
+    if kicker == "GET STARTED":
+        # Render the URL prominently inside the card
+        url_font = _get_font(22, bold=True)
+        draw.text((WIDTH - 480, 680), "sulagnasasmal.github.io", fill=ring_color, font=url_font)
+        draw.text((WIDTH - 480, 716), "/repodocs-ai", fill=ring_color, font=url_font)
+        draw.line(
+            [(WIDTH - 480, 752), (WIDTH - 185, 752)],
+            fill=(*ring_color, 100) if len(ring_color) == 3 else ring_color,
+            width=2,
+        )
+    else:
+        # Varied line lengths give each scene a subtly different card pattern
+        line_configs = [
+            (260, 200, 150),  # 0 Problem     — short/fragmented
+            (220, 260, 170),  # 1 Pain         — uneven
+            (280, 280, 280),  # 2 Introducing  — full/equal
+            (260, 240, 210),  # 3 What you get — descending
+            (200, 180, 160),  # 4 Real proof   — code-like compact
+            (270, 230, 250),  # 5 How it works — alternating
+            (250, 250, 200),  # 6 Who it's for — near-equal
+            (280, 260, 240),  # 7 fallback
+        ]
+        lengths = line_configs[scene_index % len(line_configs)]
+        draw.line([(base_x, 665), (base_x + lengths[0], 665)], fill=(104, 120, 130), width=6)
+        draw.line([(base_x, 725), (base_x + lengths[1], 725)], fill=(78, 92, 101), width=6)
+        draw.line([(base_x, 785), (base_x + lengths[2], 785)], fill=(78, 92, 101), width=6)
+
+
+def render_background(scene: dict, scene_index: int = 0) -> Image.Image:
+    bg = scene.get("bg", BG_DARK)
+    img = Image.new("RGB", (WIDTH, HEIGHT), bg)
+    draw = ImageDraw.Draw(img)
+
+    draw.rectangle([(0, 0), (WIDTH, 6)], fill=ACCENT)
+    draw.text((100, 38), "RepoDocs AI", fill=ACCENT, font=_get_font(FONT_SIZES["logo"], bold=True))
+    draw.rectangle([(0, HEIGHT - 4), (WIDTH, HEIGHT)], fill=ACCENT)
+
+    _draw_right_panel(draw, scene, scene_index)
 
     if scene.get("kicker") == "INTRODUCING":
         draw.rectangle([(0, 0), (8, HEIGHT)], fill=ACCENT)
@@ -297,8 +406,8 @@ def render_overlay(element: dict, out_path: Path) -> None:
     image.save(out_path, format="PNG")
 
 
-def render_poster(scene: dict, out_path: Path) -> None:
-    image = render_background(scene).convert("RGBA")
+def render_poster(scene: dict, scene_index: int, out_path: Path) -> None:
+    image = render_background(scene, scene_index).convert("RGBA")
     draw = ImageDraw.Draw(image)
     for element in _scene_elements(scene):
         _draw_block(draw, element)
@@ -382,7 +491,7 @@ def compose_video(scenes: list[dict], audio_paths: list[Path]) -> Path:
     for i, (scene, audio_path) in enumerate(zip(scenes, audio_paths)):
         background_path = RUN_DIR / f"scene_{i:02d}_bg.png"
         segment_path = RUN_DIR / f"scene_{i:02d}.mp4"
-        render_background(scene).save(background_path, format="PNG")
+        render_background(scene, i).save(background_path, format="PNG")
         elements = _scene_elements(scene)
         overlay_paths: list[Path] = []
         for element_index, element in enumerate(elements):
@@ -502,7 +611,7 @@ def compose_video(scenes: list[dict], audio_paths: list[Path]) -> Path:
         ]
     )
 
-    render_poster(SCENES[2], POSTER_PATH)
+    render_poster(SCENES[2], 2, POSTER_PATH)
     return VIDEO_PATH
 
 
