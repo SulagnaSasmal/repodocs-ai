@@ -50,7 +50,7 @@ const config: Config = {
           position: "left"
         },
         {
-          href: "https://github.com/SulagnaSasmal/repodocs-ai/tree/main/examples/payments-api",
+          to: "/payments-example",
           label: "Payments Example",
           position: "left"
         },
@@ -86,7 +86,7 @@ const config: Config = {
           items: [
             {
               label: "Payments Example",
-              href: "https://github.com/SulagnaSasmal/repodocs-ai/tree/main/examples/payments-api"
+              to: "/payments-example"
             },
             {
               label: "Validation",

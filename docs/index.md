@@ -14,7 +14,7 @@ RepoDocs AI helps API teams document faster with shared templates, AI-assisted d
 Use this path if you want to decide whether RepoDocs AI is credible for your team:
 
 1. Read [Installation](installation.md).
-2. Inspect the [payments example](https://github.com/SulagnaSasmal/repodocs-ai/tree/main/examples/payments-api).
+2. Inspect the [payments example](/payments-example).
 3. Review [Testing Strategy](testing-strategy.md).
 4. Open the repository directories that power the system: `templates/`, `prompts/`, and `examples/`.
 
