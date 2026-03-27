@@ -16,6 +16,11 @@ const sidebars: SidebarsConfig = {
       type: "category",
       label: "Adopt",
       items: ["multi-repo-guide", "migration-guides/payments-retrieve-status"]
+    },
+    {
+      type: "category",
+      label: "Community",
+      items: ["developer-experience-scorecard", "community-feedback-discussion"]
     }
   ]
 };

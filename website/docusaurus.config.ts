@@ -108,19 +108,23 @@ const config: Config = {
           ]
         },
         {
-          title: "Repository",
+          title: "Community",
           items: [
             {
-              label: "Templates",
-              href: "https://github.com/SulagnaSasmal/repodocs-ai/tree/main/templates"
+              label: "Developer Experience Scorecard",
+              to: "/docs/developer-experience-scorecard"
             },
             {
-              label: "Prompts",
-              href: "https://github.com/SulagnaSasmal/repodocs-ai/tree/main/prompts"
+              label: "Community Feedback",
+              to: "/docs/community-feedback-discussion"
             },
             {
-              label: "Examples",
-              href: "https://github.com/SulagnaSasmal/repodocs-ai/tree/main/examples"
+              label: "Submit Docs From Your Spec",
+              href: "https://github.com/SulagnaSasmal/repodocs-ai/issues/new/choose"
+            },
+            {
+              label: "GitHub Repository",
+              href: "https://github.com/SulagnaSasmal/repodocs-ai"
             }
           ]
         }

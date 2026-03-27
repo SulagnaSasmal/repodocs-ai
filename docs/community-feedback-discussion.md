@@ -1,7 +1,3 @@
----
-unlisted: true
----
-
 # Community Feedback
 
 If you try RepoDocs AI on a real API or documentation workflow, the most useful feedback is concrete and specific.
@@ -25,5 +21,7 @@ Share answers to these questions:
 
 - [Repository](https://github.com/SulagnaSasmal/repodocs-ai)
 - [Live site](https://sulagnasasmal.github.io/repodocs-ai/)
-- [Installation](https://sulagnasasmal.github.io/repodocs-ai/docs/installation)
-- [Payments example](https://github.com/SulagnaSasmal/repodocs-ai/tree/main/examples/payments-api)
+- [Install guide](/docs/installation)
+- [Payments example](/payments-example)
+- [Developer experience scorecard](/docs/developer-experience-scorecard)
+- [Submit docs generated from your spec](https://github.com/SulagnaSasmal/repodocs-ai/issues/new/choose)
