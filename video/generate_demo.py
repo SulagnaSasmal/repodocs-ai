@@ -70,13 +70,16 @@ CONTENT_BTM = 945
 FONT_SIZES = {
     "logo"  : 24,
     "kicker": 29,
-    "title" : 70,
+    "title" : 60,
     "body"  : 36,
     "bullet": 32,
     "cta"   : 50,
     "label" : 20,
-    "small" : 17,
+    "small" : 22,
 }
+
+# Maximum pixel width for left-panel title lines (keeps text left of the divider)
+TITLE_MAX_PX = MID_X - LEFT_X - 50  # = 780px
 
 # ---------------------------------------------------------------------------
 # Scene definitions
@@ -155,7 +158,7 @@ SCENES = [
             "But don't take our word for it. RepoDocs AI ships with a complete "
             "Stripe-style payments API documentation example. "
             "API overview, endpoint docs, authentication, structured errors, "
-            "idempotency, and webhooks — all built from the shipped templates."
+            "idempotency, and webhooks - all built from the shipped templates."
         ),
         "bg": BG_WARM,
     },
@@ -163,10 +166,10 @@ SCENES = [
         "kicker"   : "HOW IT WORKS",
         "title"    : "From zero to published docs\nin four steps.",
         "bullets"  : [
-            "1. Install — clone, install, validate in 5 minutes",
-            "2. Inspect — review the payments example and templates",
-            "3. Adapt — copy template packs into your own repo",
-            "4. Publish — use the same workflow for review and publishing",
+            "1. Install: clone, install, validate in 5 minutes",
+            "2. Inspect: review the payments example and templates",
+            "3. Adapt: copy template packs into your own repo",
+            "4. Publish: use the same workflow for review and publishing",
         ],
         "graphic"  : "steps",
         "narration": (
@@ -236,6 +239,28 @@ def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
 
 def _wrap(text: str, width: int) -> list[str]:
     return textwrap.wrap(text, width=width) if text else []
+
+
+def _wrap_px(text: str, font, max_px: int) -> list[str]:
+    """Wrap text so each line fits within max_px using actual font metrics."""
+    if not text:
+        return []
+    _tmp = Image.new("RGBA", (1, 1))
+    _d   = ImageDraw.Draw(_tmp)
+    words   = text.split()
+    lines   = []
+    current: list[str] = []
+    for word in words:
+        test = " ".join(current + [word])
+        w    = _d.textbbox((0, 0), test, font=font)[2]
+        if w > max_px and current:
+            lines.append(" ".join(current))
+            current = [word]
+        else:
+            current.append(word)
+    if current:
+        lines.append(" ".join(current))
+    return lines or [text]
 
 # ---------------------------------------------------------------------------
 # Animation utilities
@@ -315,11 +340,12 @@ def _content_elements(scene: dict) -> list[dict]:
     elems = []
 
     # Calculate total height for vertical centering
+    title_fnt = _font(FONT_SIZES["title"], bold=True)
     h = 0
     if scene.get("kicker"):
         h += 52
-    for _ in (scene.get("title") or "").split("\n"):
-        h += 90
+    for raw in (scene.get("title") or "").split("\n"):
+        h += 78 * len(_wrap_px(raw, title_fnt, TITLE_MAX_PX) or [raw])
     h += 28  # gap after title
     for line in _wrap(scene.get("body", ""), TEXT_WRAP):
         h += 48
@@ -338,9 +364,10 @@ def _content_elements(scene: dict) -> list[dict]:
         elems.append({"kind": "kicker", "text": kicker, "x": LEFT_X, "y": y})
         y += 52
 
-    for line in (scene.get("title") or "").split("\n"):
-        elems.append({"kind": "title", "text": line, "x": LEFT_X, "y": y})
-        y += 90
+    for raw in (scene.get("title") or "").split("\n"):
+        for line in (_wrap_px(raw, title_fnt, TITLE_MAX_PX) or [raw]):
+            elems.append({"kind": "title", "text": line, "x": LEFT_X, "y": y})
+            y += 78
 
     y += 28
 
@@ -471,9 +498,9 @@ def _draw_chaos(img: Image.Image, t: float, accent: tuple) -> None:
         img.alpha_composite(tmp)
 
         # Label
-        fnt = _font(FONT_SIZES["small"])
-        _draw_text_a(img, (cx - 50, cy - h * 0.1 - 10), label, fnt,
-                     (130, 140, 155), alpha_txt)
+        fnt = _font(24, bold=True)
+        _draw_text_a(img, (cx - 55, cy - 14), label, fnt,
+                     (200, 210, 225), int(230 * p))
 
     # Slow drift — very subtle rotation of the whole composition over time
     # (We can't rotate the whole image here easily, but the staggered reveal gives motion)
@@ -573,10 +600,10 @@ def _draw_checklist(img: Image.Image, t: float, accent: tuple, items: list[str])
     """Animated checklist building up item by item."""
     items = items[:6]
     n = len(items)
-    row_h = 68
+    row_h = 72
     total_h = n * row_h
     start_y = RIGHT_CY - total_h // 2
-    list_x = RIGHT_CX - 200
+    list_x = RIGHT_CX - 240
 
     for idx, item in enumerate(items):
         reveal = 0.3 + idx * 0.45
@@ -589,24 +616,24 @@ def _draw_checklist(img: Image.Image, t: float, accent: tuple, items: list[str])
 
         # Row background pill
         _draw_rect_a(img, [(list_x - 10, row_y - 8 + y_off),
-                            (list_x + 400, row_y + 44 + y_off)],
-                     (28, 34, 46), alpha // 2, radius=10)
+                            (list_x + 490, row_y + 46 + y_off)],
+                     (35, 42, 58), int(alpha * 0.7), radius=10)
 
         # Checkmark circle
-        cr = 14
-        cx_c, cy_c = list_x + 20, row_y + 18 + y_off
+        cr = 16
+        cx_c, cy_c = list_x + 22, row_y + 18 + y_off
         _draw_ellipse_a(img, [(cx_c - cr, cy_c - cr), (cx_c + cr, cy_c + cr)],
                         fill_rgb=accent, fill_a=alpha)
         # Check tick
         tick_a = min(alpha, int(255 * _progress(t, reveal + 0.15, 0.25)))
         _draw_line_a(img,
-                     [(cx_c - 7, cy_c), (cx_c - 2, cy_c + 6), (cx_c + 8, cy_c - 5)],
+                     [(cx_c - 8, cy_c), (cx_c - 2, cy_c + 7), (cx_c + 9, cy_c - 6)],
                      (15, 18, 26), tick_a, width=3)
 
-        # Item text
-        short = item if len(item) <= 38 else item[:35] + "…"
-        _draw_text_a(img, (list_x + 46, row_y + 6 + y_off), short,
-                     _font(FONT_SIZES["label"]), TEXT_MID, alpha)
+        # Item text — show full text, truncate only if truly long
+        short = item if len(item) <= 44 else item[:41] + "…"
+        _draw_text_a(img, (list_x + 52, row_y + 4 + y_off), short,
+                     _font(24, bold=False), TEXT_HI, alpha)
 
 
 def _draw_document(img: Image.Image, t: float, accent: tuple) -> None:
@@ -731,24 +758,24 @@ def _draw_personas(img: Image.Image, t: float, accent: tuple) -> None:
         y_off = int(20 * (1 - p))
 
         # Bubble card
-        w, h = 230, 80
+        w, h = 270, 86
         _draw_rect_a(img, [(px - w//2, py - h//2 + y_off), (px + w//2, py + h//2 + y_off)],
-                     (28, 34, 46), a, radius=16)
-        _draw_rect_a(img, [(px - w//2, py - h//2 + y_off), (px - w//2 + 4, py + h//2 + y_off)],
+                     (32, 40, 56), a, radius=16)
+        _draw_rect_a(img, [(px - w//2, py - h//2 + y_off), (px - w//2 + 5, py + h//2 + y_off)],
                      accent, a, radius=0)
 
         # Avatar circle
-        avr = 22
+        avr = 24
         _draw_ellipse_a(img, [(px - w//2 + 18, py - avr + y_off),
                                (px - w//2 + 18 + avr*2, py + avr + y_off)],
                         fill_rgb=accent, fill_a=a // 2,
                         outline_rgb=accent, outline_a=a, width=2)
 
         # Text
-        _draw_text_a(img, (px - w//2 + 56, py - 14 + y_off), role,
-                     _font(FONT_SIZES["label"], bold=True), TEXT_HI, a)
-        _draw_text_a(img, (px - w//2 + 56, py + 6 + y_off), sub,
-                     _font(FONT_SIZES["small"]), TEXT_DIM, a)
+        _draw_text_a(img, (px - w//2 + 60, py - 16 + y_off), role,
+                     _font(22, bold=True), TEXT_HI, a)
+        _draw_text_a(img, (px - w//2 + 60, py + 8 + y_off), sub,
+                     _font(20), TEXT_MID, a)
 
 
 def _draw_cta_graphic(img: Image.Image, t: float, accent: tuple, url: str) -> None:
@@ -820,6 +847,9 @@ def _draw_chrome(img: Image.Image, scene_idx: int) -> None:
     # Logo
     d.text((LEFT_X, LOGO_Y), "RepoDocs AI",
            fill=ACCENT, font=_font(FONT_SIZES["logo"], bold=True))
+    # Copyright
+    d.text((WIDTH - 310, LOGO_Y), "© Sulagna Sasmal",
+           fill=(110, 118, 135), font=_font(20))
     # Bottom accent bar
     d.rectangle([(0, HEIGHT - 4), (WIDTH, HEIGHT)], fill=ACCENT)
 
