@@ -1,14 +1,16 @@
-"""RepoDocs AI demo video generator — animated edition.
+"""RepoDocs AI demo video generator — motion graphics edition.
 
-Key improvements over the previous version:
-- Real website screenshots shown in a browser-frame mockup on the right panel
-- Text elements slide in from the left instead of plain fade-in
-- xfade wipe transitions between every scene
-- Animated progress dots at the bottom of each frame
-- Intro / outro scenes with full-width layout
+Design principles:
+- No screenshots, no browser frames.
+- Full frame-by-frame rendering via PIL so every element is genuinely animated.
+- Text elements slide UP and fade in (standard motion-graphics convention).
+- Each scene has a custom geometric illustration on the right that animates.
+- xfade wipe transitions between scenes.
+- Progress bar at the bottom.
 """
 
 import asyncio
+import math
 import os
 import shutil
 import subprocess
@@ -31,46 +33,60 @@ TEMP_DIR = Path(__file__).parent / "tmp"
 RUN_DIR = TEMP_DIR / f"run-{os.getpid()}"
 VIDEO_PATH = OUTPUT_DIR / "repodocs-ai-demo.mp4"
 POSTER_PATH = OUTPUT_DIR / "repodocs-ai-demo-poster.jpg"
-SCREENSHOTS_DIR = Path(__file__).parent / "screenshots"
 
-# Brand colours
-BG_DARK = (15, 17, 23)
-BG_WARM = (30, 27, 24)
-BG_SPLIT = (18, 21, 28)       # slightly blue-tinted dark for split scenes
-ACCENT = (255, 149, 0)
-ACCENT_COOL = (56, 152, 255)
-TEXT_PRIMARY = (245, 245, 250)
-TEXT_MUTED = (170, 175, 190)
-KICKER_COLOR = ACCENT
+# Brand
+BG_DARK  = (12, 14, 20)
+BG_WARM  = (20, 16, 14)
+ACCENT   = (255, 149, 0)
+TEXT_HI  = (245, 245, 250)
+TEXT_MID = (165, 172, 188)
+TEXT_DIM = (90, 98, 115)
+DIVIDER  = (38, 44, 58)
 
-# Per-scene accent ring / highlight colours
-_RING_COLORS = [
-    (255, 80,  50),   # 0  THE PROBLEM     red-orange
-    (255, 120, 40),   # 1  THE PAIN        deep orange
-    (255, 200, 50),   # 2  INTRODUCING     gold
-    (80,  200, 120),  # 3  WHAT YOU GET    green
-    (56,  200, 180),  # 4  REAL PROOF      teal
-    (150, 100, 230),  # 5  HOW IT WORKS    purple
-    (100, 170, 220),  # 6  WHO IT'S FOR    steel blue
-    (255, 149, 0),    # 7  GET STARTED     brand orange
+# Scene accent colours (right-panel illustration colour)
+SCENE_ACCENTS = [
+    (255,  80,  50),  # 0  THE PROBLEM   — red-orange
+    (255, 130,  40),  # 1  THE PAIN      — deep orange
+    (255, 205,  55),  # 2  INTRODUCING   — gold
+    ( 70, 210, 120),  # 3  WHAT YOU GET  — green
+    ( 50, 205, 180),  # 4  REAL PROOF    — teal
+    (165, 105, 245),  # 5  HOW IT WORKS  — purple
+    ( 95, 170, 225),  # 6  WHO IT'S FOR  — steel blue
+    (255, 149,   0),  # 7  GET STARTED   — orange
 ]
 
-# Which screenshot file to show in the right panel (None = decorative graphic)
-_SCENE_SCREENSHOTS = [
-    None,              # 0  THE PROBLEM
-    None,              # 1  THE PAIN
-    "homepage.png",    # 2  INTRODUCING
-    "homepage.png",    # 3  WHAT YOU GET
-    "payments.png",    # 4  REAL PROOF
-    "installation.png",# 5  HOW IT WORKS
-    "docs.png",        # 6  WHO IT'S FOR
-    "homepage.png",    # 7  GET STARTED
-]
+# Layout
+LEFT_X    = 110        # left text margin
+TEXT_WRAP = 44         # characters per line for body text
+MID_X     = 940        # divider between content and illustration
+RIGHT_CX  = 1440       # centre-x of illustration panel
+RIGHT_CY  = 530        # centre-y of illustration panel
+TOP_BAR   = 6          # accent bar height
+LOGO_Y    = 38
+
+CONTENT_TOP = 145
+CONTENT_BTM = 945
+
+FONT_SIZES = {
+    "logo"  : 24,
+    "kicker": 29,
+    "title" : 70,
+    "body"  : 36,
+    "bullet": 32,
+    "cta"   : 50,
+    "label" : 20,
+    "small" : 17,
+}
+
+# ---------------------------------------------------------------------------
+# Scene definitions
+# ---------------------------------------------------------------------------
 
 SCENES = [
     {
-        "kicker": "THE PROBLEM",
-        "title": "Your API docs are scattered,\ninconsistent, and always behind.",
+        "kicker"   : "THE PROBLEM",
+        "title"    : "Your API docs are scattered,\ninconsistent, and always behind.",
+        "graphic"  : "chaos",
         "narration": (
             "Let's be honest. Your API documentation is scattered across wikis, "
             "Google Docs, and random markdown files. Every team documents differently, "
@@ -79,23 +95,25 @@ SCENES = [
         "bg": BG_DARK,
     },
     {
-        "kicker": "THE PAIN",
-        "title": "Fast drafting helps.\nLoose process still creates risk.",
-        "body": (
+        "kicker"   : "THE PAIN",
+        "title"    : "Fast drafting helps.\nLoose process still creates risk.",
+        "body"     : (
             "Without shared structure, review steps, and release checks, "
             "documentation drifts and teams stop trusting what they publish."
         ),
+        "graphic"  : "drift",
         "narration": (
-            "Fast drafting helps, but loose process still creates risk. Without shared structure, "
-            "clear review steps, and release checks, documentation drifts away from the product "
-            "and teams stop trusting what they publish."
+            "Fast drafting helps, but loose process still creates risk. "
+            "Without shared structure, clear review steps, and release checks, "
+            "documentation drifts away from the product and teams stop trusting what they publish."
         ),
         "bg": BG_WARM,
     },
     {
-        "kicker": "INTRODUCING",
-        "title": "RepoDocs AI",
-        "body": "A repository-based documentation system\nfor SaaS teams shipping APIs.",
+        "kicker"   : "INTRODUCING",
+        "title"    : "RepoDocs AI",
+        "body"     : "A repository-based documentation system\nfor SaaS teams shipping APIs.",
+        "graphic"  : "orb",
         "narration": (
             "Introducing RepoDocs AI. A repository-based documentation system "
             "for SaaS teams shipping APIs. Everything lives in your repo, "
@@ -104,9 +122,9 @@ SCENES = [
         "bg": BG_DARK,
     },
     {
-        "kicker": "WHAT YOU GET",
-        "title": "Everything a docs team needs,\nin one installable system.",
-        "bullets": [
+        "kicker"   : "WHAT YOU GET",
+        "title"    : "Everything a docs team needs,\nin one installable system.",
+        "bullets"  : [
             "Product and API documentation templates",
             "Drafting and review workflows",
             "Frontmatter and structure validation",
@@ -114,6 +132,7 @@ SCENES = [
             "GitHub Pages publishing workflows",
             "A working payments documentation example",
         ],
+        "graphic"  : "checklist",
         "narration": (
             "Here is what you get. Product and API documentation templates. "
             "Drafting and review workflows. Built-in structure validation. "
@@ -124,46 +143,49 @@ SCENES = [
         "bg": BG_DARK,
     },
     {
-        "kicker": "REAL PROOF",
-        "title": "A Stripe-style payments example.\nNot just templates.",
-        "body": (
+        "kicker"   : "REAL PROOF",
+        "title"    : "A Stripe-style payments example.\nNot just templates.",
+        "body"     : (
             "Inspect a complete payments API documentation set with "
             "overview, endpoints, authentication, errors, and webhooks, "
             "built from the shipped templates."
         ),
+        "graphic"  : "document",
         "narration": (
             "But don't take our word for it. RepoDocs AI ships with a complete "
-            "Stripe-style payments API documentation example. API overview, "
-            "endpoint docs, authentication, structured errors, idempotency, "
-            "and webhooks. All built from the shipped templates and review flow."
+            "Stripe-style payments API documentation example. "
+            "API overview, endpoint docs, authentication, structured errors, "
+            "idempotency, and webhooks — all built from the shipped templates."
         ),
         "bg": BG_WARM,
     },
     {
-        "kicker": "HOW IT WORKS",
-        "title": "From zero to published docs\nin four steps.",
-        "bullets": [
+        "kicker"   : "HOW IT WORKS",
+        "title"    : "From zero to published docs\nin four steps.",
+        "bullets"  : [
             "1. Install — clone, install, validate in 5 minutes",
             "2. Inspect — review the payments example and templates",
             "3. Adapt — copy template packs into your own repo",
             "4. Publish — use the same workflow for review and publishing",
         ],
+        "graphic"  : "steps",
         "narration": (
             "Getting started takes four steps. "
-            "First, install. Clone the repo, install dependencies, and validate, all in five minutes. "
-            "Second, inspect. Review the payments example and templates to see the quality. "
-            "Third, adapt. Copy the template packs into your own docs repository. "
-            "Fourth, publish. Use the same repository workflow for review, validation, and publishing."
+            "Install: clone the repo and validate in five minutes. "
+            "Inspect: review the payments example and templates. "
+            "Adapt: copy the template packs into your own docs repository. "
+            "Publish: use the same workflow for review, validation, and publishing."
         ),
         "bg": BG_DARK,
     },
     {
-        "kicker": "WHO IT'S FOR",
-        "title": "SaaS API teams that\nship documentation from repos.",
-        "body": (
+        "kicker"   : "WHO IT'S FOR",
+        "title"    : "SaaS API teams that\nship documentation from repos.",
+        "body"     : (
             "CTOs, engineering leads, DevRel teams, and technical writers "
             "working in GitHub-based documentation workflows."
         ),
+        "graphic"  : "personas",
         "narration": (
             "RepoDocs AI is built for SaaS API teams. CTOs, engineering leads, "
             "developer relations teams, and technical writers who already work "
@@ -172,9 +194,10 @@ SCENES = [
         "bg": BG_WARM,
     },
     {
-        "kicker": "GET STARTED",
-        "title": "Install in minutes.\nSee the product in action.",
-        "cta_url": "sulagnasasmal.github.io/repodocs-ai",
+        "kicker"   : "GET STARTED",
+        "title"    : "Install in minutes.\nSee the product in action.",
+        "cta_url"  : "sulagnasasmal.github.io/repodocs-ai",
+        "graphic"  : "cta",
         "narration": (
             "Ready to see the difference? Install RepoDocs AI in minutes. "
             "Visit the site, watch the demo, inspect the proof, and start shipping "
@@ -184,658 +207,845 @@ SCENES = [
     },
 ]
 
-FONT_SIZES = {
-    "logo": 26,
-    "kicker": 30,
-    "title": 68,
-    "body": 38,
-    "bullet": 34,
-    "cta": 52,
-    "progress": 18,
-}
-
-# Left-panel content area
-LEFT_PANEL_RIGHT = 920   # content lives in x: 0..920
-CONTENT_LEFT = 100
-CONTENT_TOP = 120
-CONTENT_BOTTOM = 960
-
-
 # ---------------------------------------------------------------------------
 # Font helpers
 # ---------------------------------------------------------------------------
 
-def _get_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+_font_cache: dict = {}
+
+def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+    key = (size, bold)
+    if key in _font_cache:
+        return _font_cache[key]
     candidates = [
-        "C:/Windows/Fonts/segoeui.ttf" if not bold else "C:/Windows/Fonts/segoeuib.ttf",
-        "C:/Windows/Fonts/arial.ttf" if not bold else "C:/Windows/Fonts/arialbd.ttf",
+        ("C:/Windows/Fonts/segoeuib.ttf" if bold else "C:/Windows/Fonts/segoeui.ttf"),
+        ("C:/Windows/Fonts/arialbd.ttf"  if bold else "C:/Windows/Fonts/arial.ttf"),
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/System/Library/Fonts/Helvetica.ttc",
     ]
     for path in candidates:
         if os.path.isfile(path):
-            return ImageFont.truetype(path, size)
-    return ImageFont.load_default()
+            f = ImageFont.truetype(path, size)
+            _font_cache[key] = f
+            return f
+    f = ImageFont.load_default()
+    _font_cache[key] = f
+    return f
 
 
-def _wrap_lines(text: str, width: int) -> list[str]:
+def _wrap(text: str, width: int) -> list[str]:
     return textwrap.wrap(text, width=width) if text else []
 
+# ---------------------------------------------------------------------------
+# Animation utilities
+# ---------------------------------------------------------------------------
+
+def _ease_out(t: float) -> float:
+    t = max(0.0, min(1.0, t))
+    return 1.0 - (1.0 - t) ** 3
+
+
+def _ease_in_out(t: float) -> float:
+    t = max(0.0, min(1.0, t))
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _progress(t: float, delay: float, dur: float = 0.45) -> float:
+    """Eased progress [0,1] at global time t, starting after delay, over dur seconds."""
+    if t <= delay:
+        return 0.0
+    return _ease_out((t - delay) / dur)
+
+
+def _lerp(a, b, p):
+    return a + (b - a) * p
 
 # ---------------------------------------------------------------------------
-# Content height calculation (used for vertical centering)
+# Alpha-aware drawing
 # ---------------------------------------------------------------------------
 
-def _calc_content_height(scene: dict) -> int:
+def _draw_text_a(img: Image.Image, xy, text: str, fnt, rgb, alpha: int) -> None:
+    """Draw text with per-pixel alpha onto an RGBA image."""
+    if alpha <= 0 or not text:
+        return
+    tmp = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(tmp)
+    d.text(xy, text, fill=(*rgb, alpha), font=fnt)
+    img.alpha_composite(tmp)
+
+
+def _draw_rect_a(img: Image.Image, box, rgb, alpha: int, radius: int = 0) -> None:
+    if alpha <= 0:
+        return
+    tmp = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(tmp)
+    fill = (*rgb, alpha)
+    if radius:
+        d.rounded_rectangle(box, radius=radius, fill=fill)
+    else:
+        d.rectangle(box, fill=fill)
+    img.alpha_composite(tmp)
+
+
+def _draw_ellipse_a(img: Image.Image, box, fill_rgb=None, fill_a=255,
+                    outline_rgb=None, outline_a=255, width=1) -> None:
+    tmp = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(tmp)
+    fill    = (*fill_rgb,    fill_a)    if fill_rgb    else None
+    outline = (*outline_rgb, outline_a) if outline_rgb else None
+    d.ellipse(box, fill=fill, outline=outline, width=width)
+    img.alpha_composite(tmp)
+
+
+def _draw_line_a(img: Image.Image, pts, rgb, alpha: int, width: int = 2) -> None:
+    if alpha <= 0:
+        return
+    tmp = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(tmp)
+    d.line(pts, fill=(*rgb, alpha), width=width)
+    img.alpha_composite(tmp)
+
+# ---------------------------------------------------------------------------
+# Scene content elements
+# ---------------------------------------------------------------------------
+
+def _content_elements(scene: dict) -> list[dict]:
+    """Return ordered list of text elements with their geometry."""
+    elems = []
+
+    # Calculate total height for vertical centering
     h = 0
     if scene.get("kicker"):
-        h += 60
-    for _ in scene.get("title", "").split("\n"):
-        h += 88
-    h += 32
-    body_lines = _wrap_lines(scene.get("body", ""), 52)
-    if body_lines:
-        h += 52 * len(body_lines)
+        h += 52
+    for _ in (scene.get("title") or "").split("\n"):
+        h += 90
+    h += 28  # gap after title
+    for line in _wrap(scene.get("body", ""), TEXT_WRAP):
+        h += 48
     if scene.get("cta_url"):
-        h += 80
+        h += 72
     for bullet in scene.get("bullets") or []:
-        wrapped = textwrap.wrap(
-            bullet if bullet[0].isdigit() else f"• {bullet}",
-            width=50,
-            subsequent_indent="  ",
-        )
-        h += 10 + 54 * max(len(wrapped), 1)
-    return h
+        h += 10
+        wrapped = _wrap(bullet if bullet[0].isdigit() else f"• {bullet}", TEXT_WRAP - 2,)
+        h += 50 * max(len(wrapped), 1)
 
-
-# ---------------------------------------------------------------------------
-# Scene elements list (left-panel text blocks)
-# ---------------------------------------------------------------------------
-
-def _scene_elements(scene: dict) -> list[dict]:
-    elements: list[dict] = []
-
-    content_height = _calc_content_height(scene)
-    available = CONTENT_BOTTOM - CONTENT_TOP
-    y_cursor = CONTENT_TOP + max(0, (available - content_height) // 2)
+    avail = CONTENT_BTM - CONTENT_TOP
+    y = CONTENT_TOP + max(0, (avail - h) // 2)
 
     kicker = scene.get("kicker")
     if kicker:
-        elements.append({
-            "kind": "kicker",
-            "lines": [kicker],
-            "x": CONTENT_LEFT,
-            "y": y_cursor,
-            "font": _get_font(FONT_SIZES["kicker"], bold=True),
-            "fill": KICKER_COLOR,
-            "line_gap": 36,
-        })
-        y_cursor += 60
+        elems.append({"kind": "kicker", "text": kicker, "x": LEFT_X, "y": y})
+        y += 52
 
-    for line in scene.get("title", "").split("\n"):
-        elements.append({
-            "kind": "title",
-            "lines": [line],
-            "x": CONTENT_LEFT,
-            "y": y_cursor,
-            "font": _get_font(FONT_SIZES["title"], bold=True),
-            "fill": TEXT_PRIMARY,
-            "line_gap": 78,
-        })
-        y_cursor += 88
+    for line in (scene.get("title") or "").split("\n"):
+        elems.append({"kind": "title", "text": line, "x": LEFT_X, "y": y})
+        y += 90
 
-    y_cursor += 32
+    y += 28
 
-    body_lines = _wrap_lines(scene.get("body", ""), 52)
-    if body_lines:
-        elements.append({
-            "kind": "body",
-            "lines": body_lines,
-            "x": CONTENT_LEFT,
-            "y": y_cursor,
-            "font": _get_font(FONT_SIZES["body"]),
-            "fill": TEXT_MUTED,
-            "line_gap": 50,
-        })
-        y_cursor += 52 * len(body_lines)
+    for line in _wrap(scene.get("body", ""), TEXT_WRAP):
+        elems.append({"kind": "body", "text": line, "x": LEFT_X, "y": y})
+        y += 48
 
-    cta_url = scene.get("cta_url", "")
-    if cta_url:
-        elements.append({
-            "kind": "cta",
-            "lines": [cta_url],
-            "x": CONTENT_LEFT,
-            "y": y_cursor,
-            "font": _get_font(FONT_SIZES["cta"], bold=True),
-            "fill": ACCENT,
-            "line_gap": 72,
-        })
-        y_cursor += 80
+    cta = scene.get("cta_url", "")
+    if cta:
+        elems.append({"kind": "cta", "text": cta, "x": LEFT_X, "y": y})
+        y += 72
 
     for bullet in scene.get("bullets") or []:
-        y_cursor += 10
-        wrapped = textwrap.wrap(
-            bullet if bullet[0].isdigit() else f"• {bullet}",
-            width=50,
-            subsequent_indent="  ",
-        )
-        elements.append({
-            "kind": "bullet",
-            "lines": wrapped,
-            "x": CONTENT_LEFT,
-            "y": y_cursor,
-            "font": _get_font(FONT_SIZES["bullet"]),
-            "fill": TEXT_MUTED,
-            "line_gap": 44,
-        })
-        y_cursor += 54 * max(len(wrapped), 1)
+        y += 10
+        prefix = "" if bullet[0].isdigit() else "• "
+        wrapped = _wrap(prefix + bullet, TEXT_WRAP - 2)
+        elems.append({"kind": "bullet", "lines": wrapped, "x": LEFT_X, "y": y})
+        y += 50 * max(len(wrapped), 1)
 
-    return elements
+    return elems
 
 
-def _draw_block(draw: ImageDraw.ImageDraw, element: dict) -> None:
-    font = element["font"]
-    x_pos = element["x"]
-    y_pos = element["y"]
-    for line in element["lines"]:
-        draw.text((x_pos, y_pos), line, fill=element["fill"], font=font)
-        y_pos += element["line_gap"]
+_REVEAL_START  = 0.25
+_REVEAL_STEP   = 0.42   # seconds between each element reveal
+_SLIDE_DUR     = 0.45
+_SLIDE_OFFSET  = 38     # pixels the element starts below its final position
 
 
-# ---------------------------------------------------------------------------
-# Right panel: browser mockup with real screenshot
-# ---------------------------------------------------------------------------
-
-_SCREENSHOT_CACHE: dict[str, Image.Image] = {}
-
-BROWSER_LEFT = 980
-BROWSER_TOP = 80
-BROWSER_RIGHT = WIDTH - 40
-BROWSER_BOTTOM = HEIGHT - 80
-BROWSER_W = BROWSER_RIGHT - BROWSER_LEFT   # ~900
-BROWSER_H = BROWSER_BOTTOM - BROWSER_TOP   # ~920
-CHROME_H = 44   # address bar height
+def _reveal_schedule(elems: list, duration: float) -> list[float]:
+    times = []
+    t = _REVEAL_START
+    step = min(_REVEAL_STEP, max(0.28, (duration - 1.2) / max(len(elems), 1)))
+    for _ in elems:
+        times.append(t)
+        t += step
+    return times
 
 
-def _load_screenshot(filename: str) -> Image.Image | None:
-    if filename in _SCREENSHOT_CACHE:
-        return _SCREENSHOT_CACHE[filename]
-    path = SCREENSHOTS_DIR / filename
-    if not path.exists():
-        return None
-    img = Image.open(path).convert("RGB")
-    _SCREENSHOT_CACHE[filename] = img
-    return img
+def _draw_content(img: Image.Image, scene: dict, t: float, duration: float) -> None:
+    elems = _content_elements(scene)
+    schedule = _reveal_schedule(elems, duration)
 
+    for elem, reveal in zip(elems, schedule):
+        p     = _progress(t, reveal, _SLIDE_DUR)
+        alpha = int(255 * p)
+        y_off = int(_SLIDE_OFFSET * (1.0 - _ease_out(p)))
 
-def _draw_browser_panel(img: Image.Image, screenshot_filename: str | None, ring_color: tuple) -> None:
-    """Draw a browser chrome + screenshot on the right half of img."""
-    draw = ImageDraw.Draw(img)
+        kind = elem["kind"]
 
-    # Outer card shadow / glow
-    glow = (*ring_color, 35)
-    for inset in range(6, 0, -1):
-        draw.rounded_rectangle(
-            [(BROWSER_LEFT - inset, BROWSER_TOP - inset),
-             (BROWSER_RIGHT + inset, BROWSER_BOTTOM + inset)],
-            radius=18 + inset,
-            outline=glow,
-            width=1,
-        )
+        if kind == "kicker":
+            _draw_text_a(img, (elem["x"], elem["y"] + y_off), elem["text"],
+                         _font(FONT_SIZES["kicker"], bold=True), ACCENT, alpha)
 
-    # Browser frame background
-    draw.rounded_rectangle(
-        [(BROWSER_LEFT, BROWSER_TOP), (BROWSER_RIGHT, BROWSER_BOTTOM)],
-        radius=16,
-        fill=(24, 28, 36),
-        outline=(60, 68, 82),
-        width=2,
-    )
+        elif kind == "title":
+            _draw_text_a(img, (elem["x"], elem["y"] + y_off), elem["text"],
+                         _font(FONT_SIZES["title"], bold=True), TEXT_HI, alpha)
 
-    # Chrome / address bar strip
-    chrome_bottom = BROWSER_TOP + CHROME_H
-    draw.rounded_rectangle(
-        [(BROWSER_LEFT, BROWSER_TOP), (BROWSER_RIGHT, chrome_bottom + 6)],
-        radius=16,
-        fill=(32, 36, 46),
-    )
-    # Flat bottom on chrome strip
-    draw.rectangle(
-        [(BROWSER_LEFT, chrome_bottom - 6), (BROWSER_RIGHT, chrome_bottom)],
-        fill=(32, 36, 46),
-    )
-    draw.line(
-        [(BROWSER_LEFT, chrome_bottom), (BROWSER_RIGHT, chrome_bottom)],
-        fill=(52, 58, 72),
-        width=1,
-    )
+        elif kind == "body":
+            _draw_text_a(img, (elem["x"], elem["y"] + y_off), elem["text"],
+                         _font(FONT_SIZES["body"]), TEXT_MID, alpha)
 
-    # Traffic-light dots
-    dot_y = BROWSER_TOP + CHROME_H // 2
-    for i, dot_color in enumerate([(255, 95, 87), (255, 189, 46), (39, 201, 63)]):
-        draw.ellipse(
-            [(BROWSER_LEFT + 16 + i * 22 - 6, dot_y - 6),
-             (BROWSER_LEFT + 16 + i * 22 + 6, dot_y + 6)],
-            fill=dot_color,
-        )
+        elif kind == "cta":
+            _draw_text_a(img, (elem["x"], elem["y"] + y_off), elem["text"],
+                         _font(FONT_SIZES["cta"], bold=True), ACCENT, alpha)
 
-    # Address bar pill
-    addr_left = BROWSER_LEFT + 80
-    addr_right = BROWSER_RIGHT - 20
-    addr_top = BROWSER_TOP + 9
-    addr_bottom = BROWSER_TOP + CHROME_H - 9
-    draw.rounded_rectangle(
-        [(addr_left, addr_top), (addr_right, addr_bottom)],
-        radius=6,
-        fill=(20, 24, 32),
-        outline=(70, 78, 95),
-        width=1,
-    )
-    addr_font = _get_font(14)
-    url_text = "sulagnasasmal.github.io/repodocs-ai"
-    draw.text((addr_left + 10, addr_top + 4), url_text, fill=(120, 135, 155), font=addr_font)
-
-    # Screenshot area
-    ss_top = chrome_bottom + 1
-    ss_left = BROWSER_LEFT + 2
-    ss_right = BROWSER_RIGHT - 2
-    ss_bottom = BROWSER_BOTTOM - 2
-    ss_w = ss_right - ss_left
-    ss_h = ss_bottom - ss_top
-
-    if screenshot_filename:
-        shot = _load_screenshot(screenshot_filename)
-        if shot:
-            # Fit screenshot: scale to fill width, then crop height
-            scale = ss_w / shot.width
-            new_h = int(shot.height * scale)
-            resized = shot.resize((ss_w, max(new_h, ss_h)), Image.LANCZOS)
-            cropped = resized.crop((0, 0, ss_w, ss_h))
-            # Paste into rounded corner area
-            img.paste(cropped, (ss_left, ss_top))
-        else:
-            draw.rectangle([(ss_left, ss_top), (ss_right, ss_bottom)], fill=(20, 24, 32))
-    else:
-        # Decorative placeholder for scenes without a screenshot
-        draw.rectangle([(ss_left, ss_top), (ss_right, ss_bottom)], fill=(18, 22, 30))
-        _draw_decorative_placeholder(draw, ss_left, ss_top, ss_w, ss_h, ring_color)
-
-    # Round-corner mask: draw the outer card frame on top to re-clip corners
-    draw.rounded_rectangle(
-        [(BROWSER_LEFT, BROWSER_TOP), (BROWSER_RIGHT, BROWSER_BOTTOM)],
-        radius=16,
-        outline=(60, 68, 82),
-        width=2,
-    )
-
-
-def _draw_decorative_placeholder(
-    draw: ImageDraw.ImageDraw,
-    x: int, y: int, w: int, h: int,
-    ring_color: tuple,
-) -> None:
-    """Fallback graphic for scenes without a screenshot."""
-    cx, cy = x + w // 2, y + h // 2
-    r_outer = min(w, h) // 3
-    draw.ellipse(
-        [(cx - r_outer, cy - r_outer), (cx + r_outer, cy + r_outer)],
-        fill=(30, 38, 48),
-        outline=(70, 82, 95),
-        width=2,
-    )
-    r_inner = int(r_outer * 0.62)
-    draw.ellipse(
-        [(cx - r_inner, cy - r_inner), (cx + r_inner, cy + r_inner)],
-        outline=ring_color,
-        width=5,
-    )
-    r_core = int(r_inner * 0.42)
-    draw.ellipse(
-        [(cx - r_core, cy - r_core), (cx + r_core, cy + r_core)],
-        outline=(*ring_color, 80),
-        width=2,
-    )
-    # Decorative horizontal lines below orb
-    line_y = cy + r_outer + 32
-    for idx, length in enumerate([220, 170, 190]):
-        lx = cx - length // 2
-        draw.line([(lx, line_y + idx * 34), (lx + length, line_y + idx * 34)],
-                  fill=(80, 95, 110) if idx == 0 else (55, 68, 80), width=5)
-
+        elif kind == "bullet":
+            by = elem["y"]
+            for line in elem["lines"]:
+                _draw_text_a(img, (elem["x"], by + y_off), line,
+                             _font(FONT_SIZES["bullet"]), TEXT_MID, alpha)
+                by += 50
 
 # ---------------------------------------------------------------------------
-# Progress dots
+# Right-panel illustrations (one per graphic type)
 # ---------------------------------------------------------------------------
 
-def _draw_progress(draw: ImageDraw.ImageDraw, scene_index: int, total: int) -> None:
-    dot_r = 5
-    spacing = 22
-    total_w = (total - 1) * spacing + dot_r * 2
-    start_x = (WIDTH - total_w) // 2
-    y = HEIGHT - 30
-    for i in range(total):
-        cx = start_x + i * spacing + dot_r
-        if i == scene_index:
-            draw.ellipse([(cx - dot_r, y - dot_r), (cx + dot_r, y + dot_r)], fill=ACCENT)
-        elif i < scene_index:
-            draw.ellipse([(cx - dot_r + 1, y - dot_r + 1), (cx + dot_r - 1, y + dot_r - 1)],
-                         fill=(120, 130, 140))
-        else:
-            draw.ellipse([(cx - dot_r, y - dot_r), (cx + dot_r, y + dot_r)],
-                         outline=(70, 80, 92), width=2)
+def _draw_chaos(img: Image.Image, t: float, accent: tuple) -> None:
+    """Scattered document cards — represents unstructured, chaotic docs."""
+    cards = [
+        (RIGHT_CX - 190, RIGHT_CY - 230, 260, 160, -14),
+        (RIGHT_CX +  50, RIGHT_CY - 270, 220, 140,   8),
+        (RIGHT_CX - 260, RIGHT_CY -  40, 200, 150,   5),
+        (RIGHT_CX +  90, RIGHT_CY -  90, 240, 155, -10),
+        (RIGHT_CX - 140, RIGHT_CY + 110, 230, 145,  12),
+        (RIGHT_CX +  30, RIGHT_CY + 160, 210, 140,  -6),
+    ]
+    labels = ["wiki", "Google Docs", "Notion", "Slack thread", "Git issues", "Old PDF"]
+    colors = [
+        (50, 58, 75), (42, 52, 65), (58, 48, 70),
+        (45, 60, 58), (65, 55, 45), (48, 65, 68),
+    ]
 
+    for idx, (cx, cy, w, h, angle_deg, label, color) in enumerate(
+        zip(*zip(*[(c[0], c[1], c[2], c[3], c[4]) for c in cards]), labels, colors)
+    ):
+        reveal = 0.2 + idx * 0.18
+        p = _progress(t, reveal, 0.5)
+        if p <= 0:
+            continue
+        alpha_card = int(200 * p)
+        alpha_txt  = int(180 * p)
+
+        # Draw card as a rotated rectangle approximation (use bbox + slight angle hint)
+        rad = math.radians(angle_deg)
+        cos_a, sin_a = math.cos(rad), math.sin(rad)
+
+        corners = [
+            (-w/2, -h/2), (w/2, -h/2), (w/2, h/2), (-w/2, h/2)
+        ]
+        rotated = [
+            (cx + cos_a * px - sin_a * py,
+             cy + sin_a * px + cos_a * py)
+            for px, py in corners
+        ]
+
+        # Draw filled polygon
+        tmp = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        d = ImageDraw.Draw(tmp)
+        d.polygon(rotated, fill=(*color, alpha_card),
+                  outline=(*accent, alpha_card // 2), width=2)
+        # Mini lines on the card (simulating text rows)
+        for row in range(3):
+            row_y = cy - h * 0.15 + row * (h * 0.22)
+            line_w = w * (0.6 if row == 0 else 0.4 + 0.15 * row)
+            lx = cx - line_w / 2
+            rx = cx + line_w / 2
+            d.line([(lx, row_y), (rx, row_y)], fill=(100, 112, 130, alpha_card // 2), width=3)
+        img.alpha_composite(tmp)
+
+        # Label
+        fnt = _font(FONT_SIZES["small"])
+        _draw_text_a(img, (cx - 50, cy - h * 0.1 - 10), label, fnt,
+                     (130, 140, 155), alpha_txt)
+
+    # Slow drift — very subtle rotation of the whole composition over time
+    # (We can't rotate the whole image here easily, but the staggered reveal gives motion)
+
+
+def _draw_drift(img: Image.Image, t: float, accent: tuple) -> None:
+    """Two diverging lines — ideal vs reality."""
+    cx, cy = RIGHT_CX, RIGHT_CY
+    line_len = 340
+
+    p_line = _progress(t, 0.3, 1.0)  # lines draw in over 1 second
+
+    if p_line > 0:
+        # Ideal line (straight, accent colour)
+        x1, y1 = cx - int(line_len * p_line), cy - 80
+        x2, y2 = cx + int(line_len * p_line), cy - 80
+        _draw_line_a(img, [(x1, y1), (cx, cy - 80), (x2, y2)],
+                     accent, int(220 * p_line), width=5)
+
+        # Ideal label
+        if p_line > 0.5:
+            _draw_text_a(img, (x2 + 12, y2 - 12), "What it should be",
+                         _font(FONT_SIZES["small"]), accent, int(200 * (p_line - 0.5) * 2))
+
+        # Drift line (wavy, muted)
+        p2 = max(0.0, p_line - 0.2)
+        if p2 > 0:
+            pts = []
+            steps = int(40 * p2)
+            for s in range(steps + 1):
+                frac = s / 40
+                sx = cx - line_len + int(line_len * 2 * frac * p_line)
+                sy = cy + 80 + int(80 * math.sin(frac * math.pi * 3) * frac)
+                pts.append((sx, sy))
+            if len(pts) >= 2:
+                _draw_line_a(img, pts, (200, 80, 60), int(220 * p2), width=4)
+            if p2 > 0.6:
+                last = pts[-1]
+                _draw_text_a(img, (last[0] + 12, last[1] - 8), "What actually ships",
+                             _font(FONT_SIZES["small"]), (200, 80, 60),
+                             int(200 * (p2 - 0.6) * 2.5))
+
+    # Pulsing gap indicator
+    if p_line > 0.7:
+        gap_p = _progress(t, 1.5, 0.4)
+        if gap_p > 0:
+            mid_x = cx + 20
+            _draw_line_a(img, [(mid_x, cy - 80), (mid_x, cy + 80 + 30)],
+                         (120, 130, 145), int(180 * gap_p), width=2)
+            _draw_text_a(img, (mid_x + 10, cy), "the gap",
+                         _font(FONT_SIZES["small"]), (120, 130, 145),
+                         int(180 * gap_p))
+
+
+def _draw_orb(img: Image.Image, t: float, accent: tuple) -> None:
+    """Central pulsing orb — for the Introducing scene."""
+    cx, cy = RIGHT_CX, RIGHT_CY
+    pulse = 0.5 + 0.5 * math.sin(t * 2.0 * math.pi * 0.7)
+
+    p_enter = _progress(t, 0.2, 0.8)
+    if p_enter <= 0:
+        return
+
+    # Outer glow rings
+    for ring_i, (base_r, base_a, ring_scale) in enumerate([
+        (240, 30, 1.0), (200, 50, 0.95), (165, 80, 0.9),
+    ]):
+        r = int(base_r * p_enter)
+        glow_a = int(base_a * p_enter * (0.8 + 0.2 * pulse if ring_i == 0 else 1.0))
+        _draw_ellipse_a(img, [(cx - r, cy - r), (cx + r, cy + r)],
+                        outline_rgb=accent, outline_a=glow_a, width=2)
+
+    # Core orb
+    core_r = int(120 * p_enter)
+    _draw_ellipse_a(img, [(cx - core_r, cy - core_r), (cx + core_r, cy + core_r)],
+                    fill_rgb=(25, 30, 42), fill_a=255)
+    # Inner accent ring
+    inner_r = int(85 * p_enter)
+    _draw_ellipse_a(img, [(cx - inner_r, cy - inner_r), (cx + inner_r, cy + inner_r)],
+                    outline_rgb=accent, outline_a=int(230 * p_enter), width=4)
+    # Centre dot
+    dot_r = int(18 * p_enter)
+    _draw_ellipse_a(img, [(cx - dot_r, cy - dot_r), (cx + dot_r, cy + dot_r)],
+                    fill_rgb=accent, fill_a=int(255 * p_enter))
+
+    # Rotating satellite dots
+    for angle_offset in [0, 120, 240]:
+        a = math.radians(angle_offset + t * 40)
+        sx = cx + int(math.cos(a) * 155 * p_enter)
+        sy = cy + int(math.sin(a) * 155 * p_enter)
+        sr = int(10 * p_enter)
+        _draw_ellipse_a(img, [(sx - sr, sy - sr), (sx + sr, sy + sr)],
+                        fill_rgb=accent, fill_a=int(180 * p_enter))
+
+
+def _draw_checklist(img: Image.Image, t: float, accent: tuple, items: list[str]) -> None:
+    """Animated checklist building up item by item."""
+    items = items[:6]
+    n = len(items)
+    row_h = 68
+    total_h = n * row_h
+    start_y = RIGHT_CY - total_h // 2
+    list_x = RIGHT_CX - 200
+
+    for idx, item in enumerate(items):
+        reveal = 0.3 + idx * 0.45
+        p = _progress(t, reveal, 0.4)
+        if p <= 0:
+            continue
+        alpha = int(255 * p)
+        y_off = int(20 * (1 - p))
+        row_y = start_y + idx * row_h
+
+        # Row background pill
+        _draw_rect_a(img, [(list_x - 10, row_y - 8 + y_off),
+                            (list_x + 400, row_y + 44 + y_off)],
+                     (28, 34, 46), alpha // 2, radius=10)
+
+        # Checkmark circle
+        cr = 14
+        cx_c, cy_c = list_x + 20, row_y + 18 + y_off
+        _draw_ellipse_a(img, [(cx_c - cr, cy_c - cr), (cx_c + cr, cy_c + cr)],
+                        fill_rgb=accent, fill_a=alpha)
+        # Check tick
+        tick_a = min(alpha, int(255 * _progress(t, reveal + 0.15, 0.25)))
+        _draw_line_a(img,
+                     [(cx_c - 7, cy_c), (cx_c - 2, cy_c + 6), (cx_c + 8, cy_c - 5)],
+                     (15, 18, 26), tick_a, width=3)
+
+        # Item text
+        short = item if len(item) <= 38 else item[:35] + "…"
+        _draw_text_a(img, (list_x + 46, row_y + 6 + y_off), short,
+                     _font(FONT_SIZES["label"]), TEXT_MID, alpha)
+
+
+def _draw_document(img: Image.Image, t: float, accent: tuple) -> None:
+    """Animated document/page mockup building up section by section."""
+    doc_x  = RIGHT_CX - 220
+    doc_y  = RIGHT_CY - 280
+    doc_w  = 440
+    doc_h  = 560
+
+    p_card = _progress(t, 0.2, 0.5)
+    if p_card <= 0:
+        return
+
+    # Card background
+    _draw_rect_a(img, [(doc_x, doc_y), (doc_x + doc_w, doc_y + doc_h)],
+                 (22, 27, 38), int(240 * p_card), radius=18)
+    _draw_rect_a(img, [(doc_x, doc_y), (doc_x + doc_w, doc_y + 6)],
+                 accent, int(255 * p_card), radius=0)
+
+    # Animated sections
+    sections = [
+        ("API OVERVIEW",        0.5,  60, 18, 80, accent),
+        ("Endpoint reference",  0.75, 90, 14, 60, TEXT_MID),
+        ("Authentication",      1.0,  110, 14, 60, TEXT_MID),
+        ("Errors & webhooks",   1.25, 130, 14, 60, TEXT_MID),
+    ]
+    sy = doc_y + 50
+    for label, reveal, line_w, fnt_sz, line_off, color in sections:
+        p_s = _progress(t, reveal, 0.4)
+        if p_s <= 0:
+            sy += 80
+            continue
+        a = int(255 * p_s)
+        _draw_text_a(img, (doc_x + 28, sy), label,
+                     _font(fnt_sz, bold=(color == accent)), color, a)
+        # Body line stubs
+        for li in range(2):
+            lw = int((line_w - li * 18) * p_s)
+            _draw_line_a(img,
+                         [(doc_x + 28, sy + 30 + li * 18),
+                          (doc_x + 28 + lw, sy + 30 + li * 18)],
+                         (70, 80, 100), a // 2, width=4)
+        sy += 80
+
+    # Checkmark badge
+    p_badge = _progress(t, 2.0, 0.5)
+    if p_badge > 0:
+        bx, by = doc_x + doc_w - 50, doc_y + doc_h - 50
+        br = 22
+        _draw_ellipse_a(img, [(bx - br, by - br), (bx + br, by + br)],
+                        fill_rgb=accent, fill_a=int(255 * p_badge))
+        _draw_line_a(img, [(bx - 10, by), (bx - 3, by + 8), (bx + 12, by - 9)],
+                     (15, 18, 26), int(255 * p_badge), width=3)
+
+
+def _draw_steps(img: Image.Image, t: float, accent: tuple) -> None:
+    """Four numbered steps with connecting arrows."""
+    labels = ["Install", "Inspect", "Adapt", "Publish"]
+    n = len(labels)
+    gap = 190
+    start_x = RIGHT_CX - gap * (n - 1) // 2
+    step_y = RIGHT_CY - 30
+
+    for idx, label in enumerate(labels):
+        reveal = 0.25 + idx * 0.5
+        p = _progress(t, reveal, 0.45)
+        if p <= 0:
+            continue
+        a = int(255 * p)
+        sx = start_x + idx * gap
+
+        # Circle
+        cr = 42
+        _draw_ellipse_a(img, [(sx - cr, step_y - cr), (sx + cr, step_y + cr)],
+                        fill_rgb=(28, 34, 46), fill_a=a,
+                        outline_rgb=accent, outline_a=a, width=3)
+        # Number
+        _draw_text_a(img, (sx - 14, step_y - 22), str(idx + 1),
+                     _font(36, bold=True), accent, a)
+        # Label below
+        _draw_text_a(img, (sx - 35, step_y + cr + 14), label,
+                     _font(FONT_SIZES["label"], bold=True), TEXT_MID, a)
+
+        # Arrow to next
+        if idx < n - 1:
+            p_arrow = _progress(t, reveal + 0.3, 0.3)
+            if p_arrow > 0:
+                ax1 = sx + cr + 4
+                ax2 = sx + gap - cr - 4
+                am = (ax1 + ax2) // 2
+                _draw_line_a(img, [(ax1, step_y), (ax2, step_y)],
+                             (70, 80, 100), int(200 * p_arrow), width=3)
+                # Arrow head
+                _draw_line_a(img, [(ax2 - 10, step_y - 6), (ax2, step_y), (ax2 - 10, step_y + 6)],
+                             (70, 80, 100), int(200 * p_arrow), width=3)
+
+    # Active highlight on first step
+    p_hi = _progress(t, 0.2, 0.4)
+    if p_hi > 0:
+        sx = start_x
+        pulse = 0.5 + 0.5 * math.sin(t * 2.5 * math.pi)
+        glow_r = int(52 * (0.9 + 0.1 * pulse))
+        _draw_ellipse_a(img, [(sx - glow_r, step_y - glow_r), (sx + glow_r, step_y + glow_r)],
+                        outline_rgb=accent, outline_a=int(60 * p_hi * pulse), width=6)
+
+
+def _draw_personas(img: Image.Image, t: float, accent: tuple) -> None:
+    """Persona bubbles for the 'Who It's For' scene."""
+    personas = [
+        ("CTO",            "Sets the direction",           RIGHT_CX - 300, RIGHT_CY - 140),
+        ("Engineering Lead","Owns the process",            RIGHT_CX + 60,  RIGHT_CY - 200),
+        ("DevRel",         "Writes the content",           RIGHT_CX - 220, RIGHT_CY + 100),
+        ("Tech Writer",    "Maintains the system",         RIGHT_CX + 100, RIGHT_CY + 80),
+    ]
+
+    for idx, (role, sub, px, py) in enumerate(personas):
+        reveal = 0.3 + idx * 0.4
+        p = _progress(t, reveal, 0.5)
+        if p <= 0:
+            continue
+        a = int(255 * p)
+        y_off = int(20 * (1 - p))
+
+        # Bubble card
+        w, h = 230, 80
+        _draw_rect_a(img, [(px - w//2, py - h//2 + y_off), (px + w//2, py + h//2 + y_off)],
+                     (28, 34, 46), a, radius=16)
+        _draw_rect_a(img, [(px - w//2, py - h//2 + y_off), (px - w//2 + 4, py + h//2 + y_off)],
+                     accent, a, radius=0)
+
+        # Avatar circle
+        avr = 22
+        _draw_ellipse_a(img, [(px - w//2 + 18, py - avr + y_off),
+                               (px - w//2 + 18 + avr*2, py + avr + y_off)],
+                        fill_rgb=accent, fill_a=a // 2,
+                        outline_rgb=accent, outline_a=a, width=2)
+
+        # Text
+        _draw_text_a(img, (px - w//2 + 56, py - 14 + y_off), role,
+                     _font(FONT_SIZES["label"], bold=True), TEXT_HI, a)
+        _draw_text_a(img, (px - w//2 + 56, py + 6 + y_off), sub,
+                     _font(FONT_SIZES["small"]), TEXT_DIM, a)
+
+
+def _draw_cta_graphic(img: Image.Image, t: float, accent: tuple, url: str) -> None:
+    """CTA scene: URL + button + animated underline."""
+    cx, cy = RIGHT_CX, RIGHT_CY
+
+    p_enter = _progress(t, 0.2, 0.6)
+    if p_enter <= 0:
+        return
+
+    a = int(255 * p_enter)
+    y_off = int(30 * (1 - p_enter))
+
+    # Decorative large orb background
+    orb_r = int(200 * p_enter)
+    pulse = 0.5 + 0.5 * math.sin(t * math.pi * 0.8)
+    _draw_ellipse_a(img, [(cx - orb_r, cy - orb_r), (cx + orb_r, cy + orb_r)],
+                    fill_rgb=(28, 22, 12), fill_a=int(180 * p_enter))
+    _draw_ellipse_a(img, [(cx - orb_r, cy - orb_r), (cx + orb_r, cy + orb_r)],
+                    outline_rgb=accent, outline_a=int(80 * p_enter * pulse), width=4)
+
+    # URL text
+    url_fnt = _font(FONT_SIZES["cta"], bold=True)
+    short_url = url.replace("https://", "")
+    _draw_text_a(img, (cx - 240, cy - 45 + y_off), short_url, url_fnt, accent, a)
+
+    # Animated underline
+    p_line = _progress(t, 0.6, 0.5)
+    if p_line > 0:
+        line_w = int(480 * p_line)
+        _draw_line_a(img, [(cx - 240, cy + 28 + y_off), (cx - 240 + line_w, cy + 28 + y_off)],
+                     accent, int(220 * p_line), width=3)
+
+    # CTA button
+    p_btn = _progress(t, 1.0, 0.4)
+    if p_btn > 0:
+        bw, bh = 280, 58
+        bx, by = cx - bw // 2, cy + 70 + y_off
+        _draw_rect_a(img, [(bx, by), (bx + bw, by + bh)],
+                     accent, int(255 * p_btn), radius=14)
+        _draw_text_a(img, (bx + 52, by + 14), "Install in 5 minutes",
+                     _font(FONT_SIZES["label"], bold=True), (15, 15, 20),
+                     int(255 * p_btn))
+
+
+def _draw_right_graphic(img: Image.Image, scene: dict, scene_idx: int, t: float) -> None:
+    accent  = SCENE_ACCENTS[scene_idx % len(SCENE_ACCENTS)]
+    graphic = scene.get("graphic", "orb")
+
+    if   graphic == "chaos"    : _draw_chaos(img, t, accent)
+    elif graphic == "drift"    : _draw_drift(img, t, accent)
+    elif graphic == "orb"      : _draw_orb(img, t, accent)
+    elif graphic == "checklist": _draw_checklist(img, t, accent, scene.get("bullets", []))
+    elif graphic == "document" : _draw_document(img, t, accent)
+    elif graphic == "steps"    : _draw_steps(img, t, accent)
+    elif graphic == "personas" : _draw_personas(img, t, accent)
+    elif graphic == "cta"      : _draw_cta_graphic(img, t, accent, scene.get("cta_url", ""))
+    else                       : _draw_orb(img, t, accent)
 
 # ---------------------------------------------------------------------------
-# Background rendering
+# Chrome elements (logo bar, divider, progress dots)
 # ---------------------------------------------------------------------------
 
-def render_background(scene: dict, scene_index: int = 0) -> Image.Image:
-    bg = scene.get("bg", BG_DARK)
-    img = Image.new("RGB", (WIDTH, HEIGHT), bg)
-    draw = ImageDraw.Draw(img)
+def _draw_chrome(img: Image.Image, scene_idx: int) -> None:
+    d = ImageDraw.Draw(img)
 
     # Top accent bar
-    draw.rectangle([(0, 0), (WIDTH, 6)], fill=ACCENT)
+    d.rectangle([(0, 0), (WIDTH, TOP_BAR)], fill=ACCENT)
     # Logo
-    draw.text((CONTENT_LEFT, 38), "RepoDocs AI",
-              fill=ACCENT, font=_get_font(FONT_SIZES["logo"], bold=True))
+    d.text((LEFT_X, LOGO_Y), "RepoDocs AI",
+           fill=ACCENT, font=_font(FONT_SIZES["logo"], bold=True))
     # Bottom accent bar
-    draw.rectangle([(0, HEIGHT - 4), (WIDTH, HEIGHT)], fill=ACCENT)
+    d.rectangle([(0, HEIGHT - 4), (WIDTH, HEIGHT)], fill=ACCENT)
 
-    # Vertical divider between left and right panels
-    draw.line([(LEFT_PANEL_RIGHT, 70), (LEFT_PANEL_RIGHT, HEIGHT - 40)],
-              fill=(45, 52, 65), width=1)
+    # Subtle vertical divider between content and illustration
+    d.line([(MID_X, 70), (MID_X, HEIGHT - 40)], fill=DIVIDER, width=1)
 
-    ring_color = _RING_COLORS[scene_index % len(_RING_COLORS)]
-    _draw_browser_panel(img, _SCENE_SCREENSHOTS[scene_index], ring_color)
-
-    # INTRODUCING scene: extra side accent bars
-    if scene.get("kicker") == "INTRODUCING":
-        draw.rectangle([(0, 0), (8, HEIGHT)], fill=ACCENT)
-        draw.rectangle([(WIDTH - 8, 0), (WIDTH, HEIGHT)], fill=ACCENT)
-
-    _draw_progress(draw, scene_index, len(SCENES))
-
-    return img
-
+    # Progress dots
+    n = len(SCENES)
+    dot_r, spacing = 5, 22
+    total_w = (n - 1) * spacing
+    sx = (WIDTH - total_w) // 2
+    y_dot = HEIGHT - 26
+    for i in range(n):
+        cx = sx + i * spacing
+        if i == scene_idx:
+            d.ellipse([(cx - dot_r, y_dot - dot_r), (cx + dot_r, y_dot + dot_r)],
+                      fill=ACCENT)
+        elif i < scene_idx:
+            d.ellipse([(cx - dot_r + 1, y_dot - dot_r + 1),
+                       (cx + dot_r - 1, y_dot + dot_r - 1)],
+                      fill=(110, 120, 135))
+        else:
+            d.ellipse([(cx - dot_r, y_dot - dot_r), (cx + dot_r, y_dot + dot_r)],
+                      outline=(65, 72, 88), width=2)
 
 # ---------------------------------------------------------------------------
-# Overlay rendering (transparent PNG per text element — slide-in source)
+# Per-frame renderer
 # ---------------------------------------------------------------------------
 
-def render_overlay(element: dict, out_path: Path) -> None:
-    image = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-    _draw_block(draw, element)
-    image.save(out_path, format="PNG")
+def render_frame(scene: dict, scene_idx: int, t: float, duration: float) -> Image.Image:
+    bg = scene.get("bg", BG_DARK)
+    img = Image.new("RGBA", (WIDTH, HEIGHT), (*bg, 255))
 
+    # Scene fade-in / fade-out
+    fade_in_dur  = 0.3
+    fade_out_dur = 0.35
+    fade_out_st  = max(duration - fade_out_dur, 0)
+    if t < fade_in_dur:
+        overlay_a = int(255 * (1.0 - t / fade_in_dur))
+        _draw_rect_a(img, [(0, 0), (WIDTH, HEIGHT)], bg, overlay_a)
+    elif t > fade_out_st:
+        overlay_a = int(255 * (t - fade_out_st) / fade_out_dur)
+        _draw_rect_a(img, [(0, 0), (WIDTH, HEIGHT)], bg, min(overlay_a, 255))
 
-def render_poster(scene: dict, scene_index: int, out_path: Path) -> None:
-    image = render_background(scene, scene_index).convert("RGBA")
-    draw = ImageDraw.Draw(image)
-    for element in _scene_elements(scene):
-        _draw_block(draw, element)
-    image.convert("RGB").save(out_path, format="JPEG", quality=92)
+    # Chrome (static per frame — fast, uses ImageDraw directly)
+    _draw_chrome(img, scene_idx)
 
+    # Right illustration
+    _draw_right_graphic(img, scene, scene_idx, t)
+
+    # Left text content
+    _draw_content(img, scene, t, duration)
+
+    return img.convert("RGB")
 
 # ---------------------------------------------------------------------------
 # ffmpeg helpers
 # ---------------------------------------------------------------------------
 
-def _run_command(command: list[str]) -> None:
-    subprocess.run(command, check=True, stderr=subprocess.DEVNULL)
+def _run(cmd: list[str]) -> None:
+    subprocess.run(cmd, check=True, stderr=subprocess.DEVNULL)
 
 
-def _probe_duration(media_path: Path) -> float:
-    result = subprocess.run(
-        ["ffprobe", "-v", "quiet",
-         "-show_entries", "format=duration",
-         "-of", "default=noprint_wrappers=1:nokey=1",
-         str(media_path)],
+def _probe_duration(path: Path) -> float:
+    r = subprocess.run(
+        ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
         check=True, capture_output=True, text=True,
     )
-    return float(result.stdout.strip())
+    return float(r.stdout.strip())
 
 
 def _ensure_ffmpeg() -> None:
     for exe in ("ffmpeg", "ffprobe"):
         if shutil.which(exe) is None:
-            raise RuntimeError(f"{exe} is required but was not found in PATH.")
+            raise RuntimeError(f"{exe} not found in PATH.")
 
 
 def clean_temp_dir() -> None:
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
-    for path in TEMP_DIR.iterdir():
-        if path == RUN_DIR:
+    for p in TEMP_DIR.iterdir():
+        if p == RUN_DIR:
             continue
-        if path.is_dir():
-            shutil.rmtree(path, ignore_errors=True)
+        if p.is_dir():
+            shutil.rmtree(p, ignore_errors=True)
         else:
             try:
-                path.unlink()
+                p.unlink()
             except PermissionError:
-                continue
-
+                pass
 
 # ---------------------------------------------------------------------------
-# TTS audio generation
+# Audio generation
 # ---------------------------------------------------------------------------
 
 async def generate_audio(scenes: list[dict]) -> list[Path]:
     RUN_DIR.mkdir(parents=True, exist_ok=True)
-    audio_paths: list[Path] = []
+    paths = []
     for i, scene in enumerate(scenes):
-        out_path = RUN_DIR / f"scene_{i:02d}.mp3"
-        communicate = edge_tts.Communicate(scene["narration"], VOICE, rate="-5%")
-        await communicate.save(str(out_path))
-        audio_paths.append(out_path)
-        print(f"  [audio] scene {i}: {out_path.name}")
-    return audio_paths
-
-
-# ---------------------------------------------------------------------------
-# Reveal schedule (staggered slide-in timings)
-# ---------------------------------------------------------------------------
-
-def _reveal_schedule(count: int, duration: float) -> list[float]:
-    if count == 0:
-        return []
-    start = 0.3
-    available = max(duration - 1.1, 0.8)
-    step = min(0.85, max(0.32, available / max(count, 1)))
-    return [round(start + i * step, 2) for i in range(count)]
-
+        out = RUN_DIR / f"scene_{i:02d}.mp3"
+        comm = edge_tts.Communicate(scene["narration"], VOICE, rate="-5%")
+        await comm.save(str(out))
+        paths.append(out)
+        print(f"  [audio] scene {i}: {out.name}")
+    return paths
 
 # ---------------------------------------------------------------------------
-# Per-scene video composition
-#
-# Animation: each text overlay slides in from the LEFT side of the screen.
-# The background has a subtle zoompan drift.
-# Scenes fade in/out at their edges.
+# Per-scene video encoding (pipe frames directly to ffmpeg)
 # ---------------------------------------------------------------------------
 
-def _compose_scene(
-    i: int,
+def _encode_scene(
     scene: dict,
+    scene_idx: int,
     audio_path: Path,
-    segment_path: Path,
+    seg_path: Path,
+    duration: float,
 ) -> None:
-    background_path = RUN_DIR / f"scene_{i:02d}_bg.png"
-    render_background(scene, i).save(background_path, format="PNG")
+    total_frames = int(duration * FPS)
 
-    elements = _scene_elements(scene)
-    overlay_paths: list[Path] = []
-    for ei, element in enumerate(elements):
-        op = RUN_DIR / f"scene_{i:02d}_ov_{ei:02d}.png"
-        render_overlay(element, op)
-        overlay_paths.append(op)
-
-    duration = _probe_duration(audio_path) + 0.9
-    fade_out_start = max(duration - 0.35, 0)
-    frame_count = max(int(duration * FPS), 1)
-    reveal_points = _reveal_schedule(len(overlay_paths), duration)
-
-    # Build ffmpeg command
-    # Input 0: background PNG (looped)
-    # Inputs 1..N: overlay PNGs (looped)
-    # Input N+1: audio
-    cmd = ["ffmpeg", "-y",
-           "-loop", "1", "-framerate", str(FPS), "-i", str(background_path)]
-    for op in overlay_paths:
-        cmd.extend(["-loop", "1", "-framerate", str(FPS), "-i", str(op)])
-    cmd.extend(["-i", str(audio_path)])
-
-    # filter_complex
-    # Step 1: zoompan on background + fade in/out
-    filter_steps = [
-        (
-            f"[0:v]scale={WIDTH + 120}:{HEIGHT + 68},"
-            f"zoompan="
-            f"z='min(zoom+0.00045,1.08)':"
-            f"x='iw/2-(iw/zoom/2)+14*sin(on/22)':"
-            f"y='ih/2-(ih/zoom/2)+9*cos(on/28)':"
-            f"d={frame_count}:s={WIDTH}x{HEIGHT}:fps={FPS},"
-            f"format=rgba,"
-            f"fade=t=in:st=0:d=0.35,"
-            f"fade=t=out:st={fade_out_start:.2f}:d=0.35[base0]"
-        )
+    # Open ffmpeg process expecting raw RGB24 frames on stdin
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "rawvideo", "-vcodec", "rawvideo",
+        "-s", f"{WIDTH}x{HEIGHT}", "-pix_fmt", "rgb24",
+        "-r", str(FPS), "-i", "pipe:0",
+        "-i", str(audio_path),
+        "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k",
+        "-movflags", "+faststart",
+        "-t", f"{duration:.3f}",
+        str(seg_path),
     ]
 
-    # Step 2: each overlay slides in from the left
-    # The overlay PNG contains text positioned absolutely at its final x.
-    # We shift the entire overlay canvas by -W (off-screen left) and animate
-    # x from -W toward 0 over 0.28 seconds starting at reveal_time.
-    current_label = "base0"
-    for oi, reveal_time in enumerate(reveal_points, start=1):
-        ov_label = f"ov{oi}"
-        next_label = f"base{oi}"
-        slide_dur = 0.28
-        # x expression: before reveal → off-screen left (-W)
-        #               during slide → eased from -W to 0
-        #               after slide  → 0
-        x_expr = (
-            f"if(lt(t,{reveal_time:.2f}),"
-            f"-{WIDTH},"
-            f"if(lt(t,{reveal_time:.2f}+{slide_dur}),"
-            f"(t-{reveal_time:.2f})/{slide_dur}*{WIDTH}-{WIDTH},"
-            f"0))"
-        )
-        filter_steps.append(
-            f"[{oi}:v]format=rgba,"
-            f"setpts=PTS-STARTPTS[{ov_label}raw]"
-        )
-        filter_steps.append(
-            f"[{current_label}][{ov_label}raw]"
-            f"overlay=x='{x_expr}':y=0:eof_action=pass[{next_label}]"
-        )
-        current_label = next_label
-
-    audio_index = len(overlay_paths) + 1
-    filter_steps.append(f"[{audio_index}:a]apad=pad_dur=1[a]")
-
-    cmd.extend([
-        "-filter_complex", ";".join(filter_steps),
-        "-map", f"[{current_label}]",
-        "-map", "[a]",
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-pix_fmt", "yuv420p",
-        "-c:a", "aac",
-        "-b:a", "192k",
-        "-r", str(FPS),
-        "-movflags", "+faststart",
-        "-shortest",
-        "-t", f"{duration:.2f}",
-        str(segment_path),
-    ])
-
-    _run_command(cmd)
-
+    err_path = seg_path.with_suffix(".ffmpeg_err.txt")
+    with open(err_path, "w") as err_fh:
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=err_fh)
+        try:
+            for f in range(total_frames):
+                t = f / FPS
+                frame = render_frame(scene, scene_idx, t, duration)
+                proc.stdin.write(frame.tobytes())
+            proc.stdin.close()
+            proc.wait()
+            if proc.returncode != 0:
+                err_txt = err_path.read_text(errors="replace")
+                raise RuntimeError(f"ffmpeg failed (scene {scene_idx}):\n{err_txt}")
+        except Exception:
+            proc.kill()
+            raise
 
 # ---------------------------------------------------------------------------
-# Final concatenation with xfade transitions
+# Concatenation with xfade
 # ---------------------------------------------------------------------------
 
-def _concat_with_xfade(segment_paths: list[Path], durations: list[float]) -> None:
-    """Concatenate segments using xfade video transitions and acrossfade audio."""
-    n = len(segment_paths)
-    XFADE_DUR = 0.4
+def _concat_xfade(seg_paths: list[Path], durations: list[float]) -> None:
+    n = len(seg_paths)
+    XFADE = 0.4
 
-    # Build inputs
     cmd = ["ffmpeg", "-y"]
-    for sp in segment_paths:
+    for sp in seg_paths:
         cmd.extend(["-i", str(sp)])
 
-    # Build filter_complex
-    # Accumulate xfade offsets: offset_i = sum(dur[0..i-1]) - i*XFADE_DUR
-    filter_parts = []
+    parts = []
     cumulative = 0.0
-    current_v = "[0:v]"
-    current_a = "[0:a]"
+    cur_v = "[0:v]"
+    cur_a = "[0:a]"
 
     for i in range(1, n):
-        cumulative += durations[i - 1] - XFADE_DUR
-        next_v = f"[xv{i}]" if i < n - 1 else "[vout]"
-        next_a = f"[xa{i}]" if i < n - 1 else "[aout]"
-        filter_parts.append(
-            f"{current_v}[{i}:v]xfade=transition=wipeleft:"
-            f"duration={XFADE_DUR}:offset={cumulative:.3f}{next_v}"
+        cumulative += durations[i - 1] - XFADE
+        nxt_v = f"[xv{i}]" if i < n - 1 else "[vout]"
+        nxt_a = f"[xa{i}]" if i < n - 1 else "[aout]"
+        parts.append(
+            f"{cur_v}[{i}:v]xfade=transition=wipeleft:"
+            f"duration={XFADE}:offset={cumulative:.3f}{nxt_v}"
         )
-        filter_parts.append(
-            f"{current_a}[{i}:a]acrossfade=d={XFADE_DUR}{next_a}"
-        )
-        current_v = next_v
-        current_a = next_a
+        parts.append(f"{cur_a}[{i}:a]acrossfade=d={XFADE}{nxt_a}")
+        cur_v = nxt_v
+        cur_a = nxt_a
 
     cmd.extend([
-        "-filter_complex", ";".join(filter_parts),
-        "-map", "[vout]",
-        "-map", "[aout]",
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-pix_fmt", "yuv420p",
-        "-c:a", "aac",
-        "-b:a", "192k",
-        "-movflags", "+faststart",
+        "-filter_complex", ";".join(parts),
+        "-map", "[vout]", "-map", "[aout]",
+        "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
         str(VIDEO_PATH),
     ])
-
-    _run_command(cmd)
-
+    _run(cmd)
 
 # ---------------------------------------------------------------------------
-# Main composition orchestrator
+# Poster
+# ---------------------------------------------------------------------------
+
+def render_poster(scene: dict, scene_idx: int, out_path: Path) -> None:
+    # Use t=1.5 so most elements are fully revealed
+    img = render_frame(scene, scene_idx, 1.5, 20.0)
+    img.save(out_path, format="JPEG", quality=92)
+
+# ---------------------------------------------------------------------------
+# Main orchestrator
 # ---------------------------------------------------------------------------
 
 def compose_video(scenes: list[dict], audio_paths: list[Path]) -> Path:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     RUN_DIR.mkdir(parents=True, exist_ok=True)
 
-    segment_paths: list[Path] = []
-    durations: list[float] = []
+    seg_paths  = []
+    durations  = []
 
-    for i, (scene, audio_path) in enumerate(zip(scenes, audio_paths)):
-        segment_path = RUN_DIR / f"scene_{i:02d}.mp4"
-        duration = _probe_duration(audio_path) + 0.9
-        _compose_scene(i, scene, audio_path, segment_path)
-        segment_paths.append(segment_path)
-        durations.append(duration)
-        print(f"  [video] scene {i}: {duration:.1f}s")
+    for i, (scene, audio) in enumerate(zip(scenes, audio_paths)):
+        seg = RUN_DIR / f"scene_{i:02d}.mp4"
+        dur = _probe_duration(audio) + 0.9
+        _encode_scene(scene, i, audio, seg, dur)
+        seg_paths.append(seg)
+        durations.append(dur)
+        print(f"  [video] scene {i}: {dur:.1f}s  ({int(dur * FPS)} frames)", flush=True)
 
     print("\n  [concat] applying xfade transitions …")
-    _concat_with_xfade(segment_paths, durations)
+    _concat_xfade(seg_paths, durations)
 
     render_poster(SCENES[2], 2, POSTER_PATH)
     return VIDEO_PATH
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
 def main():
     print("=" * 60)
-    print("  RepoDocs AI Demo Video Generator")
+    print("  RepoDocs AI — Motion Graphics Demo Generator")
     print("=" * 60)
 
     _ensure_ffmpeg()
@@ -844,12 +1054,12 @@ def main():
     print("\n[1/3] Generating narration audio …")
     audio_paths = asyncio.run(generate_audio(SCENES))
 
-    print("\n[2/3] Composing video scenes …")
+    print("\n[2/3] Rendering and encoding scenes …")
     output = compose_video(SCENES, audio_paths)
 
     print("\n[3/3] Done!")
-    print(f"  Output: {output}")
-    print(f"  Size:   {output.stat().st_size / (1024*1024):.1f} MB")
+    print(f"  Output : {output}")
+    print(f"  Size   : {output.stat().st_size / (1024*1024):.1f} MB")
     print("=" * 60)
 
 
