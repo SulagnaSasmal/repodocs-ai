@@ -55,6 +55,11 @@ const config: Config = {
           position: "left"
         },
         {
+          to: "/pipeline-health",
+          label: "Pipeline Health",
+          position: "left"
+        },
+        {
           to: "/payments-example",
           label: "Payments Example",
           position: "left"
@@ -96,6 +101,10 @@ const config: Config = {
             {
               label: "Payments Example",
               to: "/payments-example"
+            },
+            {
+              label: "Pipeline Health",
+              to: "/pipeline-health"
             },
             {
               label: "Validation",
