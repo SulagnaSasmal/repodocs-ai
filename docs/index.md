@@ -33,6 +33,11 @@ Use this path if you want to decide whether RepoDocs AI is credible for your tea
 - [Multi-Repo Guide](multi-repo-guide.md)
 - [Payments Migration Guide](migration-guides/payments-retrieve-status.md)
 
+## Community
+
+- [Developer Experience Scorecard](developer-experience-scorecard.md)
+- [Community Feedback](community-feedback-discussion.md)
+
 ## Repository Assets
 
 - `../templates/` contains reusable documentation packs.
