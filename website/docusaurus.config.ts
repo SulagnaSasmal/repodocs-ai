@@ -33,6 +33,24 @@ const config: Config = {
       } satisfies Preset.Options
     ]
   ],
+  themes: [
+    [
+      "@easyops-cn/docusaurus-search-local",
+      {
+        hashed: true,
+        indexDocs: true,
+        indexPages: true,
+        indexBlog: false,
+        docsRouteBasePath: "docs",
+        docsDir: "../docs",
+        language: ["en"],
+        highlightSearchTermsOnTargetPage: true,
+        searchResultLimits: 12,
+        searchResultContextMaxLength: 64,
+        explicitSearchResultPath: true
+      }
+    ]
+  ],
   themeConfig: {
     image: "img/og-card.svg",
     colorMode: {

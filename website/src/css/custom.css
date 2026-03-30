@@ -656,3 +656,63 @@ h4,
     display: none;
   }
 }
+
+/* ── Search bar ─────────────────────────────────────────── */
+
+.navbar .DocSearch-Button,
+.navbar .search-bar-wrapper input {
+  font-family: var(--ifm-font-family-base);
+  background: var(--site-surface);
+  border: 1px solid var(--site-line-strong);
+  border-radius: 12px;
+  color: var(--site-ink);
+  font-size: 0.88rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.navbar .DocSearch-Button:hover,
+.navbar .search-bar-wrapper input:focus {
+  border-color: var(--ifm-color-primary);
+  box-shadow: 0 0 0 3px var(--site-glow);
+  outline: none;
+}
+
+/* Search modal / dropdown */
+.search-result-match {
+  background: var(--site-glow);
+  color: var(--ifm-color-primary);
+  font-weight: 600;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+[class*="searchBarContainer"] input[type="search"] {
+  background: var(--site-surface-strong);
+  border: 1.5px solid var(--site-line-strong);
+  border-radius: 12px;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.88rem;
+  color: var(--site-ink);
+  font-family: var(--ifm-font-family-base);
+}
+
+[class*="searchBarContainer"] input[type="search"]:focus {
+  border-color: var(--ifm-color-primary);
+  box-shadow: 0 0 0 3px var(--site-glow);
+}
+
+/* Search results dropdown */
+[class*="searchResultsColumn"],
+.search-result-page {
+  font-family: var(--ifm-font-family-base);
+}
+
+.search-result-page .search-result-page-heading {
+  font-family: var(--ifm-heading-font-family);
+}
+
+/* Highlighted terms on target pages */
+.search-result-highlight {
+  background: rgba(176, 74, 31, 0.18);
+  border-bottom: 2px solid var(--ifm-color-primary);
+}
