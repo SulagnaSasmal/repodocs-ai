@@ -21,7 +21,7 @@ export default function DemoPage(): JSX.Element {
         <div className="demo-shell">
           <section className="surface-card surface-card--warm">
             <p className="section-kicker">Narrated demo</p>
-            <h1>Watch the RepoDocs AI sales demo.</h1>
+            <h1>Watch the RepoDocs AI product demo.</h1>
             <p className="example-lead">
               This walkthrough explains the product problem, the system RepoDocs AI installs into your repository,
               and the proof points buyers can inspect before adopting it.

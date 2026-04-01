@@ -24,18 +24,43 @@ type WorkflowStep = {
 };
 
 const actions: LinkItem[] = [
-  { label: "Read the docs", href: "/docs", variant: "primary" },
-  { label: "Watch the demo", href: "/demo", variant: "primary" },
   { label: "Install in 5 minutes", href: "/docs/installation", variant: "primary" },
   {
     label: "Inspect the payments example",
     href: "/payments-example",
     variant: "secondary"
+  }
+];
+
+type ComparisonRow = {
+  generic: string;
+  repodocs: string;
+};
+
+const comparisonRows: ComparisonRow[] = [
+  {
+    generic: "Generic text output",
+    repodocs: "Document-type-specific structure enforced by templates and frontmatter schema"
   },
   {
-    label: "View the repository",
-    href: "https://github.com/SulagnaSasmal/repodocs-ai",
-    variant: "secondary"
+    generic: "One-shot generation",
+    repodocs: "Structured prompt packs for drafting and review with workflow-specific guardrails"
+  },
+  {
+    generic: "No validation",
+    repodocs: "Six validation scripts: frontmatter, structure, quality, OpenAPI alignment, version compatibility, coverage"
+  },
+  {
+    generic: "No CI integration",
+    repodocs: "GitHub Actions workflows for PR validation, Pages deployment, and OpenAPI regeneration"
+  },
+  {
+    generic: "No publishable output",
+    repodocs: "Export pipelines for Confluence, Google Docs, Notion, and PDF — plus GitHub Pages out of the box"
+  },
+  {
+    generic: "No proof of output quality",
+    repodocs: "Payments API example: 9 documents + OpenAPI spec you can inspect before committing"
   }
 ];
 
@@ -117,7 +142,7 @@ export default function Home(): JSX.Element {
           <div className="hero-shell">
             <div className="hero-copy">
               <p className="eyebrow">Documentation system</p>
-              <h1>Ship API docs with structure, proof, and review built in.</h1>
+              <h1>Your API docs are scattered. Fix that in one repo.</h1>
               <p className="hero-text">
                 RepoDocs AI gives API teams one repository-based workflow for drafting, validating, and publishing
                 documentation without stitching together templates, review steps, and publishing checks by hand.
@@ -177,6 +202,31 @@ export default function Home(): JSX.Element {
               ))}
             </ul>
           </article>
+        </section>
+
+        <section className="content-shell comparison-band">
+          <div className="section-heading">
+            <p className="section-kicker">Why not just use Claude.ai or ChatGPT?</p>
+            <h2>General-purpose AI gets you 80% of the way. RepoDocs AI owns the other 20%.</h2>
+          </div>
+          <div className="surface-card surface-card--plain comparison-card">
+            <table className="comparison-table">
+              <thead>
+                <tr>
+                  <th>What Claude.ai gives you</th>
+                  <th>What RepoDocs AI adds</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparisonRows.map((row) => (
+                  <tr key={row.generic}>
+                    <td className="comparison-table__generic">{row.generic}</td>
+                    <td>{row.repodocs}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <section className="content-shell narrative-band">
