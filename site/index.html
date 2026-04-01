@@ -29,31 +29,26 @@
       </nav>
       <header class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">RepoDocs AI</p>
-          <h1>RepoDocs AI is an AI-prompt-powered docs-as-code documentation system for SaaS teams building APIs.</h1>
+          <p class="eyebrow">RepoDocs AI — v1.0.0</p>
+          <h1>Your API is undocumented. Fix that in 5 minutes.</h1>
           <p class="hero-text">
-            It helps engineering teams replace scattered docs and fragile template packs with one repository-ready system for structured writing, guided AI usage, validation, examples, publishing, and automation.
+            RepoDocs AI gives engineering teams one repo-native system for API documentation: templates, AI prompt packs, validation, a payments example, and export pipelines — packaged together so the right output is easier than the wrong one.
           </p>
           <div class="hero-actions">
             <a class="primary-action" href="installation.html">Install in 5 Minutes</a>
-            <a class="primary-action" href="docs/index.html">Browse Documentation</a>
-            <a class="primary-action" href="ready-to-install-system.html">View System Doc</a>
-            <a class="secondary-action" href="product-specification.html">Read Spec</a>
-            <a class="secondary-action" href="spec-summary.html">Read Summary</a>
-            <a class="secondary-action" href="complete-system.html">View Example System</a>
-            <a class="secondary-action" href="roadmap.html">See Roadmap</a>
+            <a class="secondary-action" href="complete-system.html">Inspect the Payments Example</a>
           </div>
         </div>
         <section class="hero-panel">
           <div class="metric-card">
             <span class="metric-label">Who It Is For</span>
-            <strong>SaaS API Teams</strong>
-            <p>CTOs, engineering leads, DevRel teams, and technical writers working in GitHub-based documentation workflows.</p>
+            <strong>Engineering &amp; DevRel Teams</strong>
+            <p>Engineering leads, API platform teams, and developer relations engineers working in GitHub-based documentation workflows.</p>
           </div>
           <div class="metric-card accent">
             <span class="metric-label">Why It Is Different</span>
-            <strong>More Than Templates</strong>
-            <p>Templates, prompts, validation, governance, examples, exports, and automation are packaged together as one documentation system.</p>
+            <strong>A System, Not a Template Pack</strong>
+            <p>Templates, AI prompts, validation, governance, examples, exports, and automation packaged together — not a folder of files you have to wire up yourself.</p>
           </div>
         </section>
       </header>
@@ -81,6 +76,49 @@
               <li>Pull request and GitHub Pages workflows</li>
             </ul>
           </article>
+        </section>
+
+        <section class="stacked-section">
+          <div class="section-heading">
+            <p class="section-label">Why Not Just Use Claude.ai or ChatGPT?</p>
+            <h2>General-purpose AI gets you 80% of the way. RepoDocs AI owns the other 20%.</h2>
+          </div>
+          <div class="comparison-table-wrapper">
+            <table class="comparison-table">
+              <thead>
+                <tr>
+                  <th>What Claude.ai gives you</th>
+                  <th>What RepoDocs AI adds</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Generic text output</td>
+                  <td>Document-type-specific structure enforced by templates and frontmatter schema</td>
+                </tr>
+                <tr>
+                  <td>One-shot generation</td>
+                  <td>Structured prompt packs for drafting <em>and</em> review, with workflow-specific guardrails</td>
+                </tr>
+                <tr>
+                  <td>No validation</td>
+                  <td>Six validation scripts: frontmatter, structure, quality, OpenAPI alignment, version compatibility, coverage</td>
+                </tr>
+                <tr>
+                  <td>No CI integration</td>
+                  <td>GitHub Actions workflows for PR validation, Pages deployment, and OpenAPI regeneration</td>
+                </tr>
+                <tr>
+                  <td>No publishable output</td>
+                  <td>Export pipelines for Confluence, Google Docs, Notion, and PDF — plus GitHub Pages out of the box</td>
+                </tr>
+                <tr>
+                  <td>No proof of output quality</td>
+                  <td>Payments API example: 9 documents + OpenAPI spec you can inspect before committing</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <section class="grid-section detail-grid">
@@ -269,11 +307,15 @@ cp -R ../repodocs-ai/diagrams .</pre>
         </section>
 
         <section class="cta-section">
-          <p class="section-label">Next Build</p>
-          <h2>Move from generated documentation to broader publishing and lifecycle depth.</h2>
+          <p class="section-label">Get Started</p>
+          <h2>Install RepoDocs AI, inspect the payments example, and tell us where it breaks.</h2>
           <p>
-            The next milestone is hosted orchestration, broader publishing targets, and deeper lifecycle automation around SDKs and changelogs.
+            The fastest path to evaluating the system: bootstrap a docs repo in 5 minutes, review the payments API example, then run the validation suite. Open a GitHub Discussion with what worked and what didn't.
           </p>
+          <div class="hero-actions cta-actions">
+            <a class="primary-action" href="installation.html">Install in 5 Minutes</a>
+            <a class="secondary-action" href="https://github.com/SulagnaSasmal/repodocs-ai/discussions">Open a Discussion</a>
+          </div>
         </section>
       </main>
     </div>

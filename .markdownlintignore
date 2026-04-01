@@ -1,0 +1,7 @@
+node_modules/
+website/node_modules/
+website/.docusaurus/
+website/build/
+exports/
+docs/archive/
+product-shipment-plan.md
