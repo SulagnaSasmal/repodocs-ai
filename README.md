@@ -121,9 +121,11 @@ The final step, `lint:markdown`, prints nothing when there are no linting errors
 Running `npm test`:
 
 ```text
- Test Files  7 passed (7)
-      Tests  201 passed (201)
+ Test Files  8 passed (8)
+      Tests  170 passed (170)
 ```
+
+The tests include the full adopter path (bootstrap, generate, `validate:docs`, and the CI step the bootstrap writes), run against five OpenAPI specs written by other people in `tests/fixtures/third-party/`. They check the generated docs against each spec, not only that the commands succeed. Before each release, a fresh AI agent also follows the README from scratch; the procedure and past reports are in `.github/release-checks/`.
 
 ## Quick Start
 
