@@ -881,19 +881,24 @@ async function parseSpec(inputPath) {
 async function main() {
   const inputArg = process.argv[2];
   if (!inputArg) {
-    console.error("Usage: node scripts/generate-openapi-docs.mjs <path-to-openapi-file> [output-directory]");
+    console.error("Usage: repodocs-ai generate <path-to-openapi-file> [output-directory]");
     process.exit(1);
   }
 
+  // Paths resolve from the directory the command was run in. npm run moves to
+  // the package root, so INIT_CWD is used when this script's own npm script
+  // started it.
+  const baseDirectory = (process.env.npm_lifecycle_event === "generate:openapi" && process.env.INIT_CWD) || process.cwd();
   const outputArg = process.argv[3];
-  const inputPath = path.resolve(repoRoot, inputArg);
+  const inputPath = path.resolve(baseDirectory, inputArg);
   try {
     await fs.access(inputPath);
   } catch {
     console.error(`OpenAPI spec not found: ${inputPath}`);
-    console.error("Paths are resolved from the repodocs-ai folder.");
-    console.error("Check the path, or try the bundled example:");
-    console.error("  node scripts/generate-openapi-docs.mjs examples/payments-api/payments-openapi.yaml ../company-docs/generated/payments-api");
+    console.error("Paths are resolved from the current directory.");
+    console.error("Check the path. To try the bundled example spec, run:");
+    console.error("  repodocs-ai init company-docs --with-examples");
+    console.error("  repodocs-ai generate company-docs/examples/payments-api/payments-openapi.yaml company-docs/generated/payments-api");
     process.exit(1);
   }
   const spec = await parseSpec(inputPath);
@@ -901,8 +906,8 @@ async function main() {
   const owner = process.env.REPODOCS_OWNER || "docs-platform";
   const apiVersion = normalizeText(spec.info?.version, "v1");
   const outputDirectory = outputArg
-    ? path.resolve(repoRoot, outputArg)
-    : path.join(repoRoot, "generated", serviceName);
+    ? path.resolve(baseDirectory, outputArg)
+    : path.join(baseDirectory, "generated", serviceName);
   const endpointsDirectory = path.join(outputDirectory, "endpoints");
 
   await ensureDirectory(endpointsDirectory);
@@ -932,7 +937,8 @@ async function main() {
     }
   }
 
-  console.log(`Generated API documentation in ${path.relative(repoRoot, outputDirectory).replace(/\\/g, "/")}`);
+  const shownOutput = path.relative(baseDirectory, outputDirectory);
+  console.log(`Generated API documentation in ${(shownOutput.startsWith("..") || path.isAbsolute(shownOutput) ? outputDirectory : shownOutput || ".").replace(/\\/g, "/")}`);
 }
 
 main().catch((error) => {

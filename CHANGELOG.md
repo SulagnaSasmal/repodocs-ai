@@ -4,10 +4,12 @@ This changelog tracks product-facing changes to RepoDocs AI.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.0] — 2026-11-27
 
 ### Added
 
+- The `repodocs-ai` command: `init`, `generate` and `validate`, with paths resolved from the current directory. Install it with `npm install -g github:SulagnaSasmal/repodocs-ai#v1.2.0`, or run it with `npx`.
+- CLI tests, including one that installs the packed package in a new project and runs the full path.
 - Adopter path tests that bootstrap a docs repo, generate docs, run `validate:docs` and the bootstrapped CI step, and check the output against the spec, using five third-party OpenAPI specs from the OpenAPI Initiative.
 - Consistency tests: every `npm run` command in the README and CI workflows exists, every npm script points at a file that exists, and every repository path the README mentions exists.
 - A release check procedure with a fresh-agent README test, in `.github/release-checks/`.
@@ -15,6 +17,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 - Replaced 81 file-exists tests with the consistency tests above.
+- Bootstrapped docs repositories run validation in CI with `npx` and the same RepoDocs AI version that created them, instead of checking out this repository.
+- `generate` and `init` resolve paths from the current directory instead of the RepoDocs AI folder.
+- The package is no longer private and installs only `js-yaml` at runtime. The Anthropic SDK and Redis, used only by experimental scripts, are now development dependencies.
 
 ### Fixed
 
