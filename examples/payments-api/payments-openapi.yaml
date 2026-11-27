@@ -23,6 +23,14 @@ paths:
       x-performance-notes: Write requests should include an idempotency key and should complete within 5 seconds under normal load.
       security:
         - bearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Unique key for this create request. Reuse the same key when retrying so the payment is not created twice.
+          schema:
+            type: string
+          example: checkout-7f3a9c2e
       requestBody:
         required: true
         content:
@@ -90,6 +98,7 @@ paths:
           description: Unique payment identifier.
           schema:
             type: string
+          example: pay_123
       responses:
         '200':
           description: Payment retrieved
@@ -121,6 +130,14 @@ paths:
       x-performance-notes: Refund creation is asynchronous for downstream ledger settlement and should be retried with the same idempotency key on timeout.
       security:
         - bearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Unique key for this refund request. Reuse the same key when retrying after a timeout.
+          schema:
+            type: string
+          example: refund-2b81d4f0
       requestBody:
         required: true
         content:
