@@ -1,9 +1,10 @@
 // Runs every RepoDocs AI content check against your own docs.
 //
-//   npm run validate:docs -- <docs folder> [--specs <folder with your OpenAPI files>]
+//   repodocs-ai validate <docs folder...> [--specs <folder>] [--strict]
 //
 // Without --specs, the two checks that compare docs with the OpenAPI spec are
-// reported as skipped, never as passed.
+// reported as skipped, never as passed. With --strict, a skipped check fails
+// the run.
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,6 +33,8 @@ try {
 } catch (error) {
   exitWithTargetError(error);
 }
+
+const strict = process.argv.includes("--strict");
 
 // Absolute paths, so each check resolves them the same way.
 const args = [...targets.docPaths];
@@ -65,6 +68,10 @@ for (const check of checks) {
 }
 
 console.log("");
+if (strict && skipped > 0) {
+  console.log(`${skipped} of ${checks.length} checks were skipped, and --strict treats a skipped check as a failure.`);
+  process.exit(1);
+}
 if (failed > 0) {
   console.log(`${failed} of ${checks.length} checks failed.`);
   process.exit(1);

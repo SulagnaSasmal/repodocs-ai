@@ -2,8 +2,8 @@
 // RepoDocs AI command-line interface.
 //
 //   repodocs-ai init <dir> [--with-examples]        set up a new docs repository
-//   repodocs-ai generate <spec> [output-dir]        draft endpoint docs from an OpenAPI spec
-//   repodocs-ai validate <docs...> [--specs <dir>]  run every content check on your docs
+//   repodocs-ai generate <spec> [output-dir] [--owner <team>]       draft endpoint docs from an OpenAPI spec
+//   repodocs-ai validate <docs...> [--specs <dir>] [--strict]       run every content check on your docs
 //
 // Paths resolve from the directory you run the command in.
 import { spawnSync } from "node:child_process";
@@ -25,8 +25,8 @@ function printHelp() {
 
 Usage:
   repodocs-ai init <dir> [--with-examples]
-  repodocs-ai generate <spec> [output-dir]
-  repodocs-ai validate <docs-folder...> [--specs <specs-folder>]
+  repodocs-ai generate <spec> [output-dir] [--owner <team>]
+  repodocs-ai validate <docs-folder...> [--specs <specs-folder>] [--strict]
 
 Commands:
 ${Object.entries(commands).map(([name, command]) => `  ${name.padEnd(10)}${command.summary}`).join("\n")}
@@ -35,6 +35,12 @@ Example:
   repodocs-ai init company-docs
   repodocs-ai generate company-docs/openapi/my-api.yaml company-docs/generated
   repodocs-ai validate company-docs/generated --specs company-docs/openapi
+
+Options:
+  --with-examples   init: also copy the payments example set
+  --owner <team>    generate: set the owner field in the frontmatter (default: unassigned)
+  --specs <folder>  validate: compare docs with the OpenAPI specs in this folder
+  --strict          validate: fail when a check is skipped
 
 Paths resolve from the current directory. Docs: https://github.com/SulagnaSasmal/repodocs-ai`);
 }

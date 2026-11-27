@@ -4,6 +4,33 @@ This changelog tracks product-facing changes to RepoDocs AI.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] — 2026-11-28
+
+Fixes from the v1.2.1 fresh-agent release check, which used the Vonage Conversation API and 37 deliberate breaks. See `.github/release-checks/2026-11-28-v1.2.1.md`.
+
+### Added
+
+- The OpenAPI check now covers JSON examples at every depth (unknown fields, enum values, every `oneOf` shape), Request Body table rows (field exists, type, allowed values), the authentication section, the server URL, and the success status.
+- Leftover template instructions and template descriptions fail the quality check.
+- `last_reviewed` must be a real `YYYY-MM-DD` date.
+- Owners missing from the docs repository's `schema/owners-registry.md` produce a warning.
+- `validate --strict` fails the run when a check is skipped.
+- Nested `oneOf` fields list each shape's fields with their option number.
+- Response examples show the success status. Parameter and field defaults are listed.
+- `help` lists every option.
+- The Vonage Conversation API as an eighth third-party fixture, with probe tests for every break the release check tried.
+
+### Changed
+
+- The OpenAPI and version checks report SKIP, not PASS, when there are no docs to compare.
+- When a spec's own example shows fields its schema does not define, the generator leaves them out and says which.
+
+### Fixed
+
+- Request bodies defined under `components/requestBodies` were documented as "Not applicable", so generated docs failed validation.
+- Date examples changed with the machine's time zone.
+- Deprecated operations got an invented "deprecated as of" version.
+
 ## [1.2.1] — 2026-11-27
 
 Fixes from the v1.2.0 fresh-agent release check, which used the Ably Platform API. See `.github/release-checks/2026-11-27-v1.2.0.md`.

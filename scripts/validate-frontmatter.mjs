@@ -113,6 +113,15 @@ async function main() {
       }
     }
 
+    if (parsed.last_reviewed !== undefined && !isTemplate) {
+      const reviewed = parsed.last_reviewed instanceof Date
+        ? parsed.last_reviewed.toISOString().slice(0, 10)
+        : String(parsed.last_reviewed);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(reviewed) || Number.isNaN(Date.parse(reviewed))) {
+        errors.push(`${relativePath}: last_reviewed must be a date in YYYY-MM-DD format, not '${parsed.last_reviewed}'`);
+      }
+    }
+
     if (parsed.status && !allowedStatus.has(parsed.status)) {
       errors.push(`${relativePath}: invalid status '${parsed.status}'`);
     }

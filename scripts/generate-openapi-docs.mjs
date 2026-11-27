@@ -109,6 +109,44 @@ function resolveSchema(spec, schema, depth = 0) {
   return merged;
 }
 
+// Removes fields a schema does not define from an example, at every depth,
+// and returns their paths. Objects with no listed properties, or that allow
+// extra properties, are left alone.
+function pruneToSchema(spec, value, schema, prefix = "", removed = [], depth = 0) {
+  const resolved = resolveSchema(spec, schema);
+  if (!resolved || depth > 8 || value === null || typeof value !== "object") {
+    return removed;
+  }
+  const variants = !resolved.properties ? (resolved.oneOf || resolved.anyOf) : null;
+  if (Array.isArray(variants) && variants.length > 0) {
+    // Prune against the variant that already fits best.
+    const shapes = variants.map((variant) => resolveSchema(spec, variant)).filter(Boolean);
+    const fit = (shape) => Object.keys(value).filter((key) => key in (shape.properties || {})).length;
+    const best = shapes.reduce((winner, shape) => (fit(shape) > fit(winner) ? shape : winner), shapes[0]);
+    return best ? pruneToSchema(spec, value, best, prefix, removed, depth + 1) : removed;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => pruneToSchema(spec, item, resolved.items, `${prefix}[]`, removed, depth + 1));
+    return removed;
+  }
+  const properties = resolved.properties || {};
+  if (Object.keys(properties).length === 0 || resolved.additionalProperties) {
+    return removed;
+  }
+  for (const key of Object.keys(value)) {
+    const childPath = prefix ? `${prefix}.${key}` : key;
+    if (!(key in properties)) {
+      delete value[key];
+      if (!removed.includes(childPath)) {
+        removed.push(childPath);
+      }
+    } else {
+      pruneToSchema(spec, value[key], properties[key], childPath, removed, depth + 1);
+    }
+  }
+  return removed;
+}
+
 // Picks the media type to document: JSON first, then form, multipart, or
 // whatever the spec lists first.
 function pickMedia(content) {
@@ -125,8 +163,16 @@ function pickMedia(content) {
   );
 }
 
+// Set in main() so request body references (#/components/requestBodies/...)
+// can be followed from functions that only receive the operation.
+let currentSpec = null;
+
+function requestBodyOf(operation) {
+  return resolveReference(currentSpec, operation.requestBody);
+}
+
 function requestMedia(operation) {
-  return pickMedia(operation.requestBody?.content);
+  return pickMedia(requestBodyOf(operation)?.content);
 }
 
 // The example a media type gives: its example, its first named example, or
@@ -274,6 +320,9 @@ function buildConstraintNotes(spec, schema) {
   const notes = [];
   if (Array.isArray(resolved.enum) && resolved.enum.length > 0) {
     notes.push(`Allowed values: ${resolved.enum.join(", ")}`);
+  }
+  if (resolved.default !== undefined) {
+    notes.push(`Default: ${typeof resolved.default === "object" ? JSON.stringify(resolved.default) : resolved.default}`);
   }
   if (resolved.format) {
     notes.push(`Format: ${resolved.format}`);
@@ -515,7 +564,7 @@ function refName(schema) {
 // One row per request field, plus nested object fields (parent.child) and
 // fields of arrays of objects (parent[].child), two levels deep. readOnly
 // fields are left out because the server sets them.
-function bodyFieldRows(spec, schema, requestBodyIsRequired, prefix = "", depth = 0) {
+function bodyFieldRows(spec, schema, requestBodyIsRequired, prefix = "", depth = 0, optionLabel = "") {
   const resolved = resolveSchema(spec, schema);
   const properties = resolved?.properties || {};
   const requiredFields = new Set(Array.isArray(resolved?.required) ? resolved.required : []);
@@ -530,18 +579,28 @@ function bodyFieldRows(spec, schema, requestBodyIsRequired, prefix = "", depth =
     const required = prefix
       ? (requiredFields.has(name) ? "yes" : "no")
       : formatRequiredValue(requiredFields.has(name), requestBodyIsRequired, hasRequiredList);
-    rows.push(`| ${fullName} | ${schemaTypeLabel(spec, propertySchema)} | ${required} | ${buildSchemaDescription(spec, propertySchema)} |`);
+    rows.push(`| ${fullName} | ${schemaTypeLabel(spec, propertySchema)} | ${required} | ${optionLabel}${buildSchemaDescription(spec, propertySchema)} |`);
 
     if (depth >= 2) {
       continue;
     }
     const child = resolveSchema(spec, propertySchema);
+    const choices = child && !child.properties ? (child.oneOf || child.anyOf) : null;
     if (child?.properties) {
-      rows.push(...bodyFieldRows(spec, child, false, fullName, depth + 1));
+      rows.push(...bodyFieldRows(spec, child, false, fullName, depth + 1, optionLabel));
+    } else if (Array.isArray(choices) && choices.length > 0) {
+      // A field that takes one of several object shapes: list each shape's
+      // fields, labelled with the option they belong to.
+      choices.forEach((choice, index) => {
+        const resolvedChoice = resolveSchema(spec, choice);
+        const name = normalizeText(resolvedChoice?.title) || refName(choice);
+        const label = `Option ${index + 1} of ${choices.length}${name ? ` (${name})` : ""}. `;
+        rows.push(...bodyFieldRows(spec, resolvedChoice, false, fullName, depth + 1, label));
+      });
     } else if (child?.type === "array") {
       const item = resolveSchema(spec, child.items);
       if (item?.properties) {
-        rows.push(...bodyFieldRows(spec, item, false, `${fullName}[]`, depth + 1));
+        rows.push(...bodyFieldRows(spec, item, false, `${fullName}[]`, depth + 1, optionLabel));
       }
     }
   }
@@ -555,7 +614,7 @@ function buildRequestBodySection(spec, operation) {
   }
 
   const schema = resolveSchema(spec, media.media.schema);
-  const requestBodyIsRequired = operation.requestBody?.required === true;
+  const requestBodyIsRequired = requestBodyOf(operation)?.required === true;
   const header = "| Field | Type | Required | Description |\n| --- | --- | --- | --- |";
   const intro = requestBodyIsRequired ? "Request body is required." : "Request body is optional.";
   const typeNote = media.type !== "application/json" ? ` Content type: \`${media.type}\`.` : "";
@@ -623,7 +682,12 @@ function buildRequestBodyExample(spec, operation) {
       }
     }
   }
-  return { kind: media.kind, type: media.type, value, addedFields };
+  let removedFields = [];
+  if (value && typeof value === "object") {
+    value = structuredClone(value);
+    removedFields = pruneToSchema(spec, value, media.media.schema);
+  }
+  return { kind: media.kind, type: media.type, value, addedFields, removedFields };
 }
 
 function shellQuote(value) {
@@ -664,14 +728,25 @@ function buildResponseExample(spec, operation) {
   if (!media) {
     return null;
   }
-  const value = mediaExample(spec, media.media, "response");
-  if (value === undefined) {
+  const original = mediaExample(spec, media.media, "response");
+  if (original === undefined) {
     return JSON.stringify({ status: statusCode, note: "Needs SME input" }, null, 2);
   }
-  if (media.kind !== "json" && typeof value === "string") {
-    return { lang: "text", text: value };
+  if (media.kind !== "json" && typeof original === "string") {
+    return { lang: "text", text: original };
   }
-  return JSON.stringify(value, null, 2);
+  const value = structuredClone(original);
+  const removed = pruneToSchema(spec, value, media.media.schema);
+  return { lang: "json", text: JSON.stringify(value, null, 2), removed };
+}
+
+function undefinedFieldsNote(fields) {
+  if (!fields?.length) {
+    return "";
+  }
+  const shown = fields.slice(0, 8).map((field) => `\u0000${field}\u0000`).join(", ");
+  const more = fields.length > 8 ? ` and ${fields.length - 8} more` : "";
+  return `The spec's own example also shows ${fields.length === 1 ? "a field" : "fields"} its schema does not define (${shown}${more}). ${fields.length === 1 ? "It is" : "They are"} left out here.\n\n`;
 }
 
 function findNamedPropertyExample(spec, schema, propertyName) {
@@ -841,7 +916,7 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
   const parameters = extractParameters(spec, operation, pathItem);
   const endpointSlug = toSlug(`${method}-${route}`);
   const isDeprecated = operation.deprecated === true;
-  const deprecatedSince = normalizeText(operation["x-deprecated-since"], apiVersion);
+  const deprecatedSince = normalizeText(operation["x-deprecated-since"]);
   const sunsetVersion = normalizeText(operation["x-sunset-version"]);
   const replacement = normalizeText(operation["x-replaced-by"]);
   const migrationGuide = normalizeText(operation["x-migration-guide"]);
@@ -859,7 +934,7 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
     security_impact: securityImpact,
     ...(isDeprecated
       ? {
-          deprecated_since: deprecatedSince,
+          deprecated_since: deprecatedSince || "Needs SME input",
           sunset_version: sunsetVersion || "Needs SME input",
           replaced_by: replacement || "Needs SME input",
           migration_guide: migrationGuide || "Needs SME input"
@@ -898,9 +973,11 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
   const requestExampleNote = requestBodyExample?.addedFields?.length
     ? `The spec's own request example leaves out required ${requestBodyExample.addedFields.length === 1 ? "field" : "fields"} ${requestBodyExample.addedFields.map((field) => `\u0000${field}\u0000`).join(", ")}. ${requestBodyExample.addedFields.length === 1 ? "It is" : "They are"} added below from the schema.\n\n`
     : "";
+  const requestPruneNote = undefinedFieldsNote(requestBodyExample?.removedFields);
   const authText = buildAuthenticationText(spec, operation);
   const responseExample = buildResponseExample(spec, operation);
   const successCode = Object.keys(operation.responses || {}).find((code) => code.startsWith("2"));
+  const statusLine = successCode ? `Status: \u0000${successCode}\u0000\n\n` : "";
   const responseExampleSection = responseExample === null
     ? `This operation returns \u0000${successCode}\u0000 with no response body.`
     : typeof responseExample === "object"
@@ -912,7 +989,7 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
 
 ## Deprecation
 
-This endpoint is deprecated as of ${deprecatedSince}.${sunsetVersion ? ` It is scheduled to sunset in ${sunsetVersion}.` : ""}
+${deprecatedSince ? `This endpoint is deprecated as of ${deprecatedSince}.` : "This endpoint is deprecated. The spec does not say since which version: Needs SME input."}${sunsetVersion ? ` It is scheduled to sunset in ${sunsetVersion}.` : ""}
 
 ## Migration
 
@@ -952,13 +1029,13 @@ ${requestBodySection}
 
 ## Request Example
 
-${requestExampleNote}\u0000\u0000\u0000bash
+${requestExampleNote}${requestPruneNote}\u0000\u0000\u0000bash
 ${requestExample}
 \u0000\u0000\u0000
 
 ## Response Example
 
-${responseExampleSection}
+${responseExample === null ? "" : statusLine}${undefinedFieldsNote(responseExample?.removed)}${responseExampleSection}
 
 ## Error Codes
 
@@ -981,7 +1058,9 @@ async function parseSpec(inputPath) {
     return JSON.parse(raw);
   }
 
-  return yaml.load(raw);
+  // CORE_SCHEMA keeps values like 2018-01-01 10:00:00 as written instead of
+  // turning them into local-time Date objects.
+  return yaml.load(raw, { schema: yaml.CORE_SCHEMA });
 }
 
 async function main() {
@@ -1010,6 +1089,7 @@ async function main() {
     process.exit(1);
   }
   const spec = await parseSpec(inputPath);
+  currentSpec = spec;
   const serviceName = toSlug(normalizeText(spec.info?.title, "generated-api"));
   const ownerFlagIndex = args.indexOf("--owner");
   const owner = (ownerFlagIndex > -1 ? args[ownerFlagIndex + 1] : undefined) || process.env.REPODOCS_OWNER || "unassigned";
