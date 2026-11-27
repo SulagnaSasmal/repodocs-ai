@@ -303,8 +303,10 @@ function buildOverviewAuthentication(spec) {
   return summaries.length > 0 ? summaries.join(". ") : "Needs SME input";
 }
 
-function extractParameters(operation, pathItem) {
-  const combined = [...(pathItem.parameters || []), ...(operation.parameters || [])];
+function extractParameters(spec, operation, pathItem) {
+  const combined = [...(pathItem.parameters || []), ...(operation.parameters || [])]
+    .map((parameter) => resolveReference(spec, parameter))
+    .filter((parameter) => parameter && parameter.name && parameter.in);
   const seen = new Set();
 
   return combined.filter((parameter) => {
@@ -348,7 +350,12 @@ function buildSplitParameterSections(spec, parameters) {
     ? "Not applicable."
     : `| Name | Type | Required | Description |\n| --- | --- | --- | --- |\n${buildParameterRows(spec, queryParams)}`;
 
-  return { pathSection, querySection };
+  const headerParams = parameters.filter((parameter) => parameter.in === "header");
+  const headerSection = headerParams.length === 0
+    ? null
+    : `| Name | Type | Required | Description |\n| --- | --- | --- | --- |\n${buildParameterRows(spec, headerParams)}`;
+
+  return { pathSection, querySection, headerSection, headerParams };
 }
 
 function buildRequestBodyIntro(operation) {
@@ -487,7 +494,7 @@ function buildErrorRows(operation) {
 
 function buildExampleUrl(spec, route, operation, pathItem) {
   const baseUrl = normalizeText(spec.servers?.[0]?.url, "https://api.example.com").replace(/\/$/, "");
-  const parameters = extractParameters(operation, pathItem);
+  const parameters = extractParameters(spec, operation, pathItem);
   let examplePath = route;
   const queryParams = [];
 
@@ -565,7 +572,7 @@ ${formatOverviewValue(spec.info?.["x-example-use-case"])}
 
 function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, method, operation, pathItem) {
   const summary = normalizeText(operation.summary, titleCaseFromSlug(toSlug(`${method}-${route}`)));
-  const parameters = extractParameters(operation, pathItem);
+  const parameters = extractParameters(spec, operation, pathItem);
   const endpointSlug = toSlug(`${method}-${route}`);
   const isDeprecated = operation.deprecated === true;
   const deprecatedSince = normalizeText(operation["x-deprecated-since"], apiVersion);
@@ -594,7 +601,18 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
       : {})
   });
 
-  const { pathSection, querySection } = buildSplitParameterSections(spec, parameters);
+  const { pathSection, querySection, headerSection, headerParams } = buildSplitParameterSections(spec, parameters);
+  // Authorization and Content-Type are already written into every example.
+  const headersWrittenByDefault = new Set(["authorization", "content-type"]);
+  const headerLines = headerParams
+    .filter((parameter) => !headersWrittenByDefault.has(parameter.name.toLowerCase()))
+    .map((parameter) => {
+      const example = buildParameterExampleValue(spec, operation, parameter);
+      const value = example === "value" ? `<${parameter.name}>` : String(example);
+      return `  -H "${parameter.name}: ${value.replace(/(["\\$`])/g, "\\$1")}" \\`;
+    })
+    .join("\n");
+  const headerExample = headerLines ? `${headerLines}\n` : "";
   const requestBodyIntro = buildRequestBodyIntro(operation);
   const requestBodyExample = buildRequestBodyExample(spec, operation);
   const requestBodyRows = buildRequestBodyRows(spec, operation);
@@ -605,10 +623,10 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
   const requestExample = requestBodyExample
     ? `curl -X ${method.toUpperCase()} "${exampleUrl}" \\
   -H "Authorization: Bearer <token>" \\
-  -H "Content-Type: application/json" \\
+${headerExample}  -H "Content-Type: application/json" \\
   -d '${JSON.stringify(JSON.parse(requestBodyExample))}'`
     : `curl -X ${method.toUpperCase()} "${exampleUrl}" \\
-  -H "Authorization: Bearer <token>"`;
+  -H "Authorization: Bearer <token>"${headerLines ? ` \\\n${headerLines.replace(/ \\$/, "")}` : ""}`;
   const authText = buildAuthenticationText(spec, operation);
   const purpose = normalizeText(operation.description, summary);
   const lifecycleSection = isDeprecated
@@ -650,7 +668,7 @@ ${pathSection}
 
 ${querySection}
 
-## Request Body
+${headerSection ? `## Header Parameters\n\n${headerSection}\n\n` : ""}## Request Body
 
 ${requestBodySection}
 
@@ -701,6 +719,15 @@ async function main() {
 
   const outputArg = process.argv[3];
   const inputPath = path.resolve(repoRoot, inputArg);
+  try {
+    await fs.access(inputPath);
+  } catch {
+    console.error(`OpenAPI spec not found: ${inputPath}`);
+    console.error("Paths are resolved from the repodocs-ai folder.");
+    console.error("Check the path, or try the bundled example:");
+    console.error("  node scripts/generate-openapi-docs.mjs examples/payments-api/payments-openapi.yaml ../company-docs/generated/payments-api");
+    process.exit(1);
+  }
   const spec = await parseSpec(inputPath);
   const serviceName = toSlug(normalizeText(spec.info?.title, "generated-api"));
   const owner = process.env.REPODOCS_OWNER || "docs-platform";
