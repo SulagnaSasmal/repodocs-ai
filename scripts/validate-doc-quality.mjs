@@ -82,8 +82,11 @@ async function main() {
   const markdownFiles = [];
   const requestedPaths = process.argv.slice(2).filter((arg) => !arg.startsWith("--"));
   // npm run changes the working directory to the package root; INIT_CWD keeps
-  // the directory the user actually ran the command from.
-  const baseDirectory = process.env.INIT_CWD || process.cwd();
+  // the directory the user actually ran the command from. Only trust it when
+  // this script was started by its own npm script, so a direct node call
+  // inside some other npm script still resolves from its own working directory.
+  const startedByOwnNpmScript = process.env.npm_lifecycle_event === "validate:quality";
+  const baseDirectory = (startedByOwnNpmScript && process.env.INIT_CWD) || process.cwd();
 
   // With path arguments, validate exactly those paths (relative to the current
   // working directory). Without arguments, validate this repository's own
@@ -116,12 +119,12 @@ async function main() {
   }
 
   const displayRoot = requestedPaths.length > 0 ? baseDirectory : repoRoot;
-  console.log(
-    `Checking: ${directoriesToCheck.map((directory) => path.relative(displayRoot, directory) || ".").join(", ")}`
-  );
+  const checkedLabel = directoriesToCheck
+    .map((directory) => path.relative(displayRoot, directory).replace(/\\/g, "/") || ".")
+    .join(", ");
 
   if (markdownFiles.length === 0) {
-    console.error("No Markdown files found to validate. Nothing was checked, so no result is reported.");
+    console.error(`No Markdown files found in ${checkedLabel}. Nothing was checked, so no result is reported.`);
     process.exit(1);
   }
 
@@ -222,12 +225,12 @@ async function main() {
 
   if (warnings.length > 0) {
     console.log(
-      `\nQuality check: ${markdownFiles.length} files — MERGE-SAFE (0 errors), ` +
+      `\nQuality check: ${markdownFiles.length} files in ${checkedLabel} — MERGE-SAFE (0 errors), ` +
       `NOT PUBLICATION-READY (${warnings.length} warning(s) above must be resolved before publishing).`
     );
   } else {
     console.log(
-      `Validated documentation quality for ${markdownFiles.length} Markdown files. ` +
+      `Validated documentation quality for ${markdownFiles.length} Markdown files in ${checkedLabel}. ` +
       `MERGE-SAFE and PUBLICATION-READY.`
     );
   }

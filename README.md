@@ -108,8 +108,7 @@ Running `npm run validate` on this repository prints one line per check (file co
 ```text
 Validated frontmatter for 39 Markdown files.
 Validated 108 required project files.
-Checking: examples, generated
-Validated documentation quality for 24 Markdown files. MERGE-SAFE and PUBLICATION-READY.
+Validated documentation quality for 24 Markdown files in examples, generated. MERGE-SAFE and PUBLICATION-READY.
 Validated 3 Markdown files against OpenAPI examples.
 Validated version compatibility for 10 Markdown files.
 ```
@@ -124,10 +123,10 @@ Running `npm test`:
  ✓ tests/validate-frontmatter.test.mjs (18 tests)
  ✓ tests/prompt-library.test.mjs (31 tests)
  ✓ tests/example-docs.test.mjs (25 tests)
- ✓ tests/generate-openapi-docs.test.mjs (11 tests)
+ ✓ tests/generate-openapi-docs.test.mjs (13 tests)
 
  Test Files  6 passed (6)
-      Tests  196 passed (196)
+      Tests  198 passed (198)
 ```
 
 ## Quick Start
@@ -206,7 +205,7 @@ Pass the output folder to the quality check:
 npm run validate:quality -- ../company-docs/generated/my-api
 ```
 
-The first line of output names the folder that was checked. Without a path, the command checks this repository's own `examples/` and `generated/` folders, not your docs.
+The summary line names the folder that was checked. Without a path, the command checks this repository's own `examples/` and `generated/` folders, not your docs.
 
 Then open `prompts/review/documentation-review.md` with an AI tool to review each generated doc against the source spec before merging.
 

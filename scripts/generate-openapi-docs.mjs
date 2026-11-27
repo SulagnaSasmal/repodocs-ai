@@ -303,8 +303,10 @@ function buildOverviewAuthentication(spec) {
   return summaries.length > 0 ? summaries.join(". ") : "Needs SME input";
 }
 
-function extractParameters(operation, pathItem) {
-  const combined = [...(pathItem.parameters || []), ...(operation.parameters || [])];
+function extractParameters(spec, operation, pathItem) {
+  const combined = [...(pathItem.parameters || []), ...(operation.parameters || [])]
+    .map((parameter) => resolveReference(spec, parameter))
+    .filter((parameter) => parameter && parameter.name && parameter.in);
   const seen = new Set();
 
   return combined.filter((parameter) => {
@@ -492,7 +494,7 @@ function buildErrorRows(operation) {
 
 function buildExampleUrl(spec, route, operation, pathItem) {
   const baseUrl = normalizeText(spec.servers?.[0]?.url, "https://api.example.com").replace(/\/$/, "");
-  const parameters = extractParameters(operation, pathItem);
+  const parameters = extractParameters(spec, operation, pathItem);
   let examplePath = route;
   const queryParams = [];
 
@@ -570,7 +572,7 @@ ${formatOverviewValue(spec.info?.["x-example-use-case"])}
 
 function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, method, operation, pathItem) {
   const summary = normalizeText(operation.summary, titleCaseFromSlug(toSlug(`${method}-${route}`)));
-  const parameters = extractParameters(operation, pathItem);
+  const parameters = extractParameters(spec, operation, pathItem);
   const endpointSlug = toSlug(`${method}-${route}`);
   const isDeprecated = operation.deprecated === true;
   const deprecatedSince = normalizeText(operation["x-deprecated-since"], apiVersion);
@@ -600,8 +602,15 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
   });
 
   const { pathSection, querySection, headerSection, headerParams } = buildSplitParameterSections(spec, parameters);
+  // Authorization and Content-Type are already written into every example.
+  const headersWrittenByDefault = new Set(["authorization", "content-type"]);
   const headerLines = headerParams
-    .map((parameter) => `  -H "${parameter.name}: ${buildParameterExampleValue(spec, operation, parameter)}" \\`)
+    .filter((parameter) => !headersWrittenByDefault.has(parameter.name.toLowerCase()))
+    .map((parameter) => {
+      const example = buildParameterExampleValue(spec, operation, parameter);
+      const value = example === "value" ? `<${parameter.name}>` : String(example);
+      return `  -H "${parameter.name}: ${value.replace(/(["\\$`])/g, "\\$1")}" \\`;
+    })
     .join("\n");
   const headerExample = headerLines ? `${headerLines}\n` : "";
   const requestBodyIntro = buildRequestBodyIntro(operation);

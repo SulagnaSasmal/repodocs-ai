@@ -89,6 +89,43 @@ describe("generate-openapi-docs header parameters and errors", () => {
     expect(retrievePayment).not.toContain("## Header Parameters");
   });
 
+  it("resolves $ref header parameters, skips default headers in curl, and escapes values", async () => {
+    const workDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "repodocs-openapi-edge-"));
+    const specPath = path.join(workDirectory, "edge.yaml");
+    await fs.writeFile(specPath, [
+      "openapi: 3.0.3",
+      "info: {title: Edge API, version: v1}",
+      "servers: [{url: https://api.edge.example}]",
+      "components:",
+      "  parameters:",
+      "    Idem: {in: header, name: Idempotency-Key, required: true, schema: {type: string}}",
+      "paths:",
+      "  /things:",
+      "    post:",
+      "      summary: Create thing",
+      "      parameters:",
+      "        - $ref: '#/components/parameters/Idem'",
+      "        - {in: header, name: Authorization, required: true, schema: {type: string}}",
+      "        - {in: header, name: X-Note, required: false, schema: {type: string}, example: 'say \"hi\"'}",
+      "      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {a: {type: string, example: x}}}}}}",
+      "      responses: {'201': {description: Created}}",
+      ""
+    ].join("\n"), "utf8");
+
+    const outputDirectory = path.join(workDirectory, "out");
+    await execFileAsync(process.execPath, [
+      path.join(repoRoot, "scripts", "generate-openapi-docs.mjs"),
+      specPath,
+      outputDirectory
+    ], { cwd: repoRoot });
+
+    const doc = await fs.readFile(path.join(outputDirectory, "endpoints", "post-things.md"), "utf8");
+    expect(doc).toContain("| Idempotency-Key | string | yes |");
+    expect(doc).toContain('-H "Idempotency-Key: <Idempotency-Key>"');
+    expect(doc.match(/-H "Authorization:/g)).toHaveLength(1);
+    expect(doc).toContain('-H "X-Note: say \\"hi\\""');
+  });
+
   it("explains a missing spec file instead of printing a stack trace", async () => {
     await expect(
       execFileAsync(process.execPath, [
@@ -111,9 +148,20 @@ describe("validate-doc-quality target paths", () => {
     const { stdout } = await execFileAsync(process.execPath, [
       path.join(repoRoot, "scripts", "validate-doc-quality.mjs"),
       docsDirectory
-    ], { cwd: repoRoot, env: { ...process.env, INIT_CWD: repoRoot } });
+    ], { cwd: repoRoot });
 
-    expect(stdout).toContain("Validated documentation quality for 4 Markdown files.");
+    expect(stdout).toContain("Validated documentation quality for 4 Markdown files in");
+    expect(stdout).toContain(path.basename(docsDirectory));
+  });
+
+  it("fails instead of reporting a result when the folder has no Markdown files", async () => {
+    const emptyDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "repodocs-quality-empty-"));
+    await expect(
+      execFileAsync(process.execPath, [
+        path.join(repoRoot, "scripts", "validate-doc-quality.mjs"),
+        emptyDirectory
+      ], { cwd: repoRoot })
+    ).rejects.toMatchObject({ stderr: expect.stringContaining("Nothing was checked") });
   });
 
   it("fails when the folder passed on the command line does not exist", async () => {
