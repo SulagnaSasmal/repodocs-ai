@@ -1,26 +1,23 @@
 /**
- * Repository Structure Tests
+ * Repository consistency tests
  *
- * Verifies that every file required by scripts/validate-structure.mjs
- * actually exists in the repository.
- *
- * This test suite acts as a canary — if a required file is accidentally
- * deleted or moved, CI fails immediately with a clear file-by-file report
- * rather than a confusing script error.
- *
- * Test cases derived from:
- *   - scripts/validate-structure.mjs (requiredPaths array)
- *   - docs/product-specification.md (Phase 1 deliverables)
- *   - docs/roadmap-spec-summary.md (Phase 1-3 implementation checklist)
+ * Instead of checking files one by one, these tests check that the things
+ * people and CI rely on actually line up:
+ *   - the structure check passes
+ *   - every npm script that runs a file points at a file that exists
+ *   - every `npm run` command in the README and in CI workflows exists
+ *   - every repository path the README mentions exists
  */
 
-import { describe, it, expect } from "vitest";
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, "..");
+const execFileAsync = promisify(execFile);
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 async function exists(relativePath) {
   try {
@@ -31,216 +28,80 @@ async function exists(relativePath) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Core repository files
-// ---------------------------------------------------------------------------
-describe("root trust files", () => {
-  const files = ["README.md", "LICENSE", "CHANGELOG.md", "CONTRIBUTING.md",
-    "CODE_OF_CONDUCT.md", "SECURITY.md", "ROADMAP.md", "TEMPLATE_VERSION"];
+async function readPackageScripts() {
+  const pkg = JSON.parse(await fs.readFile(path.join(repoRoot, "package.json"), "utf8"));
+  return pkg.scripts;
+}
 
-  for (const file of files) {
-    it(`${file} exists`, async () => {
-      expect(await exists(file)).toBe(true);
-    });
-  }
+function npmRunCommands(text) {
+  return [...new Set([...text.matchAll(/npm run ([a-z][\w:-]*)/g)].map((match) => match[1]))];
+}
+
+describe("structure check", () => {
+  it("passes on this repository", async () => {
+    const { stdout } = await execFileAsync(process.execPath, [path.join(repoRoot, "scripts", "validate-structure.mjs")], { cwd: repoRoot });
+    expect(stdout).toMatch(/Validated \d+ required project files\./);
+  });
 });
 
-// ---------------------------------------------------------------------------
-// Template packs — derived from Phase 2 deliverables in roadmap-spec-summary.md
-// ---------------------------------------------------------------------------
-describe("template packs", () => {
-  const templates = [
-    "templates/api/api-overview.md",
-    "templates/api/endpoint-template.md",
-    "templates/product/product-overview.md",
-    "templates/product/feature-documentation.md",
-    "templates/product/user-guide.md",
-    "templates/product/administrator-guide.md",
-    "templates/features/feature-overview.md",
-    "templates/features/user-workflow.md",
-    "templates/governance/documentation-review-checklist.md",
-    "templates/operations/runbook.md",
-    "templates/operations/deployment-guide.md",
-    "templates/architecture/system-architecture.md",
-    "templates/architecture/integration-architecture.md"
-  ];
-
-  for (const template of templates) {
-    it(`${template} exists`, async () => {
-      expect(await exists(template)).toBe(true);
-    });
-  }
+describe("npm scripts", () => {
+  it("point at files that exist", async () => {
+    const scripts = await readPackageScripts();
+    const missing = [];
+    for (const [name, command] of Object.entries(scripts)) {
+      for (const match of command.matchAll(/(?:node|-f)\s+([\w./-]+\.(?:mjs|js|ya?ml))/g)) {
+        if (!(await exists(match[1]))) {
+          missing.push(`${name}: ${match[1]}`);
+        }
+      }
+      if (/docker build/.test(command) && !/-f\s/.test(command) && !(await exists("Dockerfile"))) {
+        missing.push(`${name}: Dockerfile`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
 });
 
-// ---------------------------------------------------------------------------
-// Prompt library — derived from Phase 2 deliverables
-// ---------------------------------------------------------------------------
-describe("prompt library", () => {
-  const prompts = [
-    "prompts/api-generation/openapi-to-api-docs.md",
-    "prompts/product-docs/product-overview-generation.md",
-    "prompts/product-docs/user-guide-generation.md",
-    "prompts/product-docs/admin-guide-generation.md",
-    "prompts/feature-docs/component-to-feature-doc.md",
-    "prompts/review/documentation-review.md"
-  ];
-
-  for (const prompt of prompts) {
-    it(`${prompt} exists`, async () => {
-      expect(await exists(prompt)).toBe(true);
-    });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Example documentation — payments API trust check
-// ---------------------------------------------------------------------------
-describe("payments API example", () => {
-  const files = [
-    "examples/payments-api/README.md",
-    "examples/payments-api/payments-openapi.yaml",
-    "examples/payments-api/api-overview.md",
-    "examples/payments-api/create-payment.md",
-    "examples/payments-api/retrieve-payment.md",
-    "examples/payments-api/refund-payment.md",
-    "examples/payments-api/list-payments.md",
-    "examples/payments-api/authentication.md",
-    "examples/payments-api/error-handling.md",
-    "examples/payments-api/idempotency.md",
-    "examples/payments-api/webhooks.md"
-  ];
-
-  for (const file of files) {
-    it(`${file} exists`, async () => {
-      expect(await exists(file)).toBe(true);
-    });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Validation scripts — Phase 3 deliverables
-// ---------------------------------------------------------------------------
-describe("validation scripts", () => {
-  const scripts = [
-    "scripts/validate-frontmatter.mjs",
-    "scripts/validate-structure.mjs",
-    "scripts/validate-doc-quality.mjs",
-    "scripts/validate-openapi-examples.mjs",
-    "scripts/validate-version-compatibility.mjs",
-    "scripts/detect-undocumented-endpoints.mjs"
-  ];
-
-  for (const script of scripts) {
-    it(`${script} exists`, async () => {
-      expect(await exists(script)).toBe(true);
-    });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Automation scripts
-// ---------------------------------------------------------------------------
-describe("automation scripts", () => {
-  const scripts = [
-    "scripts/generate-openapi-docs.mjs",
-    "scripts/generate-all-openapi-docs.mjs",
-    "scripts/run-documentation-agent.mjs",
-    "scripts/generate-analytics-report.mjs",
-    "scripts/build-knowledge-graph.mjs",
-    "scripts/export-docs.mjs",
-    "scripts/control-plane-server.mjs",
-    "scripts/bootstrap-docs-repo.mjs",
-    "scripts/aggregate-analytics.mjs",
-    "scripts/check-template-version.mjs"
-  ];
-
-  for (const script of scripts) {
-    it(`${script} exists`, async () => {
-      expect(await exists(script)).toBe(true);
-    });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Site / GitHub Pages
-// ---------------------------------------------------------------------------
-describe("site files", () => {
-  const files = [
-    "website/docusaurus.config.ts",
-    "website/sidebars.ts",
-    "website/src/pages/index.tsx"
-  ];
-
-  for (const file of files) {
-    it(`${file} exists`, async () => {
-      expect(await exists(file)).toBe(true);
-    });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// CI workflows
-// ---------------------------------------------------------------------------
-describe("CI workflows", () => {
-  const workflows = [
-    ".github/workflows/validate.yml",
-    ".github/workflows/deploy-site.yml",
-    ".github/workflows/generate-openapi-docs.yml",
-    ".github/workflows/regenerate-on-openapi-change.yml",
-    ".github/workflows/export-docs.yml",
-    ".github/workflows/automation-assets.yml"
-  ];
-
-  for (const workflow of workflows) {
-    it(`${workflow} exists`, async () => {
-      expect(await exists(workflow)).toBe(true);
-    });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Governance
-// ---------------------------------------------------------------------------
-describe("governance files", () => {
-  const files = [
-    ".github/CODEOWNERS",
-    ".github/pull_request_template.md",
-    ".github/ISSUE_TEMPLATE/bug_report.yml",
-    ".github/ISSUE_TEMPLATE/feature_request.yml",
-    "schema/owners-registry.md",
-    "schema/metadata-frontmatter.md",
-    "validation/hallucination-guards/api-doc-guardrails.md",
-    "validation/review-checklists/documentation-quality-checklist.md"
-  ];
-
-  for (const file of files) {
-    it(`${file} exists`, async () => {
-      expect(await exists(file)).toBe(true);
-    });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Archive — former .litcoffee artifacts should be gone; archive replacements present
-// ---------------------------------------------------------------------------
-describe("archive cleanup", () => {
-  it("doc.RepoDocs AI.litcoffee is no longer present at root", async () => {
-    expect(await exists("doc.RepoDocs AI.litcoffee")).toBe(false);
+describe("documented commands", () => {
+  it("every npm run command in the README exists", async () => {
+    const scripts = await readPackageScripts();
+    const readme = await fs.readFile(path.join(repoRoot, "README.md"), "utf8");
+    const unknown = npmRunCommands(readme).filter((name) => !(name in scripts));
+    expect(unknown).toEqual([]);
   });
 
-  it("docs/# RepoDocs AI.litcoffee is no longer present", async () => {
-    expect(await exists("docs/# RepoDocs AI.litcoffee")).toBe(false);
+  it("every npm run command in CI workflows exists", async () => {
+    // Workflows also build the site, which has its own package.json.
+    const websitePackage = JSON.parse(await fs.readFile(path.join(repoRoot, "website", "package.json"), "utf8"));
+    const scripts = { ...(await readPackageScripts()), ...websitePackage.scripts };
+    const workflowsDirectory = path.join(repoRoot, ".github", "workflows");
+    const unknown = [];
+    for (const file of await fs.readdir(workflowsDirectory)) {
+      const text = await fs.readFile(path.join(workflowsDirectory, file), "utf8");
+      for (const name of npmRunCommands(text)) {
+        if (!(name in scripts)) {
+          unknown.push(`${file}: npm run ${name}`);
+        }
+      }
+    }
+    expect(unknown).toEqual([]);
   });
 
-  it("archive/docs/spec-history/README.md exists", async () => {
-    expect(await exists("archive/docs/spec-history/README.md")).toBe(true);
-  });
-
-  it("archive/docs/spec-history/product-spec-overview-v1.md exists", async () => {
-    expect(await exists("archive/docs/spec-history/product-spec-overview-v1.md")).toBe(true);
-  });
-
-  it("archive/docs/spec-history/product-spec-system-v1.md exists", async () => {
-    expect(await exists("archive/docs/spec-history/product-spec-system-v1.md")).toBe(true);
+  it("every repository path the README mentions exists", async () => {
+    const readme = await fs.readFile(path.join(repoRoot, "README.md"), "utf8");
+    // Files the bootstrap writes into a user's docs repository, not into this one.
+    const writtenIntoDocsRepos = new Set([".github/workflows/docs-validate.yml"]);
+    const prefixes = ["scripts/", "docs/", "templates/", "prompts/", "examples/", "schema/", "validation/", "experimental/", "archive/", "website/", ".github/"];
+    const mentioned = [...new Set([...readme.matchAll(/`([^`\s]+)`/g)].map((match) => match[1]))]
+      .filter((value) => prefixes.some((prefix) => value.startsWith(prefix)))
+      .filter((value) => !/[<>*]/.test(value))
+      .filter((value) => !writtenIntoDocsRepos.has(value));
+    const missing = [];
+    for (const value of mentioned) {
+      if (!(await exists(value.replace(/\/$/, "")))) {
+        missing.push(value);
+      }
+    }
+    expect(missing).toEqual([]);
   });
 });
