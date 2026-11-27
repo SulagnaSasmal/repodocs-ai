@@ -26,7 +26,7 @@ try {
     console.error("Pass the docs folder to check, for example:");
     console.error("  npm run validate:docs -- ../company-docs --specs ../company-docs/openapi");
     console.error("To check this repository itself, run: npm run validate");
-    process.exit(1);
+    process.exit(1); // nothing has been written yet, so exiting now loses no output
   }
   await assertPathsExist(targets.docPaths, "Docs path");
   await assertPathsExist(targets.specPaths, "Specs path");
@@ -42,46 +42,48 @@ for (const specPath of targets.specPaths) {
   args.push("--specs", specPath);
 }
 
-let failed = 0;
-let skipped = 0;
-let warned = 0;
+const counts = { PASS: 0, WARN: 0, SKIP: 0, FAIL: 0 };
+const skipReasons = [];
 
 for (const check of checks) {
   const result = spawnSync(process.execPath, [path.join(__dirname, check.script), ...args], {
-    encoding: "utf8"
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024
   });
   const output = `${result.stdout || ""}${result.stderr || ""}`.trim();
+  const skipLine = output.match(/^Skipped [^:\n]+:\s*(.+)$/m);
   const status = result.status !== 0
     ? "FAIL"
-    : /^Skipped /m.test(output)
+    : skipLine
       ? "SKIP"
       : /warning\(s\)/.test(output)
         ? "WARN"
         : "PASS";
 
-  if (status === "FAIL") failed += 1;
-  if (status === "SKIP") skipped += 1;
-  if (status === "WARN") warned += 1;
+  counts[status] += 1;
+  if (status === "SKIP") {
+    skipReasons.push(`${check.name}: ${skipLine[1].replace(/\.\s.*$/, "").replace(/\.$/, "")}`);
+  }
 
   console.log(`[${status}] ${check.name}`);
   console.log(output.split("\n").map((line) => `       ${line}`).join("\n"));
 }
 
+const parts = [];
+if (counts.PASS > 0) parts.push(`${counts.PASS} passed`);
+if (counts.WARN > 0) parts.push(`${counts.WARN} passed with warnings to resolve before publishing`);
+if (counts.SKIP > 0) parts.push(`${counts.SKIP} skipped and did not run`);
+if (counts.FAIL > 0) parts.push(`${counts.FAIL} failed`);
+
 console.log("");
-if (strict && skipped > 0) {
-  console.log(`${skipped} of ${checks.length} checks were skipped, and --strict treats a skipped check as a failure.`);
-  process.exit(1);
+console.log(`${checks.length} checks: ${parts.join(", ")}.`);
+for (const reason of skipReasons) {
+  console.log(`  Skipped, ${reason}.`);
 }
-if (failed > 0) {
-  console.log(`${failed} of ${checks.length} checks failed.`);
-  process.exit(1);
+
+if (counts.FAIL > 0) {
+  process.exitCode = 1;
+} else if (strict && counts.SKIP > 0) {
+  console.log("--strict treats a skipped check as a failure.");
+  process.exitCode = 1;
 }
-const ran = checks.length - skipped;
-const parts = [`${ran} of ${checks.length} checks passed`];
-if (warned > 0) {
-  parts.push(`${warned} with warnings to resolve before publishing`);
-}
-if (skipped > 0) {
-  parts.push(`${skipped} skipped and did not run (add --specs to run them)`);
-}
-console.log(`${parts.join("; ")}.`);

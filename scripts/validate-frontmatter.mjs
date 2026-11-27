@@ -80,7 +80,8 @@ async function main() {
 
   if (markdownFiles.length === 0) {
     console.error(`No Markdown files found in ${checkedLabel}. Nothing was checked, so no result is reported.`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const errors = [];
@@ -117,8 +118,13 @@ async function main() {
       const reviewed = parsed.last_reviewed instanceof Date
         ? parsed.last_reviewed.toISOString().slice(0, 10)
         : String(parsed.last_reviewed);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(reviewed) || Number.isNaN(Date.parse(reviewed))) {
-        errors.push(`${relativePath}: last_reviewed must be a date in YYYY-MM-DD format, not '${parsed.last_reviewed}'`);
+      const [year, month, day] = reviewed.split("-").map(Number);
+      const calendarDate = new Date(Date.UTC(year, month - 1, day));
+      const isRealDate = /^\d{4}-\d{2}-\d{2}$/.test(reviewed) && calendarDate.getUTCFullYear() === year && calendarDate.getUTCMonth() === month - 1 && calendarDate.getUTCDate() === day;
+      if (!isRealDate) {
+        errors.push(`${relativePath}: last_reviewed must be a real date in YYYY-MM-DD format, not '${reviewed}'`);
+      } else if (calendarDate.getTime() > Date.now() + 36 * 60 * 60 * 1000) {
+        errors.push(`${relativePath}: last_reviewed '${reviewed}' is in the future`);
       }
     }
 
@@ -164,11 +170,11 @@ async function main() {
   }
 
   if (errors.length > 0) {
-    console.error("Frontmatter validation failed:\n");
-    for (const error of errors) {
-      console.error(`- ${error}`);
-    }
-    process.exit(1);
+    // One write, then let Node exit on its own, so no line is lost when the
+    // output is a pipe.
+    process.stderr.write(`Frontmatter validation failed:\n\n${errors.map((error) => `- ${error}`).join("\n")}\n`);
+    process.exitCode = 1;
+    return;
   }
 
   console.log(`Validated frontmatter for ${markdownFiles.length} Markdown files in ${checkedLabel}.`);
@@ -176,5 +182,5 @@ async function main() {
 
 main().catch((error) => {
   console.error(error);
-  process.exit(1);
+  process.exitCode = 1;
 });

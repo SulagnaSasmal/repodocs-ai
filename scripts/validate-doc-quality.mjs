@@ -13,7 +13,13 @@ const placeholderPatterns = [
   /\{endpoint-name\}/g,
   /\{feature-name\}/g,
   /GET\|POST\|PUT\|PATCH\|DELETE/g,
-  /Replace with actual [^.\n]+/g
+  /Replace with actual [^.\n]+/g,
+  /\bTODO\b/g,
+  /\bTBD\b/g,
+  /\bFIXME\b/g,
+  /<insert[^>]*>/gi,
+  /\{\{[^}]*\}\}/g,
+  /\blorem ipsum\b/gi
 ];
 
 const validHttpMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
@@ -87,10 +93,16 @@ async function loadTemplateText() {
     : [];
   const instructionLines = new Set();
   const descriptions = new Set();
+  const headingsByComponent = new Map();
   for (const file of templateFiles) {
     const text = await fs.readFile(file, "utf8");
     const frontmatter = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     const description = frontmatter?.[1].match(/^description:\s*"?(.+?)"?\s*$/m)?.[1];
+    const component = frontmatter?.[1].match(/^component:\s*"?([^"\n]+?)"?\s*$/m)?.[1];
+    if (component && component !== "endpoint" && component !== "api") {
+      // A component two templates share says nothing about which one a doc used.
+      headingsByComponent.set(component, headingsByComponent.has(component) ? null : text.split(/\r?\n/).filter((line) => /^## /.test(line)).map((line) => line.slice(3).trim()));
+    }
     if (description) {
       descriptions.add(description.trim());
     }
@@ -102,7 +114,7 @@ async function loadTemplateText() {
       }
     }
   }
-  return { instructionLines, descriptions };
+  return { instructionLines, descriptions, headingsByComponent };
 }
 
 // The owners listed in the nearest schema/owners-registry.md above a doc.
@@ -168,13 +180,14 @@ async function main() {
 
   if (markdownFiles.length === 0) {
     console.error(`No Markdown files found in ${checkedLabel}. Nothing was checked, so no result is reported.`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const errors = [];
   const warnings = [];
 
-  const templateText = targets.userMode ? await loadTemplateText() : { instructionLines: new Set(), descriptions: new Set() };
+  const templateText = targets.userMode ? await loadTemplateText() : { instructionLines: new Set(), descriptions: new Set(), headingsByComponent: new Map() };
 
   for (const filePath of markdownFiles) {
     const content = await fs.readFile(filePath, "utf8");
@@ -244,7 +257,10 @@ async function main() {
       }
 
       // Suspicious status code warnings
-      for (const rule of suspiciousStatusRules) {
+      // Generated docs take their statuses from the spec, which the OpenAPI
+      // check compares; this heuristic is for hand-written docs.
+      const generated = /^description:\s*"Generated endpoint documentation for /m.test(content);
+      for (const rule of generated ? [] : suspiciousStatusRules) {
         if (rule.methodPattern.test(content) && rule.statusPattern.test(content)) {
           warnings.push(`${relativePath}: ${rule.message}`);
         }
@@ -254,9 +270,31 @@ async function main() {
     // Owner not in the docs repository's owners registry.
     const owner = content.match(/^owner:\s*"?([^"\n]+?)"?\s*$/m)?.[1];
     if (targets.userMode && owner && owner !== "unassigned") {
-      const registry = await ownersRegistryFor(filePath);
+      const registry = (await ownersRegistryFor(filePath)) || (await ownersRegistryFor(path.join(targets.baseDirectory, "index.md")));
       if (registry && registry.owners.size > 0 && !registry.owners.has(owner)) {
         warnings.push(`${relativePath}: owner '${owner}' is not listed in ${displayPath(registry.path, displayRoot)}`);
+      }
+    }
+
+    // A {name} placeholder in the example URL: the spec gave no example value.
+    const curlUrl = content.match(/curl -X \w+ "([^"]+)"/)?.[1] || "";
+    const urlPlaceholders = [...curlUrl.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]);
+    if (urlPlaceholders.length > 0) {
+      warnings.push(`${relativePath}: the request example URL still has placeholder(s) ${urlPlaceholders.map((name) => `{${name}}`).join(", ")}. Add examples to the spec or edit the doc before publication`);
+    }
+
+    // Hand-written docs: the sections of the template for this component are all present.
+    const component = content.match(/^component:\s*"?([^"\n]+?)"?\s*$/m)?.[1];
+    const templateHeadings = templateText.headingsByComponent?.get(component);
+    if (templateHeadings && !/^description:\s*"Generated /m.test(content)) {
+      const headings = new Set(content.split(/\r?\n/).filter((line) => /^## /.test(line)).map((line) => line.slice(3).trim()));
+      const missing = templateHeadings.filter((heading) => !headings.has(heading));
+      // Only a doc that follows the template for at least half its sections
+      // was written from it; any other doc with the same component is a
+      // different kind of page.
+      const followed = templateHeadings.length - missing.length;
+      if (missing.length > 0 && followed >= Math.ceil(templateHeadings.length / 2)) {
+        warnings.push(`${relativePath}: missing section(s) from the ${component} template: ${missing.join(", ")}`);
       }
     }
 
@@ -282,22 +320,23 @@ async function main() {
     }
   }
 
+  // One write per stream, then let Node exit on its own, so no line is lost
+  // when the output is a pipe.
   if (errors.length > 0) {
-    console.error("Documentation quality validation failed:\n");
-    for (const error of errors) {
-      console.error(`- ${error}`);
+    let report = "";
+    if (errors.length > 0) {
+      report += `Documentation quality validation failed:\n\n${errors.map((error) => `- ${error}`).join("\n")}\n`;
     }
+    if (warnings.length > 0) {
+      report += `\nDocumentation quality warnings:\n\n${warnings.map((warning) => `- ${warning}`).join("\n")}\n`;
+    }
+    process.stderr.write(report);
+    process.exitCode = 1;
+    return;
   }
 
   if (warnings.length > 0) {
-    console.warn("\nDocumentation quality warnings:\n");
-    for (const warning of warnings) {
-      console.warn(`- ${warning}`);
-    }
-  }
-
-  if (errors.length > 0) {
-    process.exit(1);
+    process.stderr.write(`\nDocumentation quality warnings:\n\n${warnings.map((warning) => `- ${warning}`).join("\n")}\n`);
   }
 
   const checksRun = "placeholders, leftover template text, required sections, examples, suspicious status codes, SME labels, placeholder example values, owners";
@@ -316,5 +355,5 @@ async function main() {
 
 main().catch((error) => {
   console.error(error);
-  process.exit(1);
+  process.exitCode = 1;
 });
