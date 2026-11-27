@@ -109,6 +109,57 @@ function resolveSchema(spec, schema, depth = 0) {
   return merged;
 }
 
+// Picks the media type to document: JSON first, then form, multipart, or
+// whatever the spec lists first.
+function pickMedia(content) {
+  if (!content || typeof content !== "object") {
+    return null;
+  }
+  const types = Object.keys(content);
+  const pick = (kind, type) => (type ? { kind, type, media: content[type] || {} } : null);
+  return (
+    pick("json", types.find((type) => type === "application/json") || types.find((type) => /[/+]json(;|$)/i.test(type))) ||
+    pick("form", types.find((type) => /^application\/x-www-form-urlencoded/i.test(type))) ||
+    pick("multipart", types.find((type) => /^multipart\//i.test(type))) ||
+    pick("other", types[0])
+  );
+}
+
+function requestMedia(operation) {
+  return pickMedia(operation.requestBody?.content);
+}
+
+// The example a media type gives: its example, its first named example, or
+// one built from its schema.
+function mediaExample(spec, media) {
+  if (!media) {
+    return undefined;
+  }
+  if (media.example !== undefined) {
+    return media.example;
+  }
+  const firstExample = media.examples ? resolveReference(spec, Object.values(media.examples)[0]) : undefined;
+  if (firstExample?.value !== undefined) {
+    return firstExample.value;
+  }
+  const schema = resolveSchema(spec, media.schema);
+  return schema ? buildExampleValue(spec, schema) : undefined;
+}
+
+// The first server URL, with server variables replaced by their defaults.
+function serverUrl(spec, fallback) {
+  const server = spec.servers?.[0];
+  const url = normalizeText(server?.url);
+  if (!url) {
+    return fallback;
+  }
+  return url.replace(/\{([^}]+)\}/g, (match, name) => {
+    const variable = server.variables?.[name];
+    const value = variable?.default ?? variable?.enum?.[0];
+    return value !== undefined ? String(value) : match;
+  });
+}
+
 function jsonExampleLiteral(value) {
   return typeof value === "string" ? `\`${value}\`` : `\`${JSON.stringify(value)}\``;
 }
@@ -430,7 +481,7 @@ function buildSplitParameterSections(spec, parameters) {
 }
 
 function buildRequestBodyIntro(spec, operation) {
-  const schema = operation.requestBody?.content?.["application/json"]?.schema;
+  const schema = requestMedia(operation)?.media?.schema;
   if (!schema) {
     return "";
   }
@@ -446,7 +497,7 @@ function buildRequestBodyIntro(spec, operation) {
 }
 
 function buildRequestBodyRows(spec, operation) {
-  const schema = resolveSchema(spec, operation.requestBody?.content?.["application/json"]?.schema);
+  const schema = resolveSchema(spec, requestMedia(operation)?.media?.schema);
   const properties = schema?.properties;
   const requiredFields = new Set(Array.isArray(schema?.required) ? schema.required : []);
   const hasRequiredList = requiredFields.size > 0;
@@ -467,8 +518,37 @@ function buildRequestBodyRows(spec, operation) {
 }
 
 function buildRequestBodyExample(spec, operation) {
-  const schema = resolveSchema(spec, operation.requestBody?.content?.["application/json"]?.schema);
-  return schema ? JSON.stringify(buildExampleValue(spec, schema), null, 2) : null;
+  const media = requestMedia(operation);
+  if (!media) {
+    return null;
+  }
+  const value = mediaExample(spec, media.media);
+  return value === undefined ? null : { kind: media.kind, type: media.type, value };
+}
+
+function shellQuote(value) {
+  return String(value).replace(/(["\\$`])/g, "\\$1");
+}
+
+function buildRequestBodyArgs(body) {
+  if (!body) {
+    return [];
+  }
+  const fields = body.value && typeof body.value === "object" && !Array.isArray(body.value) ? Object.entries(body.value) : [];
+  const fieldText = (value) => (typeof value === "object" ? JSON.stringify(value) : String(value));
+  if (body.kind === "json") {
+    return [`-H "Content-Type: ${body.type}"`, `-d '${JSON.stringify(body.value).replace(/'/g, "'\\''")}'`];
+  }
+  if (body.kind === "form") {
+    return [
+      `-H "Content-Type: ${body.type}"`,
+      ...fields.map(([name, value]) => `--data-urlencode "${shellQuote(name)}=${shellQuote(fieldText(value))}"`)
+    ];
+  }
+  if (body.kind === "multipart") {
+    return fields.map(([name, value]) => `-F "${shellQuote(name)}=${shellQuote(fieldText(value))}"`);
+  }
+  return [`-H "Content-Type: ${body.type}"`, "--data-binary @<file>"];
 }
 
 function buildResponseExample(spec, operation) {
@@ -480,15 +560,18 @@ function buildResponseExample(spec, operation) {
   }
 
   const [statusCode, response] = successResponse;
-  const schema = resolveSchema(spec, response.content?.["application/json"]?.schema);
-  if (!schema) {
-    if (statusCode === "204" || !response.content) {
-      return null;
-    }
+  const media = pickMedia(resolveReference(spec, response)?.content);
+  if (!media) {
+    return null;
+  }
+  const value = mediaExample(spec, media.media);
+  if (value === undefined) {
     return JSON.stringify({ status: statusCode, note: "Needs SME input" }, null, 2);
   }
-
-  return JSON.stringify(buildExampleValue(spec, schema), null, 2);
+  if (media.kind !== "json" && typeof value === "string") {
+    return { lang: "text", text: value };
+  }
+  return JSON.stringify(value, null, 2);
 }
 
 function findNamedPropertyExample(spec, schema, propertyName) {
@@ -537,14 +620,14 @@ function buildParameterExampleValue(spec, operation, parameter) {
     return schemaExample;
   }
 
-  const requestSchema = operation.requestBody?.content?.["application/json"]?.schema;
+  const requestSchema = requestMedia(operation)?.media?.schema;
   const requestMatch = findNamedPropertyExample(spec, requestSchema, parameter.name);
   if (requestMatch !== undefined) {
     return requestMatch;
   }
 
   for (const response of Object.values(operation.responses || {})) {
-    const responseSchema = response?.content?.["application/json"]?.schema;
+    const responseSchema = pickMedia(resolveReference(spec, response)?.content)?.media?.schema;
     const responseMatch = findNamedPropertyExample(spec, responseSchema, parameter.name);
     if (responseMatch !== undefined) {
       return responseMatch;
@@ -567,7 +650,7 @@ function buildErrorRows(operation) {
 }
 
 function buildExampleUrl(spec, route, operation, pathItem) {
-  const baseUrl = normalizeText(spec.servers?.[0]?.url, "https://api.example.com").replace(/\/$/, "");
+  const baseUrl = serverUrl(spec, "https://api.example.com").replace(/\/$/, "");
   const parameters = extractParameters(spec, operation, pathItem);
   let examplePath = route;
   const queryParams = [];
@@ -588,7 +671,7 @@ function buildExampleUrl(spec, route, operation, pathItem) {
 function buildApiOverview(spec, serviceName, owner) {
   const version = normalizeText(spec.info?.version, "v1");
   const description = normalizeText(spec.info?.description, "Generated API overview from an OpenAPI specification");
-  const baseUrl = normalizeText(spec.servers?.[0]?.url, "Needs SME input");
+  const baseUrl = serverUrl(spec, "Needs SME input");
   const securityImpact = pickAllowedValue(normalizeText(spec.info?.["x-security-impact"]), new Set(["low", "medium", "high"]), "medium");
 
   const frontmatter = stringifyYamlLines({
@@ -683,7 +766,7 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
   if (credentialArgs.some((arg) => arg.startsWith('-H "Authorization:'))) {
     headersWrittenByDefault.add("authorization");
   }
-  if (operation.requestBody?.content?.["application/json"]?.schema) {
+  if (requestMedia(operation)) {
     headersWrittenByDefault.add("content-type");
   }
   const headerArgs = headerParams
@@ -704,9 +787,7 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
     `curl -X ${method.toUpperCase()} "${exampleUrl}"`,
     ...credentialArgs,
     ...headerArgs,
-    ...(requestBodyExample
-      ? ['-H "Content-Type: application/json"', `-d '${JSON.stringify(JSON.parse(requestBodyExample))}'`]
-      : [])
+    ...buildRequestBodyArgs(requestBodyExample)
   ];
   const requestExample = curlArgs.join(" \\\n  ");
   const authText = buildAuthenticationText(spec, operation);
@@ -714,7 +795,9 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
   const successCode = Object.keys(operation.responses || {}).find((code) => code.startsWith("2"));
   const responseExampleSection = responseExample === null
     ? `This operation returns \u0000${successCode}\u0000 with no response body.`
-    : `\u0000\u0000\u0000json\n${responseExample}\n\u0000\u0000\u0000`;
+    : typeof responseExample === "object"
+      ? `\u0000\u0000\u0000${responseExample.lang}\n${responseExample.text}\n\u0000\u0000\u0000`
+      : `\u0000\u0000\u0000json\n${responseExample}\n\u0000\u0000\u0000`;
   const purpose = normalizeText(operation.description, summary);
   const lifecycleSection = isDeprecated
     ? `

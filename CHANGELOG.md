@@ -4,6 +4,24 @@ This changelog tracks product-facing changes to RepoDocs AI.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Adopter path tests that bootstrap a docs repo, generate docs, run `validate:docs` and the bootstrapped CI step, and check the output against the spec, using five third-party OpenAPI specs from the OpenAPI Initiative.
+- Consistency tests: every `npm run` command in the README and CI workflows exists, every npm script points at a file that exists, and every repository path the README mentions exists.
+- A release check procedure with a fresh-agent README test, in `.github/release-checks/`.
+
+### Changed
+
+- Replaced 81 file-exists tests with the consistency tests above.
+
+### Fixed
+
+- Server variables in the server URL were left unresolved in generated URLs.
+- Form-encoded and multipart request bodies were reported as "Not applicable". They are now documented, with matching curl examples.
+- Named response examples and examples on non-JSON media types were ignored.
+
 ## [1.1.0] — 2026-11-27
 
 This release makes validation work on your own docs and makes the README match what the tool does. The issues were found by following the README as a first-time user and as a fresh AI agent, using the public Swagger Petstore spec.
