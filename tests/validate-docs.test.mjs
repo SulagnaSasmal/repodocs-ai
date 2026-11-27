@@ -151,8 +151,8 @@ describe("bootstrap-docs-repo CI setup", () => {
     await execFileAsync(process.execPath, [script("bootstrap-docs-repo.mjs"), target], { cwd: repoRoot });
 
     const workflow = await fs.readFile(path.join(target, ".github", "workflows", "docs-validate.yml"), "utf8");
-    expect(workflow).toContain("repository: SulagnaSasmal/repodocs-ai");
-    expect(workflow).toContain("node scripts/validate-docs.mjs");
+    const { version } = JSON.parse(await fs.readFile(path.join(repoRoot, "package.json"), "utf8"));
+    expect(workflow).toContain(`npx --yes github:SulagnaSasmal/repodocs-ai#v${version} validate`);
 
     const codeowners = await fs.readFile(path.join(target, ".github", "CODEOWNERS"), "utf8");
     const activeRules = codeowners.split("\n").filter((line) => line.trim() && !line.trim().startsWith("#"));

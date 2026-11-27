@@ -166,9 +166,11 @@ describe.each(fixtures)("adopter path with %s", (fixture) => {
   it("runs the CI step the bootstrap wrote, and it passes", async () => {
     const workflow = await fs.readFile(path.join(docsRepo, ".github", "workflows", "docs-validate.yml"), "utf8");
     const step = workflow.split("run: |\n").pop().split("\n").map((line) => line.replace(/^ {10}/, "")).join("\n");
-    // The workflow checks out the docs next to RepoDocs AI as ../docs-repo.
-    const script = step.replaceAll("../docs-repo", docsRepo);
-    const { stdout } = await execFileAsync("bash", ["-c", script], { cwd: repoRoot });
+    // The workflow runs a pinned release through npx; run this checkout instead.
+    const pinned = step.match(/npx --yes github:SulagnaSasmal\/repodocs-ai#v[\d.]+/)?.[0];
+    expect(pinned).toBeTruthy();
+    const script = step.replace(pinned, `node "${path.join(repoRoot, "bin", "repodocs.mjs")}"`);
+    const { stdout } = await execFileAsync("bash", ["-c", script], { cwd: docsRepo });
     expect(stdout).toMatch(/4 of 4 checks passed/);
   });
 });

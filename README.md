@@ -2,7 +2,7 @@
 
 [![Build](https://github.com/SulagnaSasmal/repodocs-ai/actions/workflows/validate.yml/badge.svg)](https://github.com/SulagnaSasmal/repodocs-ai/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.1.0-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.2.0-green.svg)](CHANGELOG.md)
 
 AI-prompt-powered docs-as-code documentation system for SaaS API teams.
 
@@ -96,7 +96,7 @@ The full output is in [`examples/payments-api/create-payment.md`](examples/payme
 flowchart LR
     A([OpenAPI spec\nor blank template]) --> B[AI prompt\ngenerates draft]
     B --> C[SME review\nand edit]
-    C --> D{npm run validate:docs}
+    C --> D{repodocs-ai validate}
     D -->|frontmatter ✓\nstructure ✓\nquality ✓\nOpenAPI ✓| E[Merge to main]
     D -->|gap found| C
     E --> F([Published docs\non GitHub Pages])
@@ -114,55 +114,43 @@ Compared 2 endpoint docs in examples/api-docs, generated against the OpenAPI spe
 Checked api_version for 10 Markdown files in examples/api-docs, examples/complete-system, generated.
 ```
 
-To check your own docs, use `npm run validate:docs` instead (see [Validate Your Docs](#validate-your-docs)).
+To check your own docs, use `repodocs-ai validate` instead (see [Validate Your Docs](#validate-your-docs)). Inside a clone, `node bin/repodocs.mjs <command>` runs the same CLI.
 
 The final step, `lint:markdown`, prints nothing when there are no linting errors.
 
 Running `npm test`:
 
 ```text
- Test Files  8 passed (8)
-      Tests  170 passed (170)
+ Test Files  9 passed (9)
+      Tests  175 passed (175)
 ```
 
-The tests include the full adopter path (bootstrap, generate, `validate:docs`, and the CI step the bootstrap writes), run against five OpenAPI specs written by other people in `tests/fixtures/third-party/`. They check the generated docs against each spec, not only that the commands succeed. Before each release, a fresh AI agent also follows the README from scratch; the procedure and past reports are in `.github/release-checks/`.
+The tests include the full adopter path (`init`, `generate`, `validate`, and the CI step `init` writes), the CLI installed from a packed tarball,, run against five OpenAPI specs written by other people in `tests/fixtures/third-party/`. They check the generated docs against each spec, not only that the commands succeed. Before each release, a fresh AI agent also follows the README from scratch; the procedure and past reports are in `.github/release-checks/`.
 
 ## Quick Start
 
-Set up a new docs repository, generate docs from your OpenAPI spec, and validate them.
+Install the `repodocs-ai` command, set up a docs repository, generate docs from your OpenAPI spec, and validate them.
 
-> Requires Node.js 20 or later (22 or later to run the test suite). Check with `node --version`.
-
-```bash
-git clone https://github.com/SulagnaSasmal/repodocs-ai.git
-cd repodocs-ai
-npm install
-npm run bootstrap:docs-repo -- ../company-docs
-```
-
-The bootstrap copies the templates, prompts, diagrams, schema and review checklists, and writes a CI workflow, a CODEOWNERS file to fill in, and a starter README. It does not run `git init` or create the GitHub repository for you.
-
-To include the payments example set as a starting reference, add `--with-examples`:
+> Requires Node.js 20 or later. Check with `node --version`.
 
 ```bash
-npm run bootstrap:docs-repo -- ../company-docs --with-examples
+npm install -g github:SulagnaSasmal/repodocs-ai#v1.2.0
+repodocs-ai init company-docs
 ```
+
+Or run any command once without installing, with `npx --yes github:SulagnaSasmal/repodocs-ai#v1.2.0 <command>`. Paths resolve from the folder you run the command in. Run `repodocs-ai help` for every command.
+
+`init` copies the templates, prompts, diagrams, schema and review checklists, and writes a CI workflow, a CODEOWNERS file to fill in, and a starter README. It does not run `git init` or create the GitHub repository for you. Add `--with-examples` to include the payments example set.
 
 ### Generate Docs From Your OpenAPI Spec
 
-The bootstrap does not create a spec for you. Put your OpenAPI 3.x file in your docs repository first, for example at `../company-docs/openapi/my-api.yaml`.
-
-Then run the generator from inside the repodocs-ai clone. Both paths are resolved from the repodocs-ai folder:
+Put your OpenAPI 3.x file in the docs repository, then generate:
 
 ```bash
-node scripts/generate-openapi-docs.mjs ../company-docs/openapi/my-api.yaml ../company-docs/generated/my-api
+repodocs-ai generate company-docs/openapi/my-api.yaml company-docs/generated
 ```
 
-No spec yet? Try the bundled payments example:
-
-```bash
-node scripts/generate-openapi-docs.mjs examples/payments-api/payments-openapi.yaml ../company-docs/generated/payments-api
-```
+No spec yet? Run `repodocs-ai init company-docs --with-examples` and use `company-docs/examples/payments-api/payments-openapi.yaml`.
 
 The output folder contains:
 
@@ -176,8 +164,10 @@ The generator documents only what the spec says. If the spec leaves something ou
 Run every content check against your docs, and compare them with your specs:
 
 ```bash
-npm run validate:docs -- ../company-docs/generated --specs ../company-docs/openapi
+repodocs-ai validate company-docs/generated --specs company-docs/openapi
 ```
+
+The command exits with a non-zero code when a check fails, so it can gate CI.
 
 Each check reports PASS, WARN, FAIL or SKIP and names the folder it checked:
 
@@ -186,9 +176,9 @@ Each check reports PASS, WARN, FAIL or SKIP and names the folder it checked:
 - **OpenAPI examples:** request and response example fields and parameters against the spec.
 - **API versions:** `api_version` in frontmatter against the spec's version.
 
-Without `--specs`, the last two checks report SKIP. A skipped check did not run; it never counts as a pass. Pass several folders to check them together, for example `../company-docs/generated ../company-docs/docs`.
+Without `--specs`, the last two checks report SKIP. A skipped check did not run; it never counts as a pass. Pass several folders to check them together, for example `company-docs/generated company-docs/docs`.
 
-The bootstrap also writes `.github/workflows/docs-validate.yml` into your docs repository. Once you push to GitHub, it runs the same checks on every pull request against `generated/` and `docs/`, using the specs in `openapi/`.
+`init` also writes `.github/workflows/docs-validate.yml` into your docs repository. Once you push to GitHub, it runs the same checks on every pull request against `generated/` and `docs/`, using the specs in `openapi/`. It uses the same RepoDocs AI version that created the repository.
 
 These checks cover format and consistency with the spec. They cannot tell whether the spec itself is right or complete.
 
@@ -210,17 +200,15 @@ For hand-authored docs:
 - It does not write descriptions the spec lacks. Those sections say `Needs SME input` until someone fills them in.
 - It does not document response fields as a table, or named error schemas. Response examples and error codes are generated; field-level response docs are written by hand.
 - It does not upload anything. `npm run export` writes files formatted for Confluence, Google Docs, Notion and print, which you import yourself.
-- It is not installed from npm. You clone it and run commands from inside the clone.
+- It is not published to the npm registry yet. Install it from GitHub, as shown in the Quick Start.
 - The hosted control plane, deployment manifests and site starters are experimental and not covered by the adopter tests.
 
 ## Evaluate RepoDocs AI
 
-RepoDocs AI is cloned and used directly, not installed from npm. The `"private": true` flag in `package.json` prevents accidental publishing.
-
-To adopt it into your own docs repository, use the [Quick Start](#quick-start). To evaluate the product itself:
+To adopt it into your own docs repository, use the [Quick Start](#quick-start). To evaluate or work on the product itself, clone it:
 
 1. Clone the repository.
-2. Run `npm install`.
+2. Run `npm install`. Running the tests needs Node.js 22 or later.
 3. Run `npm run validate` to verify the template packs, prompts, examples, and docs structure.
 4. Run `npm run proof:path` to run bootstrap, generation, validation and export once on the bundled example.
 5. Open `docs/index.md` for the source documentation hub, or the [published site](https://sulagnasasmal.github.io/repodocs-ai/) for the product walkthrough.
