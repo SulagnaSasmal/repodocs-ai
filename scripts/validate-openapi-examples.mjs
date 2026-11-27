@@ -60,7 +60,7 @@ async function loadSpecs(specTargets) {
 
   for (const filePath of files) {
     const raw = await fs.readFile(filePath, "utf8");
-    const spec = path.extname(filePath).toLowerCase() === ".json" ? JSON.parse(raw) : yaml.load(raw);
+    const spec = path.extname(filePath).toLowerCase() === ".json" ? JSON.parse(raw) : yaml.load(raw, { schema: yaml.CORE_SCHEMA });
 
     if (spec?.openapi && spec?.paths) {
       specs.push({ filePath, spec });
@@ -267,12 +267,121 @@ function tableRows(content, heading, minCells = 3) {
   }
   const next = content.indexOf("\n## ", start + 3);
   const body = content.slice(start, next === -1 ? undefined : next);
-  return body
-    .split(/\r?\n/)
-    .filter((line) => /^\|/.test(line.trim()) && !/^\|\s*-{3}/.test(line.trim()))
-    .slice(1)
+  // Header rows are the ones directly above a | --- | separator line.
+  const lines = body.split(/\r?\n/).map((line) => line.trim());
+  const isSeparator = (line) => /^\|\s*:?-{3}/.test(line);
+  return lines
+    .filter((line, index) => line.startsWith("|") && !isSeparator(line) && !isSeparator(lines[index + 1] || ""))
     .map((line) => line.split(/(?<!\\)\|/).slice(1, -1).map((cell) => cell.trim()))
     .filter((cells) => cells.length >= minCells && cells[0] && cells[0] !== "None");
+}
+
+// Every object shape a schema can take, following oneOf/anyOf variants.
+function expandShapes(spec, schema, depth = 0) {
+  const resolved = resolveSchema(spec, schema);
+  if (!resolved || depth > 6) {
+    return [];
+  }
+  const variants = !resolved.properties ? (resolved.oneOf || resolved.anyOf) : null;
+  if (Array.isArray(variants) && variants.length > 0) {
+    return variants.flatMap((variant) => expandShapes(spec, variant, depth + 1));
+  }
+  return [resolved];
+}
+
+// Checks a JSON example against the schema, at every depth: unknown fields
+// and values outside an enum. Returns error messages.
+function checkJsonValue(spec, value, schema, label, kind, depth = 0) {
+  if (depth > 8 || value === null || value === undefined) {
+    return [];
+  }
+  const shapes = expandShapes(spec, schema);
+  if (shapes.length === 0) {
+    return [];
+  }
+  const errors = [];
+  const enumShapes = shapes.filter((shape) => Array.isArray(shape.enum));
+  if (enumShapes.length > 0 && enumShapes.length === shapes.length && typeof value !== "object") {
+    const allowed = enumShapes.flatMap((shape) => shape.enum);
+    if (!allowed.map(String).includes(String(value))) {
+      errors.push(`${kind} example field '${label}' uses '${value}', which is not one of its allowed values (${allowed.join(", ")})`);
+    }
+    return errors;
+  }
+  if (Array.isArray(value)) {
+    const itemSchemas = shapes.filter((shape) => shape.items).map((shape) => shape.items);
+    for (const item of value.slice(0, 5)) {
+      for (const itemSchema of itemSchemas.slice(0, 1)) {
+        errors.push(...checkJsonValue(spec, item, itemSchema, `${label}[]`, kind, depth + 1));
+      }
+    }
+    return errors;
+  }
+  if (typeof value === "object") {
+    // Shapes with no listed properties, or that allow extra ones, are open.
+    const objectShapes = shapes.filter((shape) => shape.properties && Object.keys(shape.properties).length > 0);
+    if (objectShapes.length === 0 || objectShapes.length < shapes.length || shapes.some((shape) => shape.additionalProperties)) {
+      return errors;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      const owners = objectShapes.filter((shape) => key in shape.properties);
+      const childLabel = label ? `${label}.${key}` : key;
+      if (owners.length === 0) {
+        if (depth > 0) {
+          errors.push(`${kind} example field '${childLabel}' is not defined`);
+        }
+        continue;
+      }
+      errors.push(...checkJsonValue(spec, child, owners[0].properties[key], childLabel, kind, depth + 1));
+    }
+  }
+  return errors;
+}
+
+// The property schema a table row name points at, such as "channel.from.type"
+// or "items[].id". Property names may themselves contain dots.
+function schemaForField(spec, shapes, name) {
+  if (!name) {
+    return shapes[0] || null;
+  }
+  for (const shape of shapes.flatMap((candidate) => expandShapes(spec, candidate))) {
+    for (const [property, propertySchema] of Object.entries(shape.properties || {})) {
+      for (const suffix of ["", "[]"]) {
+        const head = property + suffix;
+        if (name === head) {
+          return suffix ? resolveSchema(spec, propertySchema)?.items || propertySchema : propertySchema;
+        }
+        if (name.startsWith(`${head}.`)) {
+          const next = suffix ? resolveSchema(spec, propertySchema)?.items : propertySchema;
+          const found = schemaForField(spec, [next], name.slice(head.length + 1));
+          if (found) {
+            return found;
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function basicType(spec, schema) {
+  const resolved = resolveSchema(spec, schema);
+  if (!resolved) {
+    return null;
+  }
+  if (resolved.type) {
+    return resolved.type;
+  }
+  if (resolved.properties) {
+    return "object";
+  }
+  return null;
+}
+
+function serverBases(spec) {
+  return (spec.servers || []).map((server) =>
+    String(server.url || "").replace(/\{([^}]+)\}/g, (match, name) => String(server.variables?.[name]?.default ?? server.variables?.[name]?.enum?.[0] ?? match)).replace(/\/$/, "")
+  );
 }
 
 function statusCodeAllowed(code, responses) {
@@ -415,6 +524,9 @@ async function main() {
             errors.push(`${relativePath}: request example sends '${key}', which is readOnly in ${specName}`);
           }
         }
+        for (const message of checkJsonValue(spec, requestJson, extractRequestSchema(spec, match.operation), "", "request")) {
+          errors.push(`${relativePath}: ${message} in ${specName}`);
+        }
         // The example must satisfy the required fields of at least one allowed shape.
         const missingByShape = requestShapes.map((shape) => (shape.required || []).filter((key) => !(key in requestJson)));
         if (!missingByShape.some((missing) => missing.length === 0)) {
@@ -435,6 +547,9 @@ async function main() {
         } else if (resolveSchema(spec, allowed[key])?.writeOnly) {
           errors.push(`${relativePath}: response example shows '${key}', which is writeOnly in ${specName}`);
         }
+      }
+      for (const message of checkJsonValue(spec, responseJson, jsonSchemaOf(successResponse(spec, match.operation)?.content), "", "response")) {
+        errors.push(`${relativePath}: ${message} in ${specName}`);
       }
     }
 
@@ -465,6 +580,67 @@ async function main() {
           errors.push(`${relativePath}: request field '${name}' is marked Required: ${flag}, but the spec says ${required.has(name) ? "yes" : "no"}`);
         }
       }
+    }
+
+    // Request body table rows: every field exists, with the spec's type and allowed values.
+    const tableShapes = expandShapes(spec, extractRequestSchema(spec, match.operation) || resolveSchema(spec, Object.values(resolveRef(spec, match.operation.requestBody)?.content || {})[0]?.schema));
+    if (tableShapes.length > 0) {
+      for (const [name, type, , description = ""] of tableRows(content, "Request Body")) {
+        const fieldSchema = schemaForField(spec, tableShapes, name);
+        if (!fieldSchema) {
+          errors.push(`${relativePath}: request field '${name}' in the Request Body table is not defined in ${specName}`);
+          continue;
+        }
+        const specType = basicType(spec, fieldSchema);
+        const docType = type.replace(/<.*$/, "").trim();
+        if (specType && /^(string|integer|number|boolean|object|array)$/.test(docType) && docType !== specType) {
+          errors.push(`${relativePath}: request field '${name}' is documented as ${docType}, but the spec says ${specType}`);
+        }
+        const listed = description.match(/Allowed values: ([^.|]+?)(?:\.\s|\.$|$)/)?.[1];
+        const specEnum = resolveSchema(spec, fieldSchema)?.enum;
+        if (listed) {
+          const documentedValues = listed.split(",").map((value) => value.trim()).filter(Boolean).sort();
+          const specValues = (specEnum || []).map(String).sort();
+          if (!specEnum || documentedValues.join("|") !== specValues.join("|")) {
+            errors.push(`${relativePath}: request field '${name}' lists allowed values (${documentedValues.join(", ")}) that do not match the spec (${specValues.join(", ") || "no enum"})`);
+          }
+        }
+      }
+    }
+
+    // Authentication section agrees with the spec's security requirements.
+    const security = match.operation.security ?? spec.security ?? [];
+    const requiresAuth = security.some((requirement) => requirement && Object.keys(requirement).length > 0);
+    const authStart = content.search(/## Authentication/);
+    const authText = authStart === -1 ? "" : content.slice(authStart, content.indexOf("\n## ", authStart + 3) === -1 ? undefined : content.indexOf("\n## ", authStart + 3));
+    if (authText) {
+      const saysNone = /no authentication/i.test(authText);
+      if (requiresAuth && saysNone) {
+        errors.push(`${relativePath}: Authentication says none is required, but the spec requires it`);
+      }
+      if (!requiresAuth && !saysNone && /authentication is required|bearer|api key|oauth|basic/i.test(authText)) {
+        errors.push(`${relativePath}: Authentication says it is required, but the spec defines no security for this operation`);
+      }
+      if (requiresAuth && /API key in (header|query|cookie)/.test(authText)) {
+        const schemes = spec.components?.securitySchemes || {};
+        const hasApiKey = security.some((requirement) => Object.keys(requirement || {}).some((name) => resolveRef(spec, schemes[name])?.type === "apiKey"));
+        if (!hasApiKey) {
+          errors.push(`${relativePath}: Authentication mentions an API key, but the spec's security for this operation uses no API key`);
+        }
+      }
+    }
+
+    // The request example calls one of the spec's servers.
+    const bases = serverBases(spec).filter((base) => /^https?:\/\//.test(base));
+    const exampleUrl = extractCurlUrl(content);
+    if (exampleUrl && bases.length > 0 && !bases.some((base) => exampleUrl.href.startsWith(base))) {
+      errors.push(`${relativePath}: request example calls ${exampleUrl.origin}${exampleUrl.pathname}, which is not under any server in ${specName} (${bases.join(", ")})`);
+    }
+
+    // The success status shown with the response example exists in the spec.
+    const statusShown = content.match(/## Response Example\s+Status: `([^`]+)`/)?.[1];
+    if (statusShown && !statusCodeAllowed(statusShown, match.operation.responses)) {
+      errors.push(`${relativePath}: response status '${statusShown}' is not defined for ${operationRef.method} ${operationRef.url} in ${specName}`);
     }
 
     // Query string in the request example: known parameters and allowed values.
@@ -501,6 +677,10 @@ async function main() {
   }
 
   const skippedCount = markdownFiles.length - comparedCount;
+  if (targets.userMode && comparedCount === 0) {
+    console.log(`Skipped OpenAPI example check for ${checkedLabel}: no endpoint docs found, so nothing was compared with the spec.`);
+    return;
+  }
   console.log(
     `Compared ${comparedCount} endpoint docs in ${checkedLabel} against the OpenAPI spec` +
     (skippedCount === 1 ? " (1 Markdown file describes no endpoint and was not compared)." : skippedCount > 1 ? ` (${skippedCount} Markdown files describe no endpoint and were not compared).` : ".")

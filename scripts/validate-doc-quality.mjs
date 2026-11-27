@@ -79,6 +79,58 @@ function extractLines(content) {
   return content.split("\n");
 }
 
+// Instruction lines from the shipped templates, such as "Summarize the feature
+// in plain language." A doc that still contains one was not finished.
+async function loadTemplateText() {
+  const templateFiles = await directoryExists(path.join(repoRoot, "templates"))
+    ? await collectMarkdownFiles(path.join(repoRoot, "templates"))
+    : [];
+  const instructionLines = new Set();
+  const descriptions = new Set();
+  for (const file of templateFiles) {
+    const text = await fs.readFile(file, "utf8");
+    const frontmatter = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    const description = frontmatter?.[1].match(/^description:\s*"?(.+?)"?\s*$/m)?.[1];
+    if (description) {
+      descriptions.add(description.trim());
+    }
+    const body = frontmatter ? text.slice(frontmatter[0].length) : text;
+    for (const line of body.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (trimmed.length >= 25 && /^[A-Z]/.test(trimmed) && !/^[#|>`-]/.test(trimmed) && !trimmed.includes("{")) {
+        instructionLines.add(trimmed);
+      }
+    }
+  }
+  return { instructionLines, descriptions };
+}
+
+// The owners listed in the nearest schema/owners-registry.md above a doc.
+const registryCache = new Map();
+async function ownersRegistryFor(filePath) {
+  let directory = path.dirname(filePath);
+  for (let depth = 0; depth < 8; depth += 1) {
+    const candidate = path.join(directory, "schema", "owners-registry.md");
+    if (registryCache.has(candidate)) {
+      return registryCache.get(candidate);
+    }
+    try {
+      const text = await fs.readFile(candidate, "utf8");
+      const owners = new Set([...text.matchAll(/^\|\s*`([a-z0-9][a-z0-9-]*)`\s*\|/gm)].map((match) => match[1]));
+      const registry = { path: candidate, owners };
+      registryCache.set(candidate, registry);
+      return registry;
+    } catch {
+      const parent = path.dirname(directory);
+      if (parent === directory) {
+        return null;
+      }
+      directory = parent;
+    }
+  }
+  return null;
+}
+
 async function main() {
   const markdownFiles = [];
   let targets;
@@ -122,10 +174,22 @@ async function main() {
   const errors = [];
   const warnings = [];
 
+  const templateText = targets.userMode ? await loadTemplateText() : { instructionLines: new Set(), descriptions: new Set() };
+
   for (const filePath of markdownFiles) {
     const content = await fs.readFile(filePath, "utf8");
     const relativePath = displayPath(filePath, displayRoot);
     const lines = extractLines(content);
+
+    // Unfinished template text: the instructions are still in the doc.
+    const leftover = content.split(/\r?\n/).map((line) => line.trim()).filter((line) => templateText.instructionLines.has(line));
+    if (leftover.length > 0) {
+      errors.push(`${relativePath}: ${leftover.length} line(s) of template instructions left in, for example "${leftover[0]}"`);
+    }
+    const docDescription = content.match(/^---\r?\n[\s\S]*?^description:\s*"?(.+?)"?\s*$/m)?.[1]?.trim();
+    if (docDescription && templateText.descriptions.has(docDescription)) {
+      errors.push(`${relativePath}: the description is still the template's ("${docDescription}")`);
+    }
 
     // Placeholder patterns
     for (const pattern of placeholderPatterns) {
@@ -187,6 +251,15 @@ async function main() {
       }
     }
 
+    // Owner not in the docs repository's owners registry.
+    const owner = content.match(/^owner:\s*"?([^"\n]+?)"?\s*$/m)?.[1];
+    if (targets.userMode && owner && owner !== "unassigned") {
+      const registry = await ownersRegistryFor(filePath);
+      if (registry && registry.owners.size > 0 && !registry.owners.has(owner)) {
+        warnings.push(`${relativePath}: owner '${owner}' is not listed in ${displayPath(registry.path, displayRoot)}`);
+      }
+    }
+
     // Generated frontmatter default: nobody owns this doc yet.
     if (/^owner:\s*"?unassigned"?\s*$/m.test(content)) {
       warnings.push(`${relativePath}: owner is 'unassigned'. Set it with --owner when generating, or edit the frontmatter`);
@@ -227,7 +300,7 @@ async function main() {
     process.exit(1);
   }
 
-  const checksRun = "placeholders, required sections, examples, suspicious status codes, SME labels, placeholder example values, unassigned owners";
+  const checksRun = "placeholders, leftover template text, required sections, examples, suspicious status codes, SME labels, placeholder example values, owners";
   if (warnings.length > 0) {
     console.log(
       `\nStructure checks passed for ${markdownFiles.length} Markdown files in ${checkedLabel} (${checksRun}), ` +

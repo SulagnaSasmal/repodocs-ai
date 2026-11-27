@@ -65,7 +65,7 @@ async function loadSpecs(specTargets) {
   for (const target of specTargets) {
     for (const filePath of await collectFromTarget(target, specExtensions)) {
       const raw = await fs.readFile(filePath, "utf8");
-      const spec = path.extname(filePath).toLowerCase() === ".json" ? JSON.parse(raw) : yaml.load(raw);
+      const spec = path.extname(filePath).toLowerCase() === ".json" ? JSON.parse(raw) : yaml.load(raw, { schema: yaml.CORE_SCHEMA });
       if (spec?.openapi) {
         specs.push({ filePath, spec });
       }
@@ -298,6 +298,10 @@ async function main() {
   }
 
   const skippedCount = markdownFiles.length - checkedCount;
+  if (targets.userMode && checkedCount === 0) {
+    console.log(`Skipped version compatibility check for ${checkedLabel}: no docs with frontmatter found, so nothing was compared with the spec.`);
+    return;
+  }
   const notApplicableNote = notApplicableCount > 0
     ? ` ${notApplicableCount} of them use api_version 'n/a', which is allowed only for docs that describe no endpoint and is not compared with a spec version.`
     : "";
