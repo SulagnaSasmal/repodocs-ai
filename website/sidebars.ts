@@ -20,7 +20,7 @@ const sidebars: SidebarsConfig = {
     {
       type: "category",
       label: "Community",
-      items: ["developer-experience-scorecard", "community-feedback-discussion"]
+      items: ["developer-experience-scorecard"]
     }
   ]
 };

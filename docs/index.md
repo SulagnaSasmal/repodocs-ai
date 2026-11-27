@@ -36,7 +36,6 @@ Use this path if you want to decide whether RepoDocs AI is credible for your tea
 ## Community
 
 - [Developer Experience Scorecard](developer-experience-scorecard.md)
-- [Community Feedback](community-feedback-discussion.md)
 
 ## Repository Assets
 

@@ -121,16 +121,8 @@ The final step, `lint:markdown`, prints nothing when there are no linting errors
 Running `npm test`:
 
 ```text
- ✓ tests/agent-workflow.test.mjs (30 tests)
- ✓ tests/validate-structure.test.mjs (81 tests)
- ✓ tests/validate-frontmatter.test.mjs (18 tests)
- ✓ tests/prompt-library.test.mjs (31 tests)
- ✓ tests/example-docs.test.mjs (25 tests)
- ✓ tests/generate-openapi-docs.test.mjs (13 tests)
- ✓ tests/validate-docs.test.mjs (8 tests)
-
  Test Files  7 passed (7)
-      Tests  206 passed (206)
+      Tests  201 passed (201)
 ```
 
 ## Quick Start
@@ -229,7 +221,7 @@ To adopt it into your own docs repository, use the [Quick Start](#quick-start). 
 2. Run `npm install`.
 3. Run `npm run validate` to verify the template packs, prompts, examples, and docs structure.
 4. Run `npm run proof:path` to run bootstrap, generation, validation and export once on the bundled example.
-5. Open `docs/index.md` for the source documentation hub or `site/index.html` for the product walkthrough.
+5. Open `docs/index.md` for the source documentation hub, or the [published site](https://sulagnasasmal.github.io/repodocs-ai/) for the product walkthrough.
 
 Further reading for evaluators:
 
@@ -237,7 +229,6 @@ Further reading for evaluators:
 - `docs/product-guide.md` for product positioning and fit
 - `docs/testing-strategy.md` for a practical app-testing stack to pair with RepoDocs AI
 - `docs/index.md` for the source docs hub
-- `site/installation.html` for the published quickstart page
 
 ## Scope
 
@@ -296,8 +287,10 @@ repodocs-ai/
 │   ├── api/
 │   ├── features/
 │   └── governance/
-├── site/
-└── scripts/
+├── scripts/
+├── website/        # published site (Docusaurus)
+├── experimental/   # control plane deployment, site starters, other CI platforms
+└── archive/        # history: old site, planning notes, earlier specs
 ```
 
 Product-facing entry points inside `docs/`:
@@ -305,7 +298,6 @@ Product-facing entry points inside `docs/`:
 - `docs/index.md`
 - `docs/product-guide.md`
 - `docs/installation.md`
-- `docs/market-validation.md`
 - `docs/developer-experience-scorecard.md`
 - `docs/ready-to-install-system.md`
 - `docs/product-specification.md`
@@ -395,9 +387,7 @@ If you want the repository to feel like a clean developer product, use these ent
 
 See `ROADMAP.md` for planned work.
 
-The repository includes starter packs for both MkDocs and Docusaurus, plus an end-to-end sample under `examples/complete-system/`.
-
-The repository also includes GitBook and Next.js starter packs, GitLab and Bitbucket support assets, pricing and bundle manifests, and runnable repository automation for documentation agents, knowledge graph indexing, and analytics.
+The repository includes an end-to-end sample under `examples/complete-system/`. Experimental parts, including the MkDocs, Docusaurus, GitBook and Next.js starters, GitLab and Bitbucket CI files, and the control plane deployment files, are listed in `experimental/README.md`.
 
 ## UI
 
@@ -421,9 +411,8 @@ See `docs/spec-scorecard.md` for a strict 17-section scorecard against the produ
 
 If you are evaluating RepoDocs AI on a real spec or want to help shape the product:
 
-- open a GitHub Discussion using `docs/community-feedback-discussion.md`
+- open a GitHub Discussion
 - file the `Docs Generated From My Spec` issue form in GitHub Issues
-- use `docs/design-partner-intake.md` to start design-partner outreach
 
 ## Buyer Fit
 
@@ -460,7 +449,7 @@ The optional, experimental hosted control plane runs automation over HTTP with R
 
 The control plane stores queue state, run metadata, and user/key records in Redis so multiple app instances can safely accept and process jobs against shared state. The legacy `.control-plane/*.json` files are only used as a one-time migration source when Redis starts empty.
 
-For local development, the repository includes a `compose.yaml` stack that runs Redis and the control plane together. Both services publish Docker health checks, so `docker compose ps` shows when Redis is ready and when the control plane is answering `/health`. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY` in your shell or environment, then run `npm run control-plane:stack:up`.
+For local development, the repository includes an `experimental/deploy/compose.yaml` stack that runs Redis and the control plane together. Both services publish Docker health checks, so `docker compose ps` shows when Redis is ready and when the control plane is answering `/health`. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY` in your shell or environment, then run `npm run control-plane:stack:up`.
 
 To run a repeatable end-to-end verification against a live stack, use `npm run control-plane:smoke`. To boot the compose stack and run the smoke test in one step, use `npm run control-plane:stack:smoke`.
 
@@ -474,6 +463,8 @@ To run a repeatable end-to-end verification against a live stack, use `npm run c
 
 ### Hosted Deployment Manifests
 
-- `render.yaml`
-- `fly.toml`
-- `azure-container-apps.yaml`
+- `experimental/deploy/render.yaml`
+- `experimental/deploy/fly.toml`
+- `experimental/deploy/azure-container-apps.yaml`
+
+Render and Fly.io expect these files at the repository root: copy them there, or point the platform at their path, before deploying.
