@@ -131,7 +131,7 @@ function requestMedia(operation) {
 
 // The example a media type gives: its example, its first named example, or
 // one built from its schema.
-function mediaExample(spec, media) {
+function mediaExample(spec, media, mode = "any") {
   if (!media) {
     return undefined;
   }
@@ -143,7 +143,7 @@ function mediaExample(spec, media) {
     return firstExample.value;
   }
   const schema = resolveSchema(spec, media.schema);
-  return schema ? buildExampleValue(spec, schema) : undefined;
+  return schema ? buildExampleValue(spec, schema, mode) : undefined;
 }
 
 // The first server URL, with server variables replaced by their defaults.
@@ -174,12 +174,30 @@ function schemaTypeLabel(spec, schema) {
     return `array<${schemaTypeLabel(spec, resolved.items)}>`;
   }
 
-  return resolved.type || "string";
+  const choices = resolved.oneOf || resolved.anyOf;
+  if (!resolved.type && Array.isArray(choices) && choices.length > 0) {
+    return `one of: ${[...new Set(choices.map((choice) => schemaTypeLabel(spec, choice)))].join(" \\| ")}`;
+  }
+
+  return resolved.type || (resolved.properties ? "object" : "string");
 }
 
-function buildExampleValue(spec, schema) {
+// mode "request" leaves out readOnly properties (the server sets them);
+// mode "response" leaves out writeOnly properties (the server never returns them).
+function includeProperty(spec, propertySchema, mode) {
+  const resolved = resolveSchema(spec, propertySchema);
+  if (mode === "request" && resolved?.readOnly) {
+    return false;
+  }
+  if (mode === "response" && resolved?.writeOnly) {
+    return false;
+  }
+  return true;
+}
+
+function buildExampleValue(spec, schema, mode = "any", depth = 0) {
   const resolved = resolveSchema(spec, schema);
-  if (!resolved) {
+  if (!resolved || depth > 8) {
     return "value";
   }
 
@@ -196,11 +214,11 @@ function buildExampleValue(spec, schema) {
   }
 
   if (Array.isArray(resolved.oneOf) && resolved.oneOf.length > 0) {
-    return buildExampleValue(spec, resolved.oneOf[0]);
+    return buildExampleValue(spec, resolved.oneOf[0], mode, depth + 1);
   }
 
   if (Array.isArray(resolved.anyOf) && resolved.anyOf.length > 0) {
-    return buildExampleValue(spec, resolved.anyOf[0]);
+    return buildExampleValue(spec, resolved.anyOf[0], mode, depth + 1);
   }
 
   if (Array.isArray(resolved.allOf) && resolved.allOf.length > 0) {
@@ -211,19 +229,21 @@ function buildExampleValue(spec, schema) {
       }
       return { ...accumulator, ...candidate };
     }, {});
-    return buildExampleValue(spec, merged);
+    return buildExampleValue(spec, merged, mode, depth + 1);
   }
 
-  if (resolved.type === "object") {
+  if (resolved.type === "object" || (!resolved.type && resolved.properties)) {
     const payload = {};
     for (const [name, propertySchema] of Object.entries(resolved.properties || {})) {
-      payload[name] = buildExampleValue(spec, propertySchema);
+      if (includeProperty(spec, propertySchema, mode)) {
+        payload[name] = buildExampleValue(spec, propertySchema, mode, depth + 1);
+      }
     }
     return payload;
   }
 
   if (resolved.type === "array") {
-    return [buildExampleValue(spec, resolved.items)];
+    return [buildExampleValue(spec, resolved.items, mode, depth + 1)];
   }
 
   if (resolved.format === "date") {
@@ -303,11 +323,11 @@ function formatRequiredValue(isExplicitlyRequired, requestBodyIsRequired, hasReq
 function buildSchemaDescription(spec, schema) {
   const resolved = resolveSchema(spec, schema);
   const explicitDescription = normalizeText(resolved?.description);
+  const notes = buildConstraintNotes(spec, resolved);
   if (explicitDescription) {
-    return explicitDescription;
+    return joinSentenceParts([explicitDescription, ...notes]).replace(/\|/g, "\\|").replace(/\n+/g, " ");
   }
 
-  const notes = buildConstraintNotes(spec, resolved);
   if (resolved?.example !== undefined) {
     notes.unshift(`Example value: ${jsonExampleLiteral(resolved.example)}`);
   }
@@ -328,24 +348,32 @@ function summarizeSecuritySchemes(spec, securityRequirements) {
         continue;
       }
 
-      if (scheme.type === "http" && scheme.scheme === "bearer") {
+      const schemeDescription = normalizeText(scheme.description).replace(/\n+/g, " ");
+      const withDescription = (label) => (schemeDescription ? `${label}: ${schemeDescription.replace(/[.\s]+$/, "")}` : label);
+
+      if (scheme.type === "http" && String(scheme.scheme).toLowerCase() === "bearer") {
         const bearerFormat = normalizeText(scheme.bearerFormat);
-        summaries.push(bearerFormat ? `HTTP Bearer token (${bearerFormat})` : "HTTP Bearer token");
+        summaries.push(withDescription(bearerFormat ? `HTTP Bearer token (${bearerFormat})` : "HTTP Bearer token"));
+        continue;
+      }
+
+      if (scheme.type === "http" && String(scheme.scheme).toLowerCase() === "basic") {
+        summaries.push(withDescription("HTTP Basic authentication"));
         continue;
       }
 
       if (scheme.type === "apiKey") {
-        summaries.push(`API key in ${scheme.in || "header"} \`${scheme.name || schemeName}\``);
+        summaries.push(withDescription(`API key in ${scheme.in || "header"} \`${scheme.name || schemeName}\``));
         continue;
       }
 
       if (scheme.type === "oauth2") {
         const scopeText = Array.isArray(scopes) && scopes.length > 0 ? ` with scopes: ${scopes.join(", ")}` : "";
-        summaries.push(`OAuth 2.0${scopeText}`);
+        summaries.push(withDescription(`OAuth 2.0${scopeText}`));
         continue;
       }
 
-      summaries.push(`${scheme.type || "security"} \`${schemeName}\``);
+      summaries.push(withDescription(`${scheme.type || "security"} \`${schemeName}\``));
     }
   }
 
@@ -480,41 +508,89 @@ function buildSplitParameterSections(spec, parameters) {
   return { pathSection, querySection, headerSection, headerParams };
 }
 
-function buildRequestBodyIntro(spec, operation) {
-  const schema = requestMedia(operation)?.media?.schema;
-  if (!schema) {
-    return "";
-  }
-
-  const resolvedSchema = resolveSchema(spec, schema);
-  const hasRequiredList = Array.isArray(resolvedSchema?.required) && resolvedSchema.required.length > 0;
-
-  return operation.requestBody?.required
-    ? (hasRequiredList
-      ? "Request body is required. Fields not listed as required in the schema are optional."
-      : "Request body is required. The schema does not declare which individual fields are required.")
-    : "Request body is optional.";
+function refName(schema) {
+  return typeof schema?.$ref === "string" ? schema.$ref.split("/").pop() : "";
 }
 
-function buildRequestBodyRows(spec, operation) {
-  const schema = resolveSchema(spec, requestMedia(operation)?.media?.schema);
-  const properties = schema?.properties;
-  const requiredFields = new Set(Array.isArray(schema?.required) ? schema.required : []);
+// One row per request field, plus nested object fields (parent.child) and
+// fields of arrays of objects (parent[].child), two levels deep. readOnly
+// fields are left out because the server sets them.
+function bodyFieldRows(spec, schema, requestBodyIsRequired, prefix = "", depth = 0) {
+  const resolved = resolveSchema(spec, schema);
+  const properties = resolved?.properties || {};
+  const requiredFields = new Set(Array.isArray(resolved?.required) ? resolved.required : []);
   const hasRequiredList = requiredFields.size > 0;
-  const requestBodyIsRequired = operation.requestBody?.required === true;
+  const rows = [];
 
-  if (!properties || Object.keys(properties).length === 0) {
-    return "| None | n/a | no | No request body |";
+  for (const [name, propertySchema] of Object.entries(properties)) {
+    if (!includeProperty(spec, propertySchema, "request")) {
+      continue;
+    }
+    const fullName = prefix ? `${prefix}.${name}` : name;
+    const required = prefix
+      ? (requiredFields.has(name) ? "yes" : "no")
+      : formatRequiredValue(requiredFields.has(name), requestBodyIsRequired, hasRequiredList);
+    rows.push(`| ${fullName} | ${schemaTypeLabel(spec, propertySchema)} | ${required} | ${buildSchemaDescription(spec, propertySchema)} |`);
+
+    if (depth >= 2) {
+      continue;
+    }
+    const child = resolveSchema(spec, propertySchema);
+    if (child?.properties) {
+      rows.push(...bodyFieldRows(spec, child, false, fullName, depth + 1));
+    } else if (child?.type === "array") {
+      const item = resolveSchema(spec, child.items);
+      if (item?.properties) {
+        rows.push(...bodyFieldRows(spec, item, false, `${fullName}[]`, depth + 1));
+      }
+    }
+  }
+  return rows;
+}
+
+function buildRequestBodySection(spec, operation) {
+  const media = requestMedia(operation);
+  if (!media) {
+    return "Not applicable.";
   }
 
-  return Object.entries(properties)
-    .map(([name, propertySchema]) => {
-      const type = schemaTypeLabel(spec, propertySchema);
-      const required = formatRequiredValue(requiredFields.has(name), requestBodyIsRequired, hasRequiredList);
-      const description = buildSchemaDescription(spec, propertySchema);
-      return `| ${name} | ${type} | ${required} | ${description} |`;
-    })
-    .join("\n");
+  const schema = resolveSchema(spec, media.media.schema);
+  const requestBodyIsRequired = operation.requestBody?.required === true;
+  const header = "| Field | Type | Required | Description |\n| --- | --- | --- | --- |";
+  const intro = requestBodyIsRequired ? "Request body is required." : "Request body is optional.";
+  const typeNote = media.type !== "application/json" ? ` Content type: \`${media.type}\`.` : "";
+
+  const variants = schema && !schema.properties ? (schema.oneOf || schema.anyOf) : null;
+  if (Array.isArray(variants) && variants.length > 0) {
+    const quantity = schema.oneOf ? "exactly one" : "at least one";
+    const parts = variants.map((variant, index) => {
+      const resolvedVariant = resolveSchema(spec, variant);
+      const name = normalizeText(resolvedVariant?.title) || refName(variant) || `Shape ${index + 1}`;
+      const rows = bodyFieldRows(spec, resolvedVariant, true);
+      const body = rows.length > 0
+        ? `${header}\n${rows.join("\n")}`
+        : `Type: ${schemaTypeLabel(spec, resolvedVariant)}. ${buildSchemaDescription(spec, resolvedVariant)}`;
+      return `### Option ${index + 1}: ${name}\n\n${body}`;
+    });
+    return `${intro}${typeNote} The body must match ${quantity} of these ${variants.length} shapes. The request example uses option 1.\n\n${parts.join("\n\n")}`;
+  }
+
+  const rows = schema ? bodyFieldRows(spec, schema, requestBodyIsRequired) : [];
+  if (rows.length === 0) {
+    const detail = schema ? `Type: ${schemaTypeLabel(spec, schema)}. ${buildSchemaDescription(spec, schema)}` : "Needs SME input";
+    return `${intro}${typeNote} ${detail}`;
+  }
+
+  const hasRequiredList = Array.isArray(schema.required) && schema.required.length > 0;
+  const requiredNote = requestBodyIsRequired
+    ? (hasRequiredList
+      ? " Fields not listed as required in the schema are optional."
+      : " The schema does not declare which individual fields are required.")
+    : "";
+  const nestedNote = rows.some((row) => /^\| [^|]*\./.test(row))
+    ? " For nested fields, Required means required when the parent field is sent."
+    : "";
+  return `${intro}${typeNote}${requiredNote}${nestedNote}\n\n${header}\n${rows.join("\n")}`;
 }
 
 function buildRequestBodyExample(spec, operation) {
@@ -522,8 +598,32 @@ function buildRequestBodyExample(spec, operation) {
   if (!media) {
     return null;
   }
-  const value = mediaExample(spec, media.media);
-  return value === undefined ? null : { kind: media.kind, type: media.type, value };
+  let value = mediaExample(spec, media.media, "request");
+  if (value === undefined) {
+    return null;
+  }
+
+  // A spec's own example can leave out required fields. Add them from the
+  // schema, using the shape the example is closest to, and say so in the doc.
+  const addedFields = [];
+  const schema = resolveSchema(spec, media.media.schema);
+  if (value && typeof value === "object" && !Array.isArray(value) && schema) {
+    const variants = !schema.properties ? (schema.oneOf || schema.anyOf) : null;
+    const shapes = (Array.isArray(variants) && variants.length > 0 ? variants : [schema]).map((shape) => resolveSchema(spec, shape)).filter(Boolean);
+    const missingFor = (shape) => (shape.required || []).filter((key) => !(key in value) && shape.properties?.[key]);
+    const closest = shapes.reduce((best, shape) => (missingFor(shape).length < missingFor(best).length ? shape : best), shapes[0]);
+    if (closest) {
+      const missing = missingFor(closest);
+      if (missing.length > 0) {
+        value = { ...value };
+        for (const key of missing) {
+          value[key] = buildExampleValue(spec, closest.properties[key], "request");
+          addedFields.push(key);
+        }
+      }
+    }
+  }
+  return { kind: media.kind, type: media.type, value, addedFields };
 }
 
 function shellQuote(value) {
@@ -564,7 +664,7 @@ function buildResponseExample(spec, operation) {
   if (!media) {
     return null;
   }
-  const value = mediaExample(spec, media.media);
+  const value = mediaExample(spec, media.media, "response");
   if (value === undefined) {
     return JSON.stringify({ status: statusCode, note: "Needs SME input" }, null, 2);
   }
@@ -600,13 +700,8 @@ function findNamedPropertyExample(spec, schema, propertyName) {
     }
   }
 
-  for (const propertySchema of Object.values(resolved.properties || {})) {
-    const nestedMatch = findNamedPropertyExample(spec, propertySchema, propertyName);
-    if (nestedMatch !== undefined) {
-      return nestedMatch;
-    }
-  }
-
+  // Only top-level fields of this operation's own request and response are
+  // used; a same-named field nested elsewhere may mean something else.
   return undefined;
 }
 
@@ -637,16 +732,30 @@ function buildParameterExampleValue(spec, operation, parameter) {
   return schemaExample;
 }
 
-function buildErrorRows(operation) {
-  const responseEntries = Object.entries(operation.responses || {}).filter(([code]) => !code.startsWith("2"));
+function buildErrorSection(spec, operation) {
+  const responseEntries = Object.entries(operation.responses || {})
+    .filter(([code]) => !code.startsWith("2"))
+    .map(([code, response]) => [code, resolveReference(spec, response) || {}]);
 
   if (responseEntries.length === 0) {
-    return "| 500 | Needs SME input |";
+    return "The OpenAPI specification defines no error responses for this operation.";
   }
 
-  return responseEntries
-    .map(([code, response]) => `| ${code} | ${normalizeText(response.description, "Needs SME input")} |`)
+  const rows = responseEntries
+    .map(([code, response]) => `| ${code} | ${normalizeText(response.description, "Needs SME input").replace(/\|/g, "\\|").replace(/\n+/g, " ")} |`)
     .join("\n");
+  const table = `| Code | Description |\n| --- | --- |\n${rows}`;
+
+  const withBody = responseEntries.find(([, response]) => pickMedia(response.content));
+  if (!withBody) {
+    return table;
+  }
+  const media = pickMedia(withBody[1].content);
+  const example = mediaExample(spec, media.media, "response");
+  if (example === undefined || media.kind !== "json") {
+    return table;
+  }
+  return `${table}\n\nError response body (\u0000${withBody[0]}\u0000):\n\n\u0000\u0000\u0000json\n${JSON.stringify(example, null, 2)}\n\u0000\u0000\u0000`;
 }
 
 function buildExampleUrl(spec, route, operation, pathItem) {
@@ -675,7 +784,7 @@ function buildApiOverview(spec, serviceName, owner) {
   const securityImpact = pickAllowedValue(normalizeText(spec.info?.["x-security-impact"]), new Set(["low", "medium", "high"]), "medium");
 
   const frontmatter = stringifyYamlLines({
-    title: `${normalizeText(spec.info?.title, serviceName)} API Overview`,
+    title: `${normalizeText(spec.info?.title, serviceName).replace(/\s+API$/i, "")} API Overview`,
     description: `Generated API overview for ${serviceName}`,
     service: serviceName,
     component: "api",
@@ -703,7 +812,7 @@ ${buildOverviewAuthentication(spec)}
 
 ## Base URL
 
- ${baseUrl} 
+\u0000${baseUrl}\u0000
 
 ## Versioning Strategy
 
@@ -776,12 +885,8 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
       const value = example === "value" ? `<${parameter.name}>` : String(example);
       return `-H "${parameter.name}: ${value.replace(/(["\\$`])/g, "\\$1")}"`;
     });
-  const requestBodyIntro = buildRequestBodyIntro(spec, operation);
   const requestBodyExample = buildRequestBodyExample(spec, operation);
-  const requestBodyRows = buildRequestBodyRows(spec, operation);
-  const requestBodySection = requestBodyRows === "| None | n/a | no | No request body |"
-    ? "Not applicable."
-    : `${requestBodyIntro ? `${requestBodyIntro}\n\n` : ""}| Field | Type | Required | Description |\n| --- | --- | --- | --- |\n${requestBodyRows}`;
+  const requestBodySection = buildRequestBodySection(spec, operation);
   const exampleUrl = buildExampleUrl(spec, route, operation, pathItem);
   const curlArgs = [
     `curl -X ${method.toUpperCase()} "${exampleUrl}"`,
@@ -790,6 +895,9 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
     ...buildRequestBodyArgs(requestBodyExample)
   ];
   const requestExample = curlArgs.join(" \\\n  ");
+  const requestExampleNote = requestBodyExample?.addedFields?.length
+    ? `The spec's own request example leaves out required ${requestBodyExample.addedFields.length === 1 ? "field" : "fields"} ${requestBodyExample.addedFields.map((field) => `\u0000${field}\u0000`).join(", ")}. ${requestBodyExample.addedFields.length === 1 ? "It is" : "They are"} added below from the schema.\n\n`
+    : "";
   const authText = buildAuthenticationText(spec, operation);
   const responseExample = buildResponseExample(spec, operation);
   const successCode = Object.keys(operation.responses || {}).find((code) => code.startsWith("2"));
@@ -844,9 +952,9 @@ ${requestBodySection}
 
 ## Request Example
 
-   bash
+${requestExampleNote}\u0000\u0000\u0000bash
 ${requestExample}
-   
+\u0000\u0000\u0000
 
 ## Response Example
 
@@ -854,9 +962,7 @@ ${responseExampleSection}
 
 ## Error Codes
 
-| Code | Description |
-| --- | --- |
-${buildErrorRows(operation)}
+${buildErrorSection(spec, operation)}
 
 ## Performance Notes
 
@@ -879,9 +985,11 @@ async function parseSpec(inputPath) {
 }
 
 async function main() {
-  const inputArg = process.argv[2];
+  const args = process.argv.slice(2);
+  const positional = args.filter((arg, index) => !arg.startsWith("--") && args[index - 1] !== "--owner");
+  const inputArg = positional[0];
   if (!inputArg) {
-    console.error("Usage: repodocs-ai generate <path-to-openapi-file> [output-directory]");
+    console.error("Usage: repodocs-ai generate <path-to-openapi-file> [output-directory] [--owner <team>]");
     process.exit(1);
   }
 
@@ -889,7 +997,7 @@ async function main() {
   // the package root, so INIT_CWD is used when this script's own npm script
   // started it.
   const baseDirectory = (process.env.npm_lifecycle_event === "generate:openapi" && process.env.INIT_CWD) || process.cwd();
-  const outputArg = process.argv[3];
+  const outputArg = positional[1];
   const inputPath = path.resolve(baseDirectory, inputArg);
   try {
     await fs.access(inputPath);
@@ -903,7 +1011,8 @@ async function main() {
   }
   const spec = await parseSpec(inputPath);
   const serviceName = toSlug(normalizeText(spec.info?.title, "generated-api"));
-  const owner = process.env.REPODOCS_OWNER || "docs-platform";
+  const ownerFlagIndex = args.indexOf("--owner");
+  const owner = (ownerFlagIndex > -1 ? args[ownerFlagIndex + 1] : undefined) || process.env.REPODOCS_OWNER || "unassigned";
   const apiVersion = normalizeText(spec.info?.version, "v1");
   const outputDirectory = outputArg
     ? path.resolve(baseDirectory, outputArg)
