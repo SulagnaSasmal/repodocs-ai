@@ -4,7 +4,7 @@ RepoDocs AI helps API teams document faster with shared templates, AI-assisted d
 
 ## Start Here
 
-1. [Installation](installation.md) to install and validate the system in under 5 minutes.
+1. [Installation](installation.md) to install the `repodocs-ai` command, set up a docs repository, and validate your docs.
 2. [Product Guide](product-guide.md) to understand who RepoDocs AI is for and what problem it solves.
 3. [Ready-To-Install System](ready-to-install-system.md) to see the end-to-end workflow.
 4. [Product Specification](product-specification.md) for the detailed reference.

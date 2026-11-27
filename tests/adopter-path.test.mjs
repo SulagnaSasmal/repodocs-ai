@@ -81,7 +81,7 @@ describe.each(fixtures)("adopter path with %s", (fixture) => {
     spec = yaml.load(await fs.readFile(path.join(fixturesDirectory, fixture), "utf8"));
 
     await execFileAsync(process.execPath, [script("bootstrap-docs-repo.mjs"), docsRepo], { cwd: repoRoot });
-    await fs.mkdir(path.join(docsRepo, "openapi"));
+    await fs.mkdir(path.join(docsRepo, "openapi"), { recursive: true });
     await fs.copyFile(path.join(fixturesDirectory, fixture), path.join(docsRepo, "openapi", fixture));
     await execFileAsync(process.execPath, [script("generate-openapi-docs.mjs"), path.join(docsRepo, "openapi", fixture), path.join(docsRepo, "generated")], { cwd: repoRoot });
 
@@ -160,6 +160,64 @@ describe.each(fixtures)("adopter path with %s", (fixture) => {
       const doc = await fs.readFile(path.join(docsRepo, "generated", "endpoints", `${slug(`${method}-${route}`)}.md`), "utf8");
       const shown = JSON.parse(codeBlocks(section(doc, "Response Example"), "json")[0]);
       expect(shown).toEqual(provided);
+    }
+  });
+
+  it("documents every request body, without readOnly fields and with body enums", async () => {
+    for (const { route, method, operation } of operationsOf(spec)) {
+      const content = resolveRef(spec, operation.requestBody)?.content;
+      if (!content) continue;
+      const doc = await fs.readFile(path.join(docsRepo, "generated", "endpoints", `${slug(`${method}-${route}`)}.md`), "utf8");
+      const body = section(doc, "Request Body");
+      expect(body, `${method.toUpperCase()} ${route}`).not.toContain("Not applicable.");
+
+      const schema = resolveRef(spec, (content["application/json"] || Object.values(content)[0])?.schema);
+      const shapes = schema && !schema.properties && (schema.oneOf || schema.anyOf) ? (schema.oneOf || schema.anyOf).map((shape) => resolveRef(spec, shape)) : [schema];
+      const curl = codeBlocks(section(doc, "Request Example"), "bash")[0] || "";
+      const sent = curl.match(/-d '(.*)'$/m)?.[1];
+      const sentKeys = sent ? Object.keys(JSON.parse(sent.replace(/'\\''/g, "'"))) : [];
+      for (const shape of shapes) {
+        for (const [name, property] of Object.entries(shape?.properties || {})) {
+          const resolved = resolveRef(spec, property);
+          if (resolved?.readOnly) {
+            expect(sentKeys, `${route} sends readOnly ${name}`).not.toContain(name);
+            expect(body, `${route} lists readOnly ${name}`).not.toMatch(new RegExp(`^\\| ${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\|`, "m"));
+          } else if (Array.isArray(resolved?.enum)) {
+            const row = body.split("\n").find((line) => line.startsWith(`| ${name} |`));
+            expect(row, `${route} ${name} row`).toContain("Allowed values");
+          }
+        }
+      }
+    }
+  });
+
+  it("leaves writeOnly fields out of response examples", async () => {
+    for (const { route, method, operation } of operationsOf(spec)) {
+      const success = Object.entries(operation.responses || {}).find(([code]) => code.startsWith("2"));
+      const schema = success && resolveRef(spec, resolveRef(spec, success[1])?.content?.["application/json"]?.schema);
+      const writeOnly = Object.entries(schema?.properties || {}).filter(([, property]) => resolveRef(spec, property)?.writeOnly).map(([name]) => name);
+      if (writeOnly.length === 0) continue;
+      const doc = await fs.readFile(path.join(docsRepo, "generated", "endpoints", `${slug(`${method}-${route}`)}.md`), "utf8");
+      const shown = JSON.parse(codeBlocks(section(doc, "Response Example"), "json")[0]);
+      for (const name of writeOnly) {
+        expect(Object.keys(shown), `${route} shows writeOnly ${name}`).not.toContain(name);
+      }
+    }
+  });
+
+  it("lists error responses from the spec with their descriptions", async () => {
+    for (const { route, method, operation } of operationsOf(spec)) {
+      const errors = Object.entries(operation.responses || {}).filter(([code]) => !code.startsWith("2"));
+      if (errors.length === 0) continue;
+      const doc = await fs.readFile(path.join(docsRepo, "generated", "endpoints", `${slug(`${method}-${route}`)}.md`), "utf8");
+      const table = section(doc, "Error Codes");
+      for (const [code, response] of errors) {
+        const description = resolveRef(spec, response)?.description;
+        expect(table).toContain(`| ${code} |`);
+        if (description) {
+          expect(table).not.toContain(`| ${code} | Needs SME input |`);
+        }
+      }
     }
   });
 
