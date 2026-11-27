@@ -38,6 +38,12 @@ See `authentication.md` for token handling and scope guidance.
 | --- | --- | --- | --- |
 | None | n/a | no | No path or query parameters are defined |
 
+## Header Parameters
+
+| Name | Type | Required | Description |
+| --- | --- | --- | --- |
+| `Idempotency-Key` | string | yes | Unique key for this refund request. Reuse the same key when retrying after a timeout. Example: `refund-2b81d4f0` |
+
 ## Request Body
 
 | Field | Type | Required | Description |
@@ -52,6 +58,7 @@ See `authentication.md` for token handling and scope guidance.
 curl -X POST "https://api.startup-payments.example/v1/payments/refund" \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
+  -H "Idempotency-Key: refund-2b81d4f0" \
   -d '{"payment_id":"pay_123","amount":25,"reason":"duplicate charge"}'
 ```
 

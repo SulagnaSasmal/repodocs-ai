@@ -37,6 +37,12 @@ See `authentication.md` for token handling and scope guidance.
 | --- | --- | --- | --- |
 | None | n/a | no | No path or query parameters are defined |
 
+## Header Parameters
+
+| Name | Type | Required | Description |
+| --- | --- | --- | --- |
+| `Idempotency-Key` | string | yes | Unique key for this create request. Reuse the same key when retrying so the payment is not created twice. Example: `checkout-7f3a9c2e` |
+
 ## Request Body
 
 | Field | Type | Required | Description |
@@ -52,6 +58,7 @@ See `authentication.md` for token handling and scope guidance.
 curl -X POST "https://api.startup-payments.example/v1/payments" \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
+  -H "Idempotency-Key: checkout-7f3a9c2e" \
   -d '{"amount":125.5,"currency":"USD","customer_id":"cus_123","payment_method_id":"pm_123"}'
 ```
 
