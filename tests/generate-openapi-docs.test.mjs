@@ -150,7 +150,7 @@ describe("validate-doc-quality target paths", () => {
       docsDirectory
     ], { cwd: repoRoot });
 
-    expect(stdout).toContain("Validated documentation quality for 4 Markdown files in");
+    expect(stdout).toContain("Structure checks passed for 4 Markdown files in");
     expect(stdout).toContain(path.basename(docsDirectory));
   });
 
@@ -170,6 +170,6 @@ describe("validate-doc-quality target paths", () => {
         path.join(repoRoot, "scripts", "validate-doc-quality.mjs"),
         path.join(os.tmpdir(), "repodocs-missing-folder")
       ], { cwd: repoRoot })
-    ).rejects.toMatchObject({ stderr: expect.stringContaining("Path not found") });
+    ).rejects.toMatchObject({ stderr: expect.stringContaining("Docs path not found") });
   });
 });

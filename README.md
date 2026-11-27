@@ -95,7 +95,7 @@ The full output is in [`examples/payments-api/create-payment.md`](examples/payme
 flowchart LR
     A([OpenAPI spec\nor blank template]) --> B[AI prompt\ngenerates draft]
     B --> C[SME review\nand edit]
-    C --> D{npm run validate}
+    C --> D{npm run validate:docs}
     D -->|frontmatter ✓\nstructure ✓\nquality ✓\nOpenAPI ✓| E[Merge to main]
     D -->|gap found| C
     E --> F([Published docs\non GitHub Pages])
@@ -103,15 +103,17 @@ flowchart LR
 
 ## Validation in Practice
 
-Running `npm run validate` on this repository prints one line per check (file counts change as the repository grows):
+Running `npm run validate` checks this repository itself and prints one line per check, naming what it looked at (file counts change as the repository grows):
 
 ```text
-Validated frontmatter for 39 Markdown files.
+Validated frontmatter for 39 Markdown files in templates, examples.
 Validated 108 required project files.
-Validated documentation quality for 24 Markdown files in examples, generated. MERGE-SAFE and PUBLICATION-READY.
-Validated 3 Markdown files against OpenAPI examples.
-Validated version compatibility for 10 Markdown files.
+Structure checks passed for 24 Markdown files in examples, generated (placeholders, required sections, examples, status codes, SME labels). Accuracy against the OpenAPI spec is checked separately.
+Compared 2 endpoint docs in examples/api-docs, generated against the OpenAPI spec (1 Markdown file describes no endpoint and was not compared).
+Checked api_version for 10 Markdown files in examples/api-docs, examples/complete-system, generated.
 ```
+
+To check your own docs, use `npm run validate:docs` instead (see [Validate Your Docs](#validate-your-docs)).
 
 The final step, `lint:markdown`, prints nothing when there are no linting errors.
 
@@ -124,9 +126,10 @@ Running `npm test`:
  ✓ tests/prompt-library.test.mjs (31 tests)
  ✓ tests/example-docs.test.mjs (25 tests)
  ✓ tests/generate-openapi-docs.test.mjs (13 tests)
+ ✓ tests/validate-docs.test.mjs (8 tests)
 
- Test Files  6 passed (6)
-      Tests  198 passed (198)
+ Test Files  7 passed (7)
+      Tests  206 passed (206)
 ```
 
 ## Quick Start
@@ -197,15 +200,26 @@ The output folder contains:
 
 The generator documents only what the spec says. If the spec leaves something out, such as a required header, the generated docs leave it out too. Review the spec as well as the output.
 
-### Validate Your Generated Docs
+### Validate Your Docs
 
-Pass the output folder to the quality check:
+Run every content check against your docs, and compare them with your specs:
 
 ```bash
-npm run validate:quality -- ../company-docs/generated/my-api
+npm run validate:docs -- ../company-docs/generated --specs ../company-docs/openapi
 ```
 
-The summary line names the folder that was checked. Without a path, the command checks this repository's own `examples/` and `generated/` folders, not your docs.
+Each check reports PASS, WARN, FAIL or SKIP and names the folder it checked:
+
+- **Frontmatter:** required fields and allowed values, from `schema/metadata-frontmatter.md`.
+- **Structure and quality:** leftover placeholders, required sections, examples, suspicious status codes, and unresolved `Needs SME input` labels.
+- **OpenAPI examples:** request and response example fields and parameters against the spec.
+- **API versions:** `api_version` in frontmatter against the spec's version.
+
+Without `--specs`, the last two checks report SKIP. A skipped check did not run; it never counts as a pass. Pass several folders to check them together, for example `../company-docs/generated ../company-docs/docs`.
+
+The bootstrap also writes `.github/workflows/docs-validate.yml` into your docs repository. Once you push to GitHub, it runs the same checks on every pull request against `generated/` and `docs/`, using the specs in `openapi/`.
+
+These checks cover format and consistency with the spec. They cannot tell whether the spec itself is right or complete.
 
 Then open `prompts/review/documentation-review.md` with an AI tool to review each generated doc against the source spec before merging.
 
