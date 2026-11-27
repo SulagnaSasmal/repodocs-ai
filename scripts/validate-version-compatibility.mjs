@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
+import { assertPathsExist, displayPath, exitWithTargetError, parseTargets } from "./lib/cli-targets.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,38 +43,45 @@ function extractFrontmatter(content) {
   return match ? yaml.load(match[1]) : null;
 }
 
-async function loadSpecVersions() {
-  const versions = new Set();
-  if (!(await pathExists(specsRoot))) {
-    return versions;
-  }
+const specExtensions = new Set([".yaml", ".yml", ".json"]);
 
-  const files = await collectFiles(specsRoot, ".yaml");
-  for (const filePath of files) {
-    const raw = await fs.readFile(filePath, "utf8");
-    const parsed = yaml.load(raw);
-    if (typeof parsed?.info?.version === "string") {
-      versions.add(parsed.info.version.trim());
-    }
-  }
-
-  return versions;
-}
-
-async function loadSpecs() {
-  if (!(await pathExists(specsRoot))) {
+async function collectFromTarget(target, extensions) {
+  const stats = await fs.stat(target).catch(() => null);
+  if (!stats) {
     return [];
   }
-
-  const files = await collectFiles(specsRoot, ".yaml");
-  const specs = [];
-
-  for (const filePath of files) {
-    const raw = await fs.readFile(filePath, "utf8");
-    specs.push({ filePath, spec: yaml.load(raw) });
+  if (stats.isFile()) {
+    return extensions.has(path.extname(target).toLowerCase()) ? [target] : [];
   }
+  const files = [];
+  for (const extension of extensions) {
+    files.push(...(await collectFiles(target, extension)));
+  }
+  return files;
+}
 
+async function loadSpecs(specTargets) {
+  const specs = [];
+  for (const target of specTargets) {
+    for (const filePath of await collectFromTarget(target, specExtensions)) {
+      const raw = await fs.readFile(filePath, "utf8");
+      const spec = path.extname(filePath).toLowerCase() === ".json" ? JSON.parse(raw) : yaml.load(raw);
+      if (spec?.openapi) {
+        specs.push({ filePath, spec });
+      }
+    }
+  }
   return specs;
+}
+
+function specVersionsOf(specs) {
+  const versions = new Set();
+  for (const { spec } of specs) {
+    if (typeof spec?.info?.version === "string") {
+      versions.add(spec.info.version.trim());
+    }
+  }
+  return versions;
 }
 
 function hasEndpointMarker(content) {
@@ -139,27 +147,55 @@ function validateDeprecatedFields(relativePath, frontmatter, content, errors) {
 }
 
 async function main() {
-  const specVersions = await loadSpecVersions();
-  const specs = await loadSpecs();
+  let targets;
+  try {
+    targets = parseTargets();
+    await assertPathsExist(targets.docPaths, "Docs path");
+    await assertPathsExist(targets.specPaths, "Specs path");
+  } catch (error) {
+    exitWithTargetError(error);
+  }
+
+  const docTargets = targets.userMode
+    ? targets.docPaths
+    : scanDirectories.map((relativeDirectory) => path.join(repoRoot, relativeDirectory));
+  const displayRoot = targets.userMode ? targets.baseDirectory : repoRoot;
+  const checkedLabel = docTargets.map((target) => displayPath(target, displayRoot)).join(", ");
+
+  if (targets.userMode && targets.specPaths.length === 0) {
+    console.log(
+      `Skipped version compatibility check for ${checkedLabel}: no specs given. ` +
+      "Add --specs <folder with your OpenAPI files> to check api_version against the spec."
+    );
+    return;
+  }
+
+  const specTargets = targets.specPaths.length > 0 ? targets.specPaths : [specsRoot];
+  const specs = await loadSpecs(specTargets);
+  if (targets.userMode && specs.length === 0) {
+    console.error(`No OpenAPI specs found in ${specTargets.map((target) => displayPath(target, displayRoot)).join(", ")}.`);
+    process.exit(1);
+  }
+  const specVersions = specVersionsOf(specs);
   const allowedVersions = new Set([...specVersions, "n/a"]);
   const errors = [];
   const markdownFiles = [];
+  let checkedCount = 0;
 
-  for (const relativeDirectory of scanDirectories) {
-    const directory = path.join(repoRoot, relativeDirectory);
-    if (await pathExists(directory)) {
-      markdownFiles.push(...(await collectFiles(directory, ".md")));
-    }
+  for (const target of docTargets) {
+    markdownFiles.push(...(await collectFromTarget(target, new Set([".md"]))));
   }
 
   for (const filePath of markdownFiles) {
     const content = await fs.readFile(filePath, "utf8");
     const frontmatter = extractFrontmatter(content);
-    const relativePath = path.relative(repoRoot, filePath).replace(/\\/g, "/");
+    const relativePath = displayPath(filePath, displayRoot);
 
     if (!frontmatter) {
       continue;
     }
+
+    checkedCount += 1;
 
     const version = typeof frontmatter.api_version === "string" ? frontmatter.api_version.trim() : null;
     if (!version) {
@@ -256,7 +292,11 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`Validated version compatibility for ${markdownFiles.length} Markdown files.`);
+  const skippedCount = markdownFiles.length - checkedCount;
+  console.log(
+    `Checked api_version for ${checkedCount} Markdown files in ${checkedLabel}` +
+    (skippedCount === 1 ? " (1 file has no frontmatter and was not checked)." : skippedCount > 1 ? ` (${skippedCount} files have no frontmatter and were not checked).` : ".")
+  );
 }
 
 main().catch((error) => {

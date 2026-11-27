@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
+import { assertPathsExist, displayPath, exitWithTargetError, parseTargets } from "./lib/cli-targets.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,13 +40,22 @@ async function collectFiles(directory, extensions) {
   return files;
 }
 
-async function loadSpecs() {
-  const specsDirectory = path.join(repoRoot, "examples");
-  if (!(await pathExists(specsDirectory))) {
+async function collectFromTarget(target, extensions) {
+  const stats = await fs.stat(target).catch(() => null);
+  if (!stats) {
     return [];
   }
+  if (stats.isFile()) {
+    return extensions.has(path.extname(target).toLowerCase()) ? [target] : [];
+  }
+  return collectFiles(target, extensions);
+}
 
-  const files = await collectFiles(specsDirectory, supportedSpecExtensions);
+async function loadSpecs(specTargets) {
+  const files = [];
+  for (const target of specTargets) {
+    files.push(...(await collectFromTarget(target, supportedSpecExtensions)));
+  }
   const specs = [];
 
   for (const filePath of files) {
@@ -141,7 +151,7 @@ function findSpecOperations(specs, route, method) {
 
       const operation = pathItem?.[lowerMethod];
       if (operation) {
-        matches.push({ filePath, pathItem, operation, route: specRoute });
+        matches.push({ filePath, spec, pathItem, operation, route: specRoute });
       }
     }
   }
@@ -149,7 +159,28 @@ function findSpecOperations(specs, route, method) {
   return matches;
 }
 
-function extractSchemaProperties(operation) {
+// Follows local $ref pointers and flattens allOf, so schemas defined under
+// components are compared instead of being silently skipped.
+function resolveSchema(spec, schema, depth = 0) {
+  let resolved = schema;
+  while (resolved && typeof resolved === "object" && typeof resolved.$ref === "string" && resolved.$ref.startsWith("#/") && depth < 20) {
+    resolved = resolved.$ref.slice(2).split("/").reduce((current, segment) => current?.[segment], spec);
+    depth += 1;
+  }
+  if (!resolved || typeof resolved !== "object" || !Array.isArray(resolved.allOf) || depth > 20) {
+    return resolved || null;
+  }
+  const merged = { ...resolved, properties: { ...(resolved.properties || {}) }, required: [...(resolved.required || [])] };
+  delete merged.allOf;
+  for (const part of resolved.allOf) {
+    const candidate = resolveSchema(spec, part, depth + 1) || {};
+    Object.assign(merged.properties, candidate.properties || {});
+    merged.required.push(...(candidate.required || []));
+  }
+  return merged;
+}
+
+function extractSchemaProperties(spec, operation) {
   const responseEntries = Object.entries(operation.responses || {});
   const success = responseEntries.find(([code]) => code.startsWith("2"));
   if (!success) {
@@ -157,12 +188,12 @@ function extractSchemaProperties(operation) {
   }
 
   const [, response] = success;
-  const schema = response.content?.["application/json"]?.schema;
+  const schema = resolveSchema(spec, response.content?.["application/json"]?.schema);
   return schema?.properties || null;
 }
 
-function extractRequestSchema(operation) {
-  return operation.requestBody?.content?.["application/json"]?.schema || null;
+function extractRequestSchema(spec, operation) {
+  return resolveSchema(spec, operation.requestBody?.content?.["application/json"]?.schema) || null;
 }
 
 function collectDefinedParameterNames(pathItem, operation) {
@@ -173,9 +204,9 @@ function collectDefinedParameterNames(pathItem, operation) {
 function scoreOperationMatch(candidate, route, requestJson, responseJson, documentedParameters) {
   let score = candidate.route === route ? 5 : 0;
 
-  const requestSchema = extractRequestSchema(candidate.operation);
+  const requestSchema = extractRequestSchema(candidate.spec, candidate.operation);
   const allowedRequestProperties = requestSchema?.properties || {};
-  const allowedResponseProperties = extractSchemaProperties(candidate.operation) || {};
+  const allowedResponseProperties = extractSchemaProperties(candidate.spec, candidate.operation) || {};
   const definedParameters = collectDefinedParameterNames(candidate.pathItem, candidate.operation);
 
   if (requestJson && typeof requestJson === "object" && !Array.isArray(requestJson)) {
@@ -212,25 +243,54 @@ function findBestSpecOperation(specs, route, method, requestJson, responseJson, 
 }
 
 async function main() {
-  const specs = await loadSpecs();
+  let targets;
+  try {
+    targets = parseTargets();
+    await assertPathsExist(targets.docPaths, "Docs path");
+    await assertPathsExist(targets.specPaths, "Specs path");
+  } catch (error) {
+    exitWithTargetError(error);
+  }
+
+  const docTargets = targets.userMode
+    ? targets.docPaths
+    : scanDirectories.map((relativeDirectory) => path.join(repoRoot, relativeDirectory));
+  const displayRoot = targets.userMode ? targets.baseDirectory : repoRoot;
+  const checkedLabel = docTargets.map((target) => displayPath(target, displayRoot)).join(", ");
+
+  if (targets.userMode && targets.specPaths.length === 0) {
+    console.log(
+      `Skipped OpenAPI example check for ${checkedLabel}: no specs given. ` +
+      "Add --specs <folder with your OpenAPI files> to compare docs against the spec."
+    );
+    return;
+  }
+
+  const specTargets = targets.specPaths.length > 0 ? targets.specPaths : [path.join(repoRoot, "examples")];
+  const specs = await loadSpecs(specTargets);
+  if (targets.userMode && specs.length === 0) {
+    console.error(`No OpenAPI 3.x specs found in ${specTargets.map((target) => displayPath(target, displayRoot)).join(", ")}.`);
+    process.exit(1);
+  }
+
   const errors = [];
   const markdownFiles = [];
+  let comparedCount = 0;
 
-  for (const relativeDirectory of scanDirectories) {
-    const directory = path.join(repoRoot, relativeDirectory);
-    if (await pathExists(directory)) {
-      markdownFiles.push(...(await collectFiles(directory, new Set([".md"]))));
-    }
+  for (const target of docTargets) {
+    markdownFiles.push(...(await collectFromTarget(target, new Set([".md"]))));
   }
 
   for (const filePath of markdownFiles) {
     const content = await fs.readFile(filePath, "utf8");
-    const relativePath = path.relative(repoRoot, filePath).replace(/\\/g, "/");
+    const relativePath = displayPath(filePath, displayRoot);
     const operationRef = extractOperation(content);
 
     if (!operationRef) {
       continue;
     }
+
+    comparedCount += 1;
 
     const responseJson = extractResponseJson(content);
     const requestJson = extractRequestJson(content);
@@ -260,7 +320,7 @@ async function main() {
       continue;
     }
 
-    const requestSchema = extractRequestSchema(match.operation);
+    const requestSchema = extractRequestSchema(match.spec, match.operation);
     if (requestSchema) {
       if (!requestJson) {
         errors.push(`${relativePath}: request body schema exists but no JSON request example was found`);
@@ -283,7 +343,7 @@ async function main() {
     }
 
     if (responseJson && typeof responseJson === "object" && !Array.isArray(responseJson)) {
-      const allowedProperties = extractSchemaProperties(match.operation);
+      const allowedProperties = extractSchemaProperties(match.spec, match.operation);
       if (allowedProperties) {
         for (const key of Object.keys(responseJson)) {
           if (!(key in allowedProperties)) {
@@ -309,7 +369,11 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`Validated ${markdownFiles.length} Markdown files against OpenAPI examples.`);
+  const skippedCount = markdownFiles.length - comparedCount;
+  console.log(
+    `Compared ${comparedCount} endpoint docs in ${checkedLabel} against the OpenAPI spec` +
+    (skippedCount === 1 ? " (1 Markdown file describes no endpoint and was not compared)." : skippedCount > 1 ? ` (${skippedCount} Markdown files describe no endpoint and were not compared).` : ".")
+  );
 }
 
 main().catch((error) => {
