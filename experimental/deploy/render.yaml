@@ -2,7 +2,7 @@ services:
   - type: web
     name: repodocs-ai-control-plane
     runtime: docker
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./experimental/deploy/Dockerfile
     healthCheckPath: /health
     autoDeploy: true
     plan: starter

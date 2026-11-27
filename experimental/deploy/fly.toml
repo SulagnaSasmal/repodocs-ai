@@ -2,7 +2,7 @@ app = "repodocs-ai-control-plane"
 primary_region = "bom"
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = "experimental/deploy/Dockerfile"
 
 [env]
   NODE_ENV = "production"

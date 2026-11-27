@@ -15,3 +15,4 @@ video/tmp/
 video/output/
 website/repodocs-ai-demoTEMP_MPY_wvf_snd.mp4
 .vscode/
+.vitest/

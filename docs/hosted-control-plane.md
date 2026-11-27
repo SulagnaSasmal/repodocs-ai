@@ -94,7 +94,7 @@ The compose stack publishes health checks for both Redis and the control plane s
 
 ### Render Deployment
 
-The repository now includes a `render.yaml` manifest for deploying the control plane as a Docker-backed web service with a persistent disk mounted at `/var/data`.
+The repository includes an `experimental/deploy/render.yaml` manifest for deploying the control plane as a Docker-backed web service with a persistent disk mounted at `/var/data`.
 
 ## Current Limits
 

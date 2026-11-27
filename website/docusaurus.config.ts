@@ -142,10 +142,6 @@ const config: Config = {
               to: "/docs/developer-experience-scorecard"
             },
             {
-              label: "Community Feedback",
-              to: "/docs/community-feedback-discussion"
-            },
-            {
               label: "Submit Docs From Your Spec",
               href: "https://github.com/SulagnaSasmal/repodocs-ai/issues/new/choose"
             },

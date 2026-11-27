@@ -11,7 +11,7 @@ Strict section-by-section scorecard against the attached RepoDocs AI v1.0 specif
 Status: Complete
 
 - The repository implements the intended docs-as-code product shape through templates, prompts, validation, examples, and automation.
-- Evidence: `README.md`, `templates/`, `prompts/`, `validation/`, `examples/`, `site/`.
+- Evidence: `README.md`, `templates/`, `prompts/`, `validation/`, `examples/`, `website/`.
 
 ## 2. Target Market
 
@@ -34,7 +34,7 @@ Status: Complete with extensions
 - Markdown and GitHub are first-class.
 - Docusaurus, MkDocs, GitBook, and Next.js starter packs are present.
 - GitLab and Bitbucket starter assets now extend the original future-platform note.
-- Evidence: `starters/`, `platforms/`.
+- Evidence: `experimental/starters/`, `experimental/platforms/`.
 
 ## 5. System Architecture
 
@@ -109,7 +109,7 @@ Status: Strong
 
 - The repository includes bundle/export assets, container packaging for the hosted control plane, and a hosted deployment manifest.
 - It is still not a polished commercial installer or managed SaaS distribution.
-- Evidence: `bundle/`, `exports/`, `Dockerfile`, `render.yaml`.
+- Evidence: `exports/`, `experimental/deploy/Dockerfile`, `experimental/deploy/render.yaml`.
 
 ## 15. Pricing Strategy
 
@@ -131,7 +131,7 @@ Status: Partially pulled forward
 Status: Complete
 
 - AI-prompt-powered prompts, metadata-driven structure, governance workflows, diagram starters, and repo-native automation are all implemented and visible in the repository.
-- Evidence: `prompts/`, `schema/`, `validation/`, `diagrams/`, `.github/workflows/`, `site/`.
+- Evidence: `prompts/`, `schema/`, `validation/`, `diagrams/`, `.github/workflows/`, `website/`.
 
 ## Overall Score
 

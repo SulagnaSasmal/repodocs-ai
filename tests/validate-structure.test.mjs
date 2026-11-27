@@ -166,14 +166,9 @@ describe("automation scripts", () => {
 // ---------------------------------------------------------------------------
 describe("site files", () => {
   const files = [
-    "site/index.html",
-    "site/spec-summary.html",
-    "site/roadmap.html",
-    "site/automation.html",
-    "site/control-plane.html",
-    "site/complete-system.html",
-    "site/installation.html",
-    "site/styles.css"
+    "website/docusaurus.config.ts",
+    "website/sidebars.ts",
+    "website/src/pages/index.tsx"
   ];
 
   for (const file of files) {
@@ -237,15 +232,15 @@ describe("archive cleanup", () => {
     expect(await exists("docs/# RepoDocs AI.litcoffee")).toBe(false);
   });
 
-  it("docs/archive/README.md exists", async () => {
-    expect(await exists("docs/archive/README.md")).toBe(true);
+  it("archive/docs/spec-history/README.md exists", async () => {
+    expect(await exists("archive/docs/spec-history/README.md")).toBe(true);
   });
 
-  it("docs/archive/product-spec-overview-v1.md exists", async () => {
-    expect(await exists("docs/archive/product-spec-overview-v1.md")).toBe(true);
+  it("archive/docs/spec-history/product-spec-overview-v1.md exists", async () => {
+    expect(await exists("archive/docs/spec-history/product-spec-overview-v1.md")).toBe(true);
   });
 
-  it("docs/archive/product-spec-system-v1.md exists", async () => {
-    expect(await exists("docs/archive/product-spec-system-v1.md")).toBe(true);
+  it("archive/docs/spec-history/product-spec-system-v1.md exists", async () => {
+    expect(await exists("archive/docs/spec-history/product-spec-system-v1.md")).toBe(true);
   });
 });

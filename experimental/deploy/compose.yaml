@@ -17,8 +17,8 @@ services:
 
   control-plane:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: experimental/deploy/Dockerfile
     container_name: repodocs-ai-control-plane
     restart: unless-stopped
     depends_on:
