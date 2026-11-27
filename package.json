@@ -1,6 +1,6 @@
 {
   "name": "repodocs-ai",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "AI-prompt-powered docs-as-code documentation system for SaaS API teams",
   "type": "module",
@@ -44,12 +44,12 @@
     "validate": "npm run validate:frontmatter && npm run validate:structure && npm run validate:quality && npm run validate:openapi && npm run validate:versions && npm run lint:markdown"
   },
   "devDependencies": {
-    "js-yaml": "^4.1.0",
-    "markdownlint-cli": "^0.45.0",
-    "vitest": "^2.1.0"
+    "markdownlint-cli": "^0.50.1",
+    "vitest": "^5.1.2"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
+    "js-yaml": "^4.3.2",
     "redis": "^5.11.0"
   }
 }
