@@ -2,7 +2,7 @@
 
 [![Build](https://github.com/SulagnaSasmal/repodocs-ai/actions/workflows/validate.yml/badge.svg)](https://github.com/SulagnaSasmal/repodocs-ai/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.2.2-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.2.3-green.svg)](CHANGELOG.md)
 
 AI-prompt-powered docs-as-code documentation system for SaaS API teams.
 
@@ -108,10 +108,10 @@ Running `npm run validate` checks this repository itself and prints one line per
 
 ```text
 Validated frontmatter for 39 Markdown files in templates, examples.
-Validated 108 required project files.
-Structure checks passed for 24 Markdown files in examples, generated (placeholders, required sections, examples, status codes, SME labels). Accuracy against the OpenAPI spec is checked separately.
-Compared 2 endpoint docs in examples/api-docs, generated against the OpenAPI spec (1 Markdown file describes no endpoint and was not compared).
-Checked api_version for 10 Markdown files in examples/api-docs, examples/complete-system, generated.
+Validated 99 required project files.
+Structure checks passed for 28 Markdown files in examples, generated (placeholders, leftover template text, required sections, examples, suspicious status codes, SME labels, placeholder example values, owners). Accuracy against the OpenAPI spec is checked separately.
+Compared 11 endpoint docs in examples/api-docs, examples/payments-api, examples/complete-system, generated against the OpenAPI spec (13 Markdown files describe no endpoint and were not compared).
+Checked api_version for 24 Markdown files in examples/api-docs, examples/payments-api, examples/complete-system, generated. 3 of them use api_version 'n/a', which is allowed only for docs that describe no endpoint and is not compared with a spec version.
 ```
 
 To check your own docs, use `repodocs-ai validate` instead (see [Validate Your Docs](#validate-your-docs)). Inside a clone, `node bin/repodocs.mjs <command>` runs the same CLI.
@@ -122,7 +122,7 @@ Running `npm test`:
 
 ```text
  Test Files  10 passed (10)
-      Tests  240 passed (240)
+      Tests  271 passed (271)
 ```
 
 The tests include the full adopter path (`init`, `generate`, `validate`, and the CI step `init` writes), and the CLI installed from a packed tarball. They run against eight OpenAPI specs written by other people in `tests/fixtures/third-party/`. They check the generated docs against each spec, not only that the commands succeed. Before each release, a fresh AI agent also follows the README from scratch; the procedure and past reports are in `.github/release-checks/`.
@@ -134,11 +134,11 @@ Install the `repodocs-ai` command, set up a docs repository, generate docs from 
 > Requires Node.js 20 or later. Check with `node --version`.
 
 ```bash
-npm install -g github:SulagnaSasmal/repodocs-ai#v1.2.2
+npm install -g github:SulagnaSasmal/repodocs-ai#v1.2.3
 repodocs-ai init company-docs
 ```
 
-Or run any command once without installing, with `npx --yes github:SulagnaSasmal/repodocs-ai#v1.2.2 <command>`. Paths resolve from the folder you run the command in. Run `repodocs-ai help` for every command.
+Or run any command once without installing, with `npx --yes github:SulagnaSasmal/repodocs-ai#v1.2.3 <command>`. Paths resolve from the folder you run the command in. Run `repodocs-ai help` for every command.
 
 `init` copies the templates, prompts, diagrams, schema and review checklists, and writes a CI workflow, a CODEOWNERS file to fill in, and a starter README. It does not run `git init` or create the GitHub repository for you. Add `--with-examples` to include the payments example set.
 
@@ -173,12 +173,12 @@ The command exits with a non-zero code when a check fails, so it can gate CI.
 
 Each check reports PASS, WARN, FAIL or SKIP and names the folder it checked:
 
-- **Frontmatter:** required fields, which must not be empty, allowed values, and a real `last_reviewed` date, from `schema/metadata-frontmatter.md`.
-- **Structure and quality:** leftover placeholders and template instructions (an error), required sections, examples, suspicious status codes (such as a POST returning 200), unresolved `Needs SME input` labels, placeholder example values, and owners that are `unassigned` or missing from `schema/owners-registry.md` (warnings).
-- **OpenAPI examples:** request and response JSON examples at every depth: unknown fields, values outside an enum, every shape of a `oneOf`, readOnly fields sent in requests and writeOnly fields shown in responses. Request Body table rows: each field exists, with the spec's type and allowed values. Parameter tables and every Required flag. Query parameters and their allowed values, and the server URL, in the request example. The authentication section against the spec's security. The success status and Error Codes against the spec's responses.
+- **Frontmatter:** required fields, which must not be empty, allowed values, and a `last_reviewed` date that exists on the calendar and is not in the future, from `schema/metadata-frontmatter.md`.
+- **Structure and quality:** leftover placeholders (`TODO`, `TBD`, `FIXME`, `<insert …>`, `{{…}}`, lorem ipsum) and template instructions are errors. Warnings: required sections, examples, sections dropped from the template a hand-written doc follows, suspicious status codes in hand-written docs (such as a POST returning 200), unresolved `Needs SME input` labels, placeholder example values, `{name}` placeholders left in the request URL, and owners that are `unassigned` or missing from `schema/owners-registry.md`.
+- **OpenAPI examples:** request, response and error JSON examples at every depth: unknown fields, values outside an enum, values of the wrong JSON type, every shape of a `oneOf`, readOnly fields sent in requests and writeOnly fields shown in responses. Request Body table rows: each field exists, with the spec's type, Required flag, allowed values, default, format, minimum and maximum, and whether the body itself is required. Parameter tables, with the same notes. In the request example: the server URL, the path, query parameters and their allowed values, the `Content-Type` header, and the credentials it sends. The authentication section against the spec's security. The success status and Error Codes against the spec's responses.
 - **API versions:** `api_version` in frontmatter against the spec's version.
 
-Without `--specs`, the last two checks report SKIP. They also report SKIP when the folder has no endpoint docs to compare. A skipped check did not run; it never counts as a pass, and the summary says so. Add `--strict` to make a skipped check fail the run. Pass several folders to check them together, for example `company-docs/generated company-docs/docs`.
+Without `--specs`, the last two checks report SKIP. They also report SKIP when the folder has no endpoint docs to compare. A skipped check did not run; it never counts as a pass, and the summary gives the reason for each one. Add `--strict` to make a skipped check fail the run. Pass several folders to check them together, for example `company-docs/generated company-docs/docs`.
 
 `init` also writes `.github/workflows/docs-validate.yml` into your docs repository. Once you push to GitHub, it runs the same checks on every pull request and every push to `main`, against `generated/` and `docs/`, using the specs in `openapi/`. It uses the same RepoDocs AI version that created the repository, and it fails until there is at least one Markdown doc to check.
 
@@ -201,7 +201,8 @@ For hand-authored docs:
 - It does not check whether your spec is correct or complete. Generated docs are only as accurate as the spec.
 - It does not write descriptions the spec lacks. Those sections say `Needs SME input` until someone fills them in.
 - It does not document response fields as a table. Response examples, error codes and an example error body are generated; field-level response docs are written by hand.
-- It does not check the types of example values against the schema, for example a string where the spec says integer.
+- When the spec's own example contradicts its schema, the generated doc does not copy the contradiction silently. Fields the schema does not define are left out, and a number written as a string is shown as a number; the doc says which.
+- The template-section check applies only to a hand-written doc that already follows at least half of one template's sections. Other docs with the same `component` are treated as a different kind of page.
 - It cannot tell whether prose is true. If someone replaces `Needs SME input` with an invented sentence, such as a made-up rate limit, the checks pass.
 - It does not upload anything. `npm run export` writes files formatted for Confluence, Google Docs, Notion and print, which you import yourself.
 - It is not published to the npm registry yet. Install it from GitHub, as shown in the Quick Start.

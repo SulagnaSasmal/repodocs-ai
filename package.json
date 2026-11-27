@@ -1,6 +1,6 @@
 {
   "name": "repodocs-ai",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "AI-prompt-powered docs-as-code documentation system for SaaS API teams",
   "type": "module",
   "engines": {

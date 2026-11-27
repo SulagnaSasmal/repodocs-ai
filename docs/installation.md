@@ -13,11 +13,11 @@ Install the `repodocs-ai` command, set up a docs repository, generate docs from 
 ## Install
 
 ```bash
-npm install -g github:SulagnaSasmal/repodocs-ai#v1.2.2
+npm install -g github:SulagnaSasmal/repodocs-ai#v1.2.3
 repodocs-ai --version
 ```
 
-To run a command once without installing, use `npx --yes github:SulagnaSasmal/repodocs-ai#v1.2.2 <command>`. Run `repodocs-ai help` for every command. Paths resolve from the folder you run the command in.
+To run a command once without installing, use `npx --yes github:SulagnaSasmal/repodocs-ai#v1.2.3 <command>`. Run `repodocs-ai help` for every command. Paths resolve from the folder you run the command in.
 
 ## Set Up a Docs Repository
 
