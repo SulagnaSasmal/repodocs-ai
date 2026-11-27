@@ -1,7 +1,6 @@
 {
   "name": "repodocs-ai",
-  "version": "1.1.0",
-  "private": true,
+  "version": "1.2.0",
   "description": "AI-prompt-powered docs-as-code documentation system for SaaS API teams",
   "type": "module",
   "engines": {
@@ -44,12 +43,41 @@
     "validate": "npm run validate:frontmatter && npm run validate:structure && npm run validate:quality && npm run validate:openapi && npm run validate:versions && npm run lint:markdown"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.32.0",
     "markdownlint-cli": "^0.50.1",
+    "redis": "^5.11.0",
     "vitest": "^5.1.2"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.0",
-    "js-yaml": "^4.3.2",
-    "redis": "^5.11.0"
-  }
+    "js-yaml": "^4.3.2"
+  },
+  "bin": {
+    "repodocs-ai": "bin/repodocs.mjs"
+  },
+  "files": [
+    "bin/",
+    "scripts/bootstrap-docs-repo.mjs",
+    "scripts/generate-openapi-docs.mjs",
+    "scripts/validate-docs.mjs",
+    "scripts/validate-frontmatter.mjs",
+    "scripts/validate-doc-quality.mjs",
+    "scripts/validate-openapi-examples.mjs",
+    "scripts/validate-version-compatibility.mjs",
+    "scripts/lib/",
+    "templates/",
+    "prompts/",
+    "diagrams/",
+    "schema/",
+    "validation/",
+    "examples/",
+    ".github/pull_request_template.md",
+    ".markdownlint.json",
+    "TEMPLATE_VERSION",
+    "CHANGELOG.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SulagnaSasmal/repodocs-ai.git"
+  },
+  "license": "MIT"
 }

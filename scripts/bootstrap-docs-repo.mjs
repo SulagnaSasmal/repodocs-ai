@@ -26,10 +26,10 @@ const adopterCodeowners = `# CODEOWNERS: who reviews which documentation
 # openapi/       @your-org/api-team
 `;
 
-// CI for the new docs repository. It checks out RepoDocs AI next to the docs
-// and runs every content check against generated/ and docs/, comparing them
-// with the specs in openapi/ when that folder exists.
-const adopterWorkflow = `name: Validate documentation
+// CI for the new docs repository: runs every content check with the same
+// RepoDocs AI version that created the repository.
+function buildAdopterWorkflow(version) {
+  return `name: Validate documentation
 
 on:
   push:
@@ -43,46 +43,32 @@ jobs:
     steps:
       - name: Check out the docs
         uses: actions/checkout@v4
-        with:
-          path: docs-repo
-
-      - name: Check out RepoDocs AI
-        uses: actions/checkout@v4
-        with:
-          repository: SulagnaSasmal/repodocs-ai
-          # Pin to a commit SHA for repeatable builds.
-          ref: main
-          path: repodocs-ai
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
-
-      - name: Install RepoDocs AI
-        working-directory: repodocs-ai
-        run: npm ci
+          node-version: 22
 
       - name: Validate docs
-        working-directory: repodocs-ai
         run: |
           targets=()
           for folder in generated docs; do
-            if [ -d "../docs-repo/$folder" ]; then targets+=("../docs-repo/$folder"); fi
+            if [ -d "$folder" ]; then targets+=("$folder"); fi
           done
           if [ \${#targets[@]} -eq 0 ]; then
             echo "::warning::No generated/ or docs/ folder yet. Nothing was checked."
             exit 0
           fi
           specs=()
-          if [ -d ../docs-repo/openapi ]; then specs=(--specs ../docs-repo/openapi); fi
-          node scripts/validate-docs.mjs "\${targets[@]}" "\${specs[@]}"
+          if [ -d openapi ]; then specs=(--specs openapi); fi
+          npx --yes github:SulagnaSasmal/repodocs-ai#v${version} validate "\${targets[@]}" "\${specs[@]}"
 `;
+}
 
 function printUsage() {
-  console.log("Usage: npm run bootstrap:docs-repo -- <target-directory> [--with-examples]");
-  console.log("Example: npm run bootstrap:docs-repo -- ../company-docs");
-  console.log("         npm run bootstrap:docs-repo -- ../company-docs --with-examples");
+  console.log("Usage: repodocs-ai init <target-directory> [--with-examples]");
+  console.log("Example: repodocs-ai init company-docs");
+  console.log("         repodocs-ai init company-docs --with-examples");
 }
 
 function toPosix(relativePath) {
@@ -118,6 +104,11 @@ async function copyGithubGovernanceFiles(targetRoot) {
   }
 }
 
+async function readPackageVersion() {
+  const pkg = JSON.parse(await fs.readFile(path.join(repoRoot, "package.json"), "utf8"));
+  return pkg.version;
+}
+
 async function writeAdopterGithubFiles(targetRoot) {
   const written = [];
   const codeownersPath = path.join(targetRoot, ".github", "CODEOWNERS");
@@ -129,7 +120,7 @@ async function writeAdopterGithubFiles(targetRoot) {
   const workflowPath = path.join(targetRoot, ".github", "workflows", "docs-validate.yml");
   if (!(await pathExists(workflowPath))) {
     await ensureDirectory(path.dirname(workflowPath));
-    await fs.writeFile(workflowPath, adopterWorkflow, "utf8");
+    await fs.writeFile(workflowPath, buildAdopterWorkflow(await readPackageVersion()), "utf8");
     written.push(".github/workflows/docs-validate.yml");
   }
   return written;
@@ -162,8 +153,8 @@ async function writeTemplateVersionFile(targetRoot) {
   return version;
 }
 
-function buildStarterReadme(targetName) {
-  return `# ${targetName}\n\nThis repository was bootstrapped from RepoDocs AI.\n\n## Start Here\n\n1. Open templates/api/ for API documentation.\n2. Open templates/features/ for feature documentation.\n3. Open templates/governance/ for review and QA guidance.\n4. Use prompts/ with the templates to draft and review content.\n\n## Folders\n\n- openapi/: your OpenAPI specs\n- generated/: docs generated from those specs\n- docs/: docs you write by hand from the templates\n\n## Validate Before Publishing\n\nFrom your RepoDocs AI clone, run:\n\n    npm run validate:docs -- ../${targetName}/generated --specs ../${targetName}/openapi\n\nAdd ../${targetName}/docs to that command once you have hand-written docs.\nThe same checks run in CI through .github/workflows/docs-validate.yml on every pull request.\nThe checklists in validation/ cover what the automated checks cannot, such as accuracy against the product.\n`;
+function buildStarterReadme(targetName, version) {
+  return `# ${targetName}\n\nThis repository was bootstrapped from RepoDocs AI.\n\n## Start Here\n\n1. Open templates/api/ for API documentation.\n2. Open templates/features/ for feature documentation.\n3. Open templates/governance/ for review and QA guidance.\n4. Use prompts/ with the templates to draft and review content.\n\n## Folders\n\n- openapi/: your OpenAPI specs\n- generated/: docs generated from those specs\n- docs/: docs you write by hand from the templates\n\n## Validate Before Publishing\n\nFrom this folder, run:\n\n    npx --yes github:SulagnaSasmal/repodocs-ai#v${version} validate generated --specs openapi\n\nAdd docs to that command once you have hand-written docs.\nThe same checks run in CI through .github/workflows/docs-validate.yml on every pull request.\nThe checklists in validation/ cover what the automated checks cannot, such as accuracy against the product.\n`;
 }
 
 async function writeStarterReadme(targetRoot) {
@@ -173,7 +164,7 @@ async function writeStarterReadme(targetRoot) {
   }
 
   const targetName = path.basename(targetRoot);
-  await fs.writeFile(readmePath, buildStarterReadme(targetName), "utf8");
+  await fs.writeFile(readmePath, buildStarterReadme(targetName, await readPackageVersion()), "utf8");
   return true;
 }
 
@@ -188,7 +179,8 @@ async function main() {
     return;
   }
 
-  const targetRoot = path.resolve(process.cwd(), targetArgument);
+  const baseDirectory = (process.env.npm_lifecycle_event === "bootstrap:docs-repo" && process.env.INIT_CWD) || process.cwd();
+  const targetRoot = path.resolve(baseDirectory, targetArgument);
   await ensureDirectory(targetRoot);
 
   for (const asset of assetsToCopy) {
@@ -204,7 +196,8 @@ async function main() {
   const lintFilesCopied = await copyLintConfig(targetRoot);
   const templateVersion = await writeTemplateVersionFile(targetRoot);
   const createdReadme = await writeStarterReadme(targetRoot);
-  const relativeTarget = toPosix(path.relative(process.cwd(), targetRoot) || ".");
+  const shownTarget = path.relative(baseDirectory, targetRoot);
+  const relativeTarget = toPosix(shownTarget.startsWith("..") || path.isAbsolute(shownTarget) ? targetRoot : shownTarget || ".");
 
   console.log(`Bootstrapped docs repository assets into ${relativeTarget}`);
   console.log("Copied: templates/, prompts/, diagrams/, schema/, validation/");
@@ -231,8 +224,9 @@ async function main() {
   if (!withExamples) {
     console.log("   Tip: rerun with --with-examples to also copy the payments API example set");
   }
-  console.log("4. Put your OpenAPI specs in openapi/ and generate docs into generated/");
-  console.log(`5. Validate: npm run validate:docs -- ${relativeTarget}/generated --specs ${relativeTarget}/openapi`);
+  console.log(`4. Put your OpenAPI spec in ${relativeTarget}/openapi/ and generate docs:`);
+  console.log(`   repodocs-ai generate ${relativeTarget}/openapi/<spec>.yaml ${relativeTarget}/generated`);
+  console.log(`5. Validate: repodocs-ai validate ${relativeTarget}/generated --specs ${relativeTarget}/openapi`);
   console.log("   CI runs the same checks through .github/workflows/docs-validate.yml once you push to GitHub");
 }
 
