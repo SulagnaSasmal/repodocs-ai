@@ -187,6 +187,11 @@ async function main() {
       }
     }
 
+    // Generated frontmatter default: nobody owns this doc yet.
+    if (/^owner:\s*"?unassigned"?\s*$/m.test(content)) {
+      warnings.push(`${relativePath}: owner is 'unassigned'. Set it with --owner when generating, or edit the frontmatter`);
+    }
+
     // Generated placeholder values: the spec gave no example for these fields.
     const placeholderValueCount = (content.match(/":\s*"value"/g) || []).length;
     if (placeholderValueCount > 0) {
@@ -222,11 +227,11 @@ async function main() {
     process.exit(1);
   }
 
-  const checksRun = "placeholders, required sections, examples, status codes, SME labels, placeholder example values";
+  const checksRun = "placeholders, required sections, examples, suspicious status codes, SME labels, placeholder example values, unassigned owners";
   if (warnings.length > 0) {
     console.log(
       `\nStructure checks passed for ${markdownFiles.length} Markdown files in ${checkedLabel} (${checksRun}), ` +
-      `with ${warnings.length} warning(s) above to resolve before publishing. Accuracy against the OpenAPI spec is checked separately.`
+      `with ${warnings.length} warning(s) to resolve before publishing. Accuracy against the OpenAPI spec is checked separately.`
     );
   } else {
     console.log(

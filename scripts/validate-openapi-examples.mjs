@@ -122,20 +122,32 @@ function extractRequestJson(content) {
   }
 }
 
-function extractParameterNames(content) {
-  const sectionMatch = content.match(/## Parameters\s+[\s\S]*?\| --- \| --- \| --- \| --- \|\s*([\s\S]*?)(?:\n## |$)/);
-  if (!sectionMatch) {
-    return [];
-  }
+const parameterSections = [
+  ["Parameters", null],
+  ["Path Parameters", "path"],
+  ["Query Parameters", "query"],
+  ["Header Parameters", "header"]
+];
 
-  return sectionMatch[1]
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => line.startsWith("|"))
-    .map((line) => line.split("|")[1]?.trim())
-    .filter(Boolean)
-    .filter((value) => value !== "None");
+// Documented parameters from every parameter table: name, location, Required cell.
+function extractDocumentedParameters(content) {
+  return parameterSections.flatMap(([heading, location]) =>
+    tableRows(content, heading).map((cells) => ({ name: cells[0], location, required: cells[2]?.toLowerCase() }))
+  );
+}
+
+function extractParameterNames(content) {
+  return extractDocumentedParameters(content).map((parameter) => parameter.name);
+}
+
+function extractCurlUrl(content) {
+  const requestMatch = content.match(/## Request Example\s+[\s\S]*?```bash\s*([\s\S]*?)```/);
+  const urlMatch = requestMatch?.[1].match(/curl\s+(?:-X\s+\w+\s+)?"([^"]+)"/);
+  try {
+    return urlMatch ? new URL(urlMatch[1]) : null;
+  } catch {
+    return null;
+  }
 }
 
 function findSpecOperations(specs, route, method) {
@@ -180,34 +192,100 @@ function resolveSchema(spec, schema, depth = 0) {
   return merged;
 }
 
-function extractSchemaProperties(spec, operation) {
-  const responseEntries = Object.entries(operation.responses || {});
-  const success = responseEntries.find(([code]) => code.startsWith("2"));
-  if (!success) {
-    return null;
+function resolveRef(spec, value) {
+  let resolved = value;
+  for (let depth = 0; resolved?.$ref && typeof resolved.$ref === "string" && resolved.$ref.startsWith("#/") && depth < 20; depth += 1) {
+    resolved = resolved.$ref.slice(2).split("/").reduce((current, segment) => current?.[segment], spec);
   }
+  return resolved;
+}
 
-  const [, response] = success;
-  const schema = resolveSchema(spec, response.content?.["application/json"]?.schema);
-  return schema?.properties || null;
+// The JSON media type of a content map: application/json or any +json type.
+function jsonSchemaOf(content) {
+  if (!content) {
+    return undefined;
+  }
+  const type = Object.keys(content).find((key) => key === "application/json") || Object.keys(content).find((key) => /[/+]json(;|$)/i.test(key));
+  return type ? content[type]?.schema : undefined;
+}
+
+// The object shapes a schema allows: its variants for oneOf/anyOf, otherwise itself.
+function shapesOf(spec, schema) {
+  const resolved = resolveSchema(spec, schema);
+  if (!resolved) {
+    return [];
+  }
+  const variants = !resolved.properties ? (resolved.oneOf || resolved.anyOf) : null;
+  if (Array.isArray(variants) && variants.length > 0) {
+    return variants.map((variant) => resolveSchema(spec, variant)).filter(Boolean);
+  }
+  return [resolved];
+}
+
+function allowedProperties(shapes) {
+  const properties = {};
+  for (const shape of shapes) {
+    Object.assign(properties, shape.properties || {});
+  }
+  return properties;
+}
+
+function successResponse(spec, operation) {
+  const success = Object.entries(operation.responses || {}).find(([code]) => code.startsWith("2"));
+  return success ? resolveRef(spec, success[1]) : undefined;
+}
+
+function extractSchemaProperties(spec, operation) {
+  const shapes = shapesOf(spec, jsonSchemaOf(successResponse(spec, operation)?.content));
+  return shapes.length > 0 && shapes.some((shape) => shape.properties) ? allowedProperties(shapes) : null;
 }
 
 function extractRequestSchema(spec, operation) {
-  return resolveSchema(spec, operation.requestBody?.content?.["application/json"]?.schema) || null;
+  return resolveSchema(spec, jsonSchemaOf(resolveRef(spec, operation.requestBody)?.content)) || null;
 }
 
-function collectDefinedParameterNames(pathItem, operation) {
-  const combined = [...(pathItem.parameters || []), ...(operation.parameters || [])];
-  return new Set(combined.map((parameter) => parameter.name));
+function definedParameters(spec, pathItem, operation) {
+  const byKey = new Map();
+  for (const parameter of [...(pathItem.parameters || []), ...(operation.parameters || [])]) {
+    const resolved = resolveRef(spec, parameter);
+    if (resolved?.name && resolved?.in) {
+      byKey.set(`${resolved.in}:${resolved.name}`, resolved);
+    }
+  }
+  return [...byKey.values()];
+}
+
+function collectDefinedParameterNames(pathItem, operation, spec) {
+  return new Set(definedParameters(spec, pathItem, operation).map((parameter) => parameter.name));
+}
+
+// Rows of a Markdown table under a "## <heading>" section: [first cell, third cell].
+function tableRows(content, heading, minCells = 3) {
+  const start = content.indexOf(`## ${heading}\n`);
+  if (start === -1) {
+    return [];
+  }
+  const next = content.indexOf("\n## ", start + 3);
+  const body = content.slice(start, next === -1 ? undefined : next);
+  return body
+    .split(/\r?\n/)
+    .filter((line) => /^\|/.test(line.trim()) && !/^\|\s*-{3}/.test(line.trim()))
+    .slice(1)
+    .map((line) => line.split(/(?<!\\)\|/).slice(1, -1).map((cell) => cell.trim()))
+    .filter((cells) => cells.length >= minCells && cells[0] && cells[0] !== "None");
+}
+
+function statusCodeAllowed(code, responses) {
+  const codes = Object.keys(responses || {});
+  return codes.includes(code) || codes.includes(`${code[0]}XX`) || codes.includes(`${code[0]}xx`);
 }
 
 function scoreOperationMatch(candidate, route, requestJson, responseJson, documentedParameters) {
   let score = candidate.route === route ? 5 : 0;
 
-  const requestSchema = extractRequestSchema(candidate.spec, candidate.operation);
-  const allowedRequestProperties = requestSchema?.properties || {};
+  const allowedRequestProperties = allowedProperties(shapesOf(candidate.spec, extractRequestSchema(candidate.spec, candidate.operation)));
   const allowedResponseProperties = extractSchemaProperties(candidate.spec, candidate.operation) || {};
-  const definedParameters = collectDefinedParameterNames(candidate.pathItem, candidate.operation);
+  const definedParameters = collectDefinedParameterNames(candidate.pathItem, candidate.operation, candidate.spec);
 
   if (requestJson && typeof requestJson === "object" && !Array.isArray(requestJson)) {
     for (const key of Object.keys(requestJson)) {
@@ -320,43 +398,96 @@ async function main() {
       continue;
     }
 
-    const requestSchema = extractRequestSchema(match.spec, match.operation);
-    if (requestSchema) {
+    const specName = path.basename(match.filePath);
+    const spec = match.spec;
+
+    const requestShapes = shapesOf(spec, extractRequestSchema(spec, match.operation));
+    if (requestShapes.length > 0) {
       if (!requestJson) {
         errors.push(`${relativePath}: request body schema exists but no JSON request example was found`);
       } else if (typeof requestJson === "object" && !Array.isArray(requestJson)) {
-        const allowedRequestProperties = requestSchema.properties || {};
-        const requiredRequestProperties = new Set(requestSchema.required || []);
-
-        for (const key of Object.keys(requestJson)) {
-          if (!(key in allowedRequestProperties)) {
-            errors.push(`${relativePath}: request example field '${key}' is not defined in ${path.basename(match.filePath)}`);
+        const allowed = allowedProperties(requestShapes);
+        const keys = Object.keys(requestJson);
+        for (const key of keys) {
+          if (!(key in allowed)) {
+            errors.push(`${relativePath}: request example field '${key}' is not defined in ${specName}`);
+          } else if (resolveSchema(spec, allowed[key])?.readOnly) {
+            errors.push(`${relativePath}: request example sends '${key}', which is readOnly in ${specName}`);
           }
         }
-
-        for (const key of requiredRequestProperties) {
-          if (!(key in requestJson)) {
-            errors.push(`${relativePath}: request example is missing required field '${key}' from ${path.basename(match.filePath)}`);
-          }
-        }
-      }
-    }
-
-    if (responseJson && typeof responseJson === "object" && !Array.isArray(responseJson)) {
-      const allowedProperties = extractSchemaProperties(match.spec, match.operation);
-      if (allowedProperties) {
-        for (const key of Object.keys(responseJson)) {
-          if (!(key in allowedProperties)) {
-            errors.push(`${relativePath}: response example field '${key}' is not defined in ${path.basename(match.filePath)}`);
+        // The example must satisfy the required fields of at least one allowed shape.
+        const missingByShape = requestShapes.map((shape) => (shape.required || []).filter((key) => !(key in requestJson)));
+        if (!missingByShape.some((missing) => missing.length === 0)) {
+          const fewest = missingByShape.reduce((best, missing) => (missing.length < best.length ? missing : best));
+          for (const key of fewest) {
+            errors.push(`${relativePath}: request example is missing required field '${key}' from ${specName}`);
           }
         }
       }
     }
 
-    const definedParameters = collectDefinedParameterNames(match.pathItem, match.operation);
-    for (const name of documentedParameters) {
-      if (!definedParameters.has(name)) {
-        errors.push(`${relativePath}: parameter '${name}' is not defined in ${path.basename(match.filePath)}`);
+    const responseShapes = shapesOf(spec, jsonSchemaOf(successResponse(spec, match.operation)?.content));
+    if (responseJson && typeof responseJson === "object" && !Array.isArray(responseJson) && responseShapes.some((shape) => shape.properties)) {
+      const allowed = allowedProperties(responseShapes);
+      for (const key of Object.keys(responseJson)) {
+        if (!(key in allowed)) {
+          errors.push(`${relativePath}: response example field '${key}' is not defined in ${specName}`);
+        } else if (resolveSchema(spec, allowed[key])?.writeOnly) {
+          errors.push(`${relativePath}: response example shows '${key}', which is writeOnly in ${specName}`);
+        }
+      }
+    }
+
+    // Parameter tables: every parameter exists in the spec with the same Required flag.
+    const specParameters = definedParameters(spec, match.pathItem, match.operation);
+    for (const documented of extractDocumentedParameters(content)) {
+      const defined = specParameters.find((parameter) => parameter.name === documented.name && (!documented.location || parameter.in === documented.location));
+      if (!defined) {
+        errors.push(`${relativePath}: parameter '${documented.name}' is not defined in ${specName}`);
+        continue;
+      }
+      const specRequired = defined.required ? "yes" : "no";
+      if ((documented.required === "yes" || documented.required === "no") && documented.required !== specRequired) {
+        errors.push(`${relativePath}: parameter '${documented.name}' is marked Required: ${documented.required}, but the spec says ${specRequired}`);
+      }
+    }
+
+    // Request body table: top-level Required flags match the spec. Skipped
+    // when the body has several shapes, which are documented per option.
+    if (requestShapes.length === 1 && !content.includes("### Option 1")) {
+      const required = new Set(requestShapes[0].required || []);
+      for (const cells of tableRows(content, "Request Body")) {
+        const [name, , flag] = cells;
+        if (/[.[\]]/.test(name) || !(name in (requestShapes[0].properties || {}))) {
+          continue;
+        }
+        if ((flag === "yes" || flag === "no") && (flag === "yes") !== required.has(name)) {
+          errors.push(`${relativePath}: request field '${name}' is marked Required: ${flag}, but the spec says ${required.has(name) ? "yes" : "no"}`);
+        }
+      }
+    }
+
+    // Query string in the request example: known parameters and allowed values.
+    const curlUrl = extractCurlUrl(content);
+    if (curlUrl) {
+      for (const [name, value] of curlUrl.searchParams) {
+        const defined = specParameters.find((parameter) => parameter.in === "query" && parameter.name === name);
+        if (!defined) {
+          errors.push(`${relativePath}: request example uses query parameter '${name}', which is not defined in ${specName}`);
+          continue;
+        }
+        const allowedValues = resolveSchema(spec, defined.schema)?.enum;
+        if (Array.isArray(allowedValues) && !allowedValues.map(String).includes(value)) {
+          errors.push(`${relativePath}: query parameter '${name}' uses '${value}', which is not one of its allowed values (${allowedValues.join(", ")})`);
+        }
+      }
+    }
+
+    // Status codes in the Error Codes table exist in the spec.
+    for (const [code] of tableRows(content, "Error Codes", 2)) {
+      const normalized = code.replace(/`/g, "");
+      if (normalized === "default" ? !("default" in (match.operation.responses || {})) : !statusCodeAllowed(normalized, match.operation.responses)) {
+        errors.push(`${relativePath}: status code '${normalized}' is not defined for ${operationRef.method} ${operationRef.url} in ${specName}`);
       }
     }
   }
