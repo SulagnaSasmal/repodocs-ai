@@ -103,9 +103,13 @@ async function main() {
       continue;
     }
 
+    // This repository's own templates ship with empty fields for authors to fill in.
+    const isTemplate = !targets.userMode && path.relative(repoRoot, filePath).startsWith("templates" + path.sep);
     for (const field of requiredFields) {
       if (!(field in parsed)) {
         errors.push(`${relativePath}: missing required field '${field}'`);
+      } else if (!isTemplate && field !== "dependencies" && (parsed[field] === null || String(parsed[field]).trim() === "")) {
+        errors.push(`${relativePath}: required field '${field}' is empty`);
       }
     }
 

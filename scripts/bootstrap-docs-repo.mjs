@@ -53,11 +53,11 @@ jobs:
         run: |
           targets=()
           for folder in generated docs; do
-            if [ -d "$folder" ]; then targets+=("$folder"); fi
+            if [ -n "$(find "$folder" -name '*.md' 2>/dev/null | head -n 1)" ]; then targets+=("$folder"); fi
           done
           if [ \${#targets[@]} -eq 0 ]; then
-            echo "::warning::No generated/ or docs/ folder yet. Nothing was checked."
-            exit 0
+            echo "::error::No Markdown docs in generated/ or docs/ yet. Nothing was checked."
+            exit 1
           fi
           specs=()
           if [ -d openapi ]; then specs=(--specs openapi); fi
@@ -183,6 +183,15 @@ async function main() {
   const targetRoot = path.resolve(baseDirectory, targetArgument);
   await ensureDirectory(targetRoot);
 
+  // The folders the starter README and CI workflow expect.
+  for (const folder of ["openapi", "generated", "docs"]) {
+    await ensureDirectory(path.join(targetRoot, folder));
+    const keepFile = path.join(targetRoot, folder, ".gitkeep");
+    if (!(await pathExists(keepFile))) {
+      await fs.writeFile(keepFile, "", "utf8");
+    }
+  }
+
   for (const asset of assetsToCopy) {
     await copyAssetDirectory(asset, targetRoot);
   }
@@ -201,6 +210,7 @@ async function main() {
 
   console.log(`Bootstrapped docs repository assets into ${relativeTarget}`);
   console.log("Copied: templates/, prompts/, diagrams/, schema/, validation/");
+  console.log("Created: openapi/, generated/, docs/");
   if (withExamples) {
     console.log("Copied: examples/ (payments API examples, product docs, complete system)");
   }

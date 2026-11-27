@@ -33,7 +33,7 @@ describe("repodocs-ai CLI", () => {
   it("runs init, generate and validate with paths relative to the current directory", async () => {
     const workDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "repodocs-cli-"));
     await runIn(workDirectory, ["init", "company-docs"]);
-    await fs.mkdir(path.join(workDirectory, "company-docs", "openapi"));
+    await fs.mkdir(path.join(workDirectory, "company-docs", "openapi"), { recursive: true });
     await fs.copyFile(petstore, path.join(workDirectory, "company-docs", "openapi", "petstore.yaml"));
 
     const generated = await runIn(workDirectory, ["generate", "company-docs/openapi/petstore.yaml", "company-docs/generated"]);

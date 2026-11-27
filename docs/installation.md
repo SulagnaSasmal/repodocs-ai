@@ -2,131 +2,79 @@
 
 ## Goal
 
-Install and validate RepoDocs AI in under 5 minutes.
+Install the `repodocs-ai` command, set up a docs repository, generate docs from an OpenAPI spec, and validate them.
 
 ## Prerequisites
 
-- Node.js 20 or later
+- Node.js 20 or later (`node --version`)
 - npm
-- Git
+- Git, if you want to push the docs repository to GitHub
 
-Optional for the hosted control plane path:
+## Install
 
-- Docker Desktop
+```bash
+npm install -g github:SulagnaSasmal/repodocs-ai#v1.2.1
+repodocs-ai --version
+```
 
-## Core Installation
+To run a command once without installing, use `npx --yes github:SulagnaSasmal/repodocs-ai#v1.2.1 <command>`. Run `repodocs-ai help` for every command. Paths resolve from the folder you run the command in.
 
-1. Clone the repository.
+## Set Up a Docs Repository
+
+```bash
+repodocs-ai init company-docs
+```
+
+This creates `company-docs/` with:
+
+- `templates/`, `prompts/`, `diagrams/`, `schema/` and `validation/`
+- empty `openapi/`, `generated/` and `docs/` folders
+- `.github/workflows/docs-validate.yml`, which runs the checks in CI
+- `.github/CODEOWNERS` with example rules to replace, a pull request template, and `.markdownlint.json`
+- a starter `README.md`
+
+It does not run `git init` or create the GitHub repository. Add `--with-examples` to also copy the payments example set.
+
+## Generate Docs From Your Spec
+
+Put your OpenAPI 3.x file in `company-docs/openapi/`, then:
+
+```bash
+repodocs-ai generate company-docs/openapi/my-api.yaml company-docs/generated --owner payments-eng
+```
+
+`--owner` sets the `owner` field in the generated frontmatter. Without it, the owner is `unassigned` and the quality check warns about it. Generated docs are drafts for SME review: sections the spec does not describe say `Needs SME input`.
+
+## Validate
+
+```bash
+repodocs-ai validate company-docs/generated --specs company-docs/openapi
+```
+
+Each check reports PASS, WARN, FAIL or SKIP and names the folder it checked. The command exits with a non-zero code when a check fails. Add `company-docs/docs` once you have hand-written docs.
+
+## Write Docs by Hand
+
+1. Copy a template from `templates/` into `company-docs/docs/`.
+2. Fill in the frontmatter fields described in `schema/metadata-frontmatter.md`. Empty required fields fail validation.
+3. Validate the folder with `repodocs-ai validate company-docs/docs`.
+
+## Turn On CI
+
+Push `company-docs` to GitHub. The workflow in `.github/workflows/docs-validate.yml` runs on every pull request and on every push to `main`. It validates `generated/` and `docs/` against `openapi/`, with the same RepoDocs AI version that created the repository. It fails until there is at least one Markdown doc to check.
+
+## Work on RepoDocs AI Itself
+
+Clone the repository instead:
 
 ```bash
 git clone https://github.com/SulagnaSasmal/repodocs-ai.git
 cd repodocs-ai
-```
-
-1. Install dependencies.
-
-```bash
 npm install
-```
-
-1. Validate the repository.
-
-```bash
+npm test
 npm run validate
 ```
 
-1. Verify the end-to-end proof path.
+Running the tests needs Node.js 22 or later. Inside the clone, `node bin/repodocs.mjs <command>` runs the same CLI.
 
-```bash
-npm run proof:path
-```
-
-1. Review the product-facing documentation.
-
-- `README.md`
-- `docs/product-guide.md`
-- `docs/ready-to-install-system.md`
-- `docs/product-specification.md`
-
-## Quick Start For Your Own Docs Repository
-
-If your goal isn't to develop RepoDocs AI itself, but to use it as a documentation system starter, do this next.
-
-1. Clone RepoDocs AI and copy the starter assets into your new docs repository.
-1. Start with the API, feature, and governance template packs.
-
-On bash:
-
-```bash
-git clone https://github.com/SulagnaSasmal/repodocs-ai.git
-mkdir company-docs
-cp -R repodocs-ai/templates company-docs/
-cp -R repodocs-ai/prompts company-docs/
-cp -R repodocs-ai/diagrams company-docs/
-```
-
-On Windows PowerShell:
-
-```powershell
-git clone https://github.com/SulagnaSasmal/repodocs-ai.git
-New-Item -ItemType Directory -Name company-docs
-Copy-Item repodocs-ai\templates -Destination company-docs\ -Recurse
-Copy-Item repodocs-ai\prompts -Destination company-docs\ -Recurse
-Copy-Item repodocs-ai\diagrams -Destination company-docs\ -Recurse
-```
-
-Or use the one-command bootstrap from inside the cloned repo:
-
-> Requires Node.js 20 or later. Check with `node --version` before running.
-
-```bash
-git clone https://github.com/SulagnaSasmal/repodocs-ai.git
-cd repodocs-ai
-npm install
-npm run bootstrap:docs-repo -- ../company-docs
-```
-
-After copying the assets:
-
-- start with `templates/api/` to document APIs
-- use `templates/features/` for product and workflow docs
-- use `templates/governance/` for review and QA checks
-- use `prompts/` to draft and review content with AI
-
-## Adopt The System
-
-Start from these directories:
-
-- `templates/` for documentation structure
-- `prompts/` for AI drafting and review guidance
-- `examples/` for reference implementations
-- `schema/` and `validation/` for metadata and quality enforcement
-
-## Optional Hosted Runtime Verification
-
-If you want to verify the hosted automation runtime locally:
-
-1. Set a bootstrap admin key.
-1. Start the compose stack and smoke test.
-
-```bash
-export REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY=replace-me
-npm run control-plane:stack:smoke
-```
-
-On Windows PowerShell:
-
-```powershell
-$env:REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY = 'replace-me'
-npm run control-plane:stack:smoke
-```
-
-## Expected Outcome
-
-After installation, a developer should be able to:
-
-- understand the product from the README and product guide
-- inspect reusable templates and prompts immediately
-- validate the repository successfully
-- review the published site or run the hosted control-plane smoke test
-- decide whether the system fits their documentation workflow
+The hosted control plane and other experimental parts are described in `experimental/README.md` in the repository.

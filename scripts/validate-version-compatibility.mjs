@@ -181,6 +181,7 @@ async function main() {
   const errors = [];
   const markdownFiles = [];
   let checkedCount = 0;
+  let notApplicableCount = 0;
 
   for (const target of docTargets) {
     markdownFiles.push(...(await collectFromTarget(target, new Set([".md"]))));
@@ -201,6 +202,10 @@ async function main() {
     if (!version) {
       errors.push(`${relativePath}: missing api_version in frontmatter`);
       continue;
+    }
+
+    if (version === "n/a") {
+      notApplicableCount += 1;
     }
 
     if (!allowedVersions.has(version)) {
@@ -293,9 +298,13 @@ async function main() {
   }
 
   const skippedCount = markdownFiles.length - checkedCount;
+  const notApplicableNote = notApplicableCount > 0
+    ? ` ${notApplicableCount} of them use api_version 'n/a', which is allowed only for docs that describe no endpoint and is not compared with a spec version.`
+    : "";
   console.log(
     `Checked api_version for ${checkedCount} Markdown files in ${checkedLabel}` +
-    (skippedCount === 1 ? " (1 file has no frontmatter and was not checked)." : skippedCount > 1 ? ` (${skippedCount} files have no frontmatter and were not checked).` : ".")
+    (skippedCount === 1 ? " (1 file has no frontmatter and was not checked)." : skippedCount > 1 ? ` (${skippedCount} files have no frontmatter and were not checked).` : ".") +
+    notApplicableNote
   );
 }
 

@@ -4,6 +4,34 @@ This changelog tracks product-facing changes to RepoDocs AI.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] — 2026-11-27
+
+Fixes from the v1.2.0 fresh-agent release check, which used the Ably Platform API. See `.github/release-checks/2026-11-27-v1.2.0.md`.
+
+### Added
+
+- `generate --owner <team>` sets the frontmatter owner. Without it the owner is `unassigned`, which the quality check flags.
+- The OpenAPI check flags undefined query parameters, query values outside their allowed values, status codes the spec does not define, wrong Required flags in parameter and request body tables, readOnly fields sent in requests, and writeOnly fields shown in responses.
+- `init` creates `openapi/`, `generated/` and `docs/`.
+- The Ably Platform API as a seventh third-party test fixture, and probe tests that break generated docs on purpose and confirm each break is caught.
+
+### Changed
+
+- `oneOf` and `anyOf` request bodies are documented as numbered options, each with its own field table.
+- Request field tables leave out readOnly fields, list allowed values for enums, and include nested fields as `parent.child`, two levels deep.
+- Error Codes use the spec's descriptions, including shared `$ref` responses, and show an example error body.
+- Authentication text includes each security scheme's description.
+- The bootstrapped CI workflow fails when there are no Markdown docs to check, instead of passing.
+- `docs/installation.md` is rewritten around the `repodocs-ai` command.
+
+### Fixed
+
+- Freshly generated docs failed the OpenAPI check when a request body used `oneOf`.
+- Parameter tables in generated docs were never compared with the spec.
+- Empty required frontmatter fields, such as `owner: ""`, passed validation.
+- When a spec's own request example leaves out required fields, the generator adds them from the schema and says so.
+- Overview titles repeated "API".
+
 ## [1.2.0] — 2026-11-27
 
 ### Added
