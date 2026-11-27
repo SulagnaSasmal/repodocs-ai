@@ -2,7 +2,7 @@
 
 [![Build](https://github.com/SulagnaSasmal/repodocs-ai/actions/workflows/validate.yml/badge.svg)](https://github.com/SulagnaSasmal/repodocs-ai/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.1.0-green.svg)](CHANGELOG.md)
 
 AI-prompt-powered docs-as-code documentation system for SaaS API teams.
 
@@ -21,8 +21,9 @@ RepoDocs AI gives engineering teams one repo-native documentation system that co
 - reusable templates for API, feature, governance, operations, product, and architecture docs
 - structured AI prompts for drafting and review
 - examples that show the final output shape
-- validation scripts for documentation quality and structure
-- an optional hosted control plane for automation
+- an OpenAPI-to-Markdown generator that drafts endpoint docs from your spec
+- validation that checks your docs against the frontmatter schema and your OpenAPI spec, locally and in CI
+- an experimental hosted control plane for running automation over HTTP
 
 ## Example
 
@@ -45,7 +46,7 @@ It includes:
 
 This is the fastest trust check for the product: it shows what a real documentation system built with RepoDocs AI looks like.
 
-If you want to verify the full adopter flow, run `npm run proof:path` after install. It bootstraps a docs repo, generates API docs, validates the result, and exports artifacts end to end.
+To see every step run once, use `npm run proof:path` after install. It bootstraps a sample docs repo, generates docs from the bundled payments spec, validates them, and exports them. The generated docs and exports are written inside this repository, under `generated/` and `exports/`.
 
 Here is what a single endpoint document looks like when built from the template:
 
@@ -134,35 +135,9 @@ Running `npm test`:
 
 ## Quick Start
 
-This is the fastest way to use RepoDocs AI as a developer adopting it into a real documentation repository.
+Set up a new docs repository, generate docs from your OpenAPI spec, and validate them.
 
-1. Clone RepoDocs AI.
-1. Copy the starter assets into your new docs repository.
-1. Start documenting APIs.
-
-On bash:
-
-```bash
-git clone https://github.com/SulagnaSasmal/repodocs-ai.git
-mkdir company-docs
-cp -R repodocs-ai/templates company-docs/
-cp -R repodocs-ai/prompts company-docs/
-cp -R repodocs-ai/diagrams company-docs/
-```
-
-On Windows PowerShell:
-
-```powershell
-git clone https://github.com/SulagnaSasmal/repodocs-ai.git
-New-Item -ItemType Directory -Name company-docs
-Copy-Item repodocs-ai\templates -Destination company-docs\ -Recurse
-Copy-Item repodocs-ai\prompts -Destination company-docs\ -Recurse
-Copy-Item repodocs-ai\diagrams -Destination company-docs\ -Recurse
-```
-
-Or use the one-command bootstrap from inside the cloned repo:
-
-> Requires Node.js 20 or later. Check with `node --version` before running.
+> Requires Node.js 20 or later (22 or later to run the test suite). Check with `node --version`.
 
 ```bash
 git clone https://github.com/SulagnaSasmal/repodocs-ai.git
@@ -170,6 +145,8 @@ cd repodocs-ai
 npm install
 npm run bootstrap:docs-repo -- ../company-docs
 ```
+
+The bootstrap copies the templates, prompts, diagrams, schema and review checklists, and writes a CI workflow, a CODEOWNERS file to fill in, and a starter README. It does not run `git init` or create the GitHub repository for you.
 
 To include the payments example set as a starting reference, add `--with-examples`:
 
@@ -196,9 +173,9 @@ node scripts/generate-openapi-docs.mjs examples/payments-api/payments-openapi.ya
 The output folder contains:
 
 - `api-overview.md`: service overview with authentication, base URL, and versioning
-- `endpoints/`: one Markdown file per endpoint, structured and ready for SME review
+- `endpoints/`: one Markdown file per endpoint, as a draft for SME review
 
-The generator documents only what the spec says. If the spec leaves something out, such as a required header, the generated docs leave it out too. Review the spec as well as the output.
+The generator documents only what the spec says. If the spec leaves something out, such as a required header, the generated docs leave it out too. Where the spec has no description, the doc says `Needs SME input`; where it has no example, the example uses the placeholder `"value"`. The quality check flags both. Review the spec as well as the output.
 
 ### Validate Your Docs
 
@@ -233,17 +210,14 @@ For hand-authored docs:
 4. Check the result against the checklists in `validation/`.
 5. Commit the docs and review them through pull requests.
 
-## What This Repo Is
+## What It Does Not Do
 
-RepoDocs AI is a developer product for teams that want to stand up a serious documentation repository quickly.
-
-It is not just a folder of Markdown templates. It includes:
-
-- reusable templates for API, feature, governance, operations, product, and architecture docs
-- prompt packs for AI drafting and review
-- examples that show the system in practice
-- validation scripts for documentation quality and structure
-- an optional hosted control plane for automation
+- It does not check whether your spec is correct or complete. Generated docs are only as accurate as the spec.
+- It does not write descriptions the spec lacks. Those sections say `Needs SME input` until someone fills them in.
+- It does not document response fields as a table, or named error schemas. Response examples and error codes are generated; field-level response docs are written by hand.
+- It does not upload anything. `npm run export` writes files formatted for Confluence, Google Docs, Notion and print, which you import yourself.
+- It is not installed from npm. You clone it and run commands from inside the clone.
+- The hosted control plane, deployment manifests and site starters are experimental and not covered by the adopter tests.
 
 ## Evaluate RepoDocs AI
 
@@ -254,7 +228,7 @@ To adopt it into your own docs repository, use the [Quick Start](#quick-start). 
 1. Clone the repository.
 2. Run `npm install`.
 3. Run `npm run validate` to verify the template packs, prompts, examples, and docs structure.
-4. Run `npm run proof:path` to verify the end-to-end bootstrap, generation, validation, and export path.
+4. Run `npm run proof:path` to run bootstrap, generation, validation and export once on the bundled example.
 5. Open `docs/index.md` for the source documentation hub or `site/index.html` for the product walkthrough.
 
 Further reading for evaluators:
@@ -262,23 +236,8 @@ Further reading for evaluators:
 - `docs/installation.md` for the 5-minute install path
 - `docs/product-guide.md` for product positioning and fit
 - `docs/testing-strategy.md` for a practical app-testing stack to pair with RepoDocs AI
-- `docs/public-launch-checklist.md` for the final Pages and launch checks
-- `docs/community-feedback-discussion.md` for the pinned feedback discussion copy
-- `docs/design-partner-intake.md` for the design-partner intake questions
 - `docs/index.md` for the source docs hub
 - `site/installation.html` for the published quickstart page
-
-The repository currently implements the Phase 1 and Phase 2 foundation of the product, plus a baseline of Phase 3 automation:
-
-- product specification and scope definition
-- metadata and validation system
-- product documentation templates
-- API documentation templates
-- AI prompt packs for generation and review
-- example documentation sets
-- Phase 3 validation and publishing automation
-- OpenAPI-assisted document generation scaffold
-- static landing and docs site for product presentation
 
 ## Scope
 
@@ -314,7 +273,7 @@ For the optional hosted automation runtime:
 1. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY`.
 2. Run `npm run control-plane:stack:smoke`.
 3. Confirm the Redis-backed control plane and admin flow pass the smoke test.
-4. Treat the hosted control plane as an evaluation and internal automation surface, not an enterprise platform. Enterprise features such as external identity, tenancy isolation, audit logging, and broader operational controls are still roadmap items.
+4. Treat the hosted control plane as experimental: an evaluation and internal automation surface, not an enterprise platform. Enterprise features such as external identity, tenancy isolation, audit logging, and broader operational controls are still roadmap items.
 
 ## Repository Layout
 
@@ -400,32 +359,26 @@ Trust and contribution files at the repository root:
 
 ## Automation
 
-- frontmatter validation for templates and examples
-- repository structure validation
-- documentation quality validation for examples and generated output
-- schema-aware OpenAPI validation for endpoint examples
-- request-body validation against OpenAPI request schemas
-- version-compatibility validation for API docs and examples
-- deprecation and migration validation for versioned endpoint docs
-- Markdown linting
-- OpenAPI-to-Markdown generation script
+Core, covered by the adopter tests:
+
+- `npm run validate:docs`: frontmatter, structure and quality, OpenAPI example and API version checks for your docs
+- OpenAPI-to-Markdown generation, following `$ref` and `allOf`
+- a CI workflow written into every bootstrapped docs repository
+- validation of this repository itself (`npm run validate`) and Markdown linting
+- pull request validation and GitHub Pages workflows for this repository
+
+Available, with lighter testing:
+
 - automatic regeneration workflow for changed OpenAPI specs
-- runnable documentation-agent orchestration for OpenAPI sources
-- runnable analytics report generation for repository coverage and freshness
-- runnable knowledge-graph generation from frontmatter, dependencies, and endpoints
-- export pipelines for Confluence, Google Docs, Notion, and PDF-ready artifacts
-- small hosted control plane for running automation over HTTP
-- per-user API-key and bearer-token authentication for control-plane endpoints
-- Redis-backed durable queued execution so multiple automation requests can be accepted safely across restarts and workers
-- container packaging for hosted control-plane deployment
-- hosted deployment manifest for Render with persistent disk configuration
-- hosted deployment manifests for Fly.io and Azure Container Apps
-- pull request validation workflow
-- GitHub Pages deployment workflow
-- MkDocs starter integration
-- Docusaurus starter integration
-- GitBook starter integration
-- Next.js docs starter integration
+- documentation-agent orchestration, with optional live AI review through the Anthropic API
+- analytics reports for coverage and freshness, and a knowledge graph built from frontmatter and endpoints
+- export to files formatted for Confluence (storage-format HTML), Google Docs (HTML), Notion (Markdown) and print (HTML and a plain-text PDF)
+
+Experimental:
+
+- a small hosted control plane with per-user API keys and a Redis-backed job queue
+- container packaging and deployment manifests for Render, Fly.io and Azure Container Apps
+- MkDocs, Docusaurus, GitBook and Next.js starter integrations
 
 ## Product Surface
 
@@ -437,33 +390,6 @@ If you want the repository to feel like a clean developer product, use these ent
 - `prompts/README.md` for AI prompt packs
 - `examples/README.md` for working reference systems
 - `diagrams/README.md` for visual starters
-
-## Phase Status
-
-### Phase 1
-
-- product specification stored in `docs/`
-- repository structure established
-- metadata schema defined
-- validation and review guardrails added
-
-### Phase 2
-
-- product documentation template pack added
-- API documentation template pack added
-- prompt packs added for authoring and review
-- example documentation added
-
-### Phase 3
-
-- validation scripts added for frontmatter and repository structure
-- OpenAPI generation script and manual workflow added
-- schema-aware OpenAPI example validation added
-- request-body schema validation added
-- automatic regeneration workflow added for changed OpenAPI specs
-- GitHub Actions added for pull request checks
-- static landing and docs pages added under `site/`
-- GitHub Pages deployment workflow added
 
 ## Roadmap
 
@@ -488,7 +414,7 @@ RepoDocs AI includes a lightweight static UI in `site/` for GitHub Pages deploym
 - `npm run export:notion`
 
 See `docs/roadmap-spec-summary.md` for a direct map between the specification, roadmap, current phase coverage, and remaining gaps.
-For the published Pages version, open [sulagnasasmal.github.io/repodocs-ai/spec-summary.html](https://sulagnasasmal.github.io/repodocs-ai/spec-summary.html) (live once GitHub Pages is enabled in repository settings).
+The published version is at [sulagnasasmal.github.io/repodocs-ai/spec-summary.html](https://sulagnasasmal.github.io/repodocs-ai/spec-summary.html).
 See `docs/spec-scorecard.md` for a strict 17-section scorecard against the product specification in `docs/product-specification.md`.
 
 ## Feedback Loop
@@ -508,9 +434,9 @@ RepoDocs AI is designed for:
 - developer relations leads
 - technical writers in API-first SaaS teams
 
-## Advanced: Hosted Control Plane
+## Experimental: Hosted Control Plane
 
-The optional hosted control plane enables running automation over HTTP with Redis-backed durable queued execution. It is not required for using the template and prompt system.
+The optional, experimental hosted control plane runs automation over HTTP with Redis-backed durable queued execution. It is not required for using the template and prompt system.
 
 ### Control Plane Commands
 

@@ -4,6 +4,39 @@ This changelog tracks product-facing changes to RepoDocs AI.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-11-27
+
+This release makes validation work on your own docs and makes the README match what the tool does. The issues were found by following the README as a first-time user and as a fresh AI agent, using the public Swagger Petstore spec.
+
+### Added
+
+- `npm run validate:docs -- <docs> --specs <specs>` runs the frontmatter, structure and quality, OpenAPI example and API version checks on your docs, and reports PASS, WARN, FAIL or SKIP for each.
+- Bootstrapped docs repositories get a CI workflow (`.github/workflows/docs-validate.yml`) that runs those checks on every pull request.
+- Generated docs document header parameters, including `Idempotency-Key` in the payments example.
+- The quality check warns about placeholder example values left by the generator.
+- Dependabot updates for npm and GitHub Actions.
+- A "What It Does Not Do" section in the README.
+
+### Changed
+
+- Every check names the folder it checked. Spec checks without `--specs` report SKIP, never PASS.
+- The quality check lists what it checks instead of reporting "MERGE-SAFE and PUBLICATION-READY".
+- The OpenAPI and version checks count only the docs they actually compared.
+- Curl examples include credentials only when the spec defines security, using the scheme's real header.
+- Endpoint titles fall back to `operationId`; the overview uses the spec's `info.title`.
+- The bootstrapped CODEOWNERS contains commented example rules instead of this repository's owner.
+- README claims now match the code: exports write files and upload nothing, generated docs are drafts for SME review, and the control plane, deployment manifests and site starters are marked experimental.
+- `js-yaml` moved to runtime dependencies. Upgraded `vitest` to 5 and `markdownlint-cli` to 0.50; the test suite now needs Node.js 22 or later.
+
+### Fixed
+
+- `validate:quality` ignored the folder passed to it and validated this repository's examples instead.
+- The OpenAPI check skipped request and response schemas defined through `$ref`.
+- `allOf` schemas lost properties and required fields in generated examples.
+- A 204 response got an invented response body.
+- A missing spec file printed a stack trace, and Authorization headers could appear twice in curl examples.
+- 16 of 20 reported dependency vulnerabilities, including both critical ones. 4 low-severity advisories remain in a markdownlint dependency.
+
 ## [1.0.0] — 2026-03-13
 
 First stable release of RepoDocs AI.

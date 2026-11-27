@@ -187,6 +187,14 @@ async function main() {
       }
     }
 
+    // Generated placeholder values: the spec gave no example for these fields.
+    const placeholderValueCount = (content.match(/":\s*"value"/g) || []).length;
+    if (placeholderValueCount > 0) {
+      warnings.push(
+        `${relativePath}: ${placeholderValueCount} example value(s) are the placeholder "value". Add examples to the spec or edit the doc before publication`
+      );
+    }
+
     // Needs SME input tracking (warning — must be zero before publication)
     const smeCount = (content.match(/Needs SME input/g) || []).length;
     if (smeCount > 0) {
@@ -214,7 +222,7 @@ async function main() {
     process.exit(1);
   }
 
-  const checksRun = "placeholders, required sections, examples, status codes, SME labels";
+  const checksRun = "placeholders, required sections, examples, status codes, SME labels, placeholder example values";
   if (warnings.length > 0) {
     console.log(
       `\nStructure checks passed for ${markdownFiles.length} Markdown files in ${checkedLabel} (${checksRun}), ` +
