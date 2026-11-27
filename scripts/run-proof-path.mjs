@@ -65,7 +65,9 @@ async function main() {
 
   await runNodeScript("scripts/generate-openapi-docs.mjs", [
     path.relative(repoRoot, tempSpecPath).replace(/\\/g, "/"),
-    generatedOutput
+    generatedOutput,
+    "--owner",
+    "docs-platform"
   ]);
 
   await requirePath(path.join(generatedOutputPath, "api-overview.md"), "generated API overview");
