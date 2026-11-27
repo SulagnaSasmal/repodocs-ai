@@ -13,11 +13,11 @@ Install the `repodocs-ai` command, set up a docs repository, generate docs from 
 ## Install
 
 ```bash
-npm install -g github:SulagnaSasmal/repodocs-ai#v1.2.1
+npm install -g github:SulagnaSasmal/repodocs-ai#v1.2.2
 repodocs-ai --version
 ```
 
-To run a command once without installing, use `npx --yes github:SulagnaSasmal/repodocs-ai#v1.2.1 <command>`. Run `repodocs-ai help` for every command. Paths resolve from the folder you run the command in.
+To run a command once without installing, use `npx --yes github:SulagnaSasmal/repodocs-ai#v1.2.2 <command>`. Run `repodocs-ai help` for every command. Paths resolve from the folder you run the command in.
 
 ## Set Up a Docs Repository
 
@@ -51,7 +51,7 @@ repodocs-ai generate company-docs/openapi/my-api.yaml company-docs/generated --o
 repodocs-ai validate company-docs/generated --specs company-docs/openapi
 ```
 
-Each check reports PASS, WARN, FAIL or SKIP and names the folder it checked. The command exits with a non-zero code when a check fails. Add `company-docs/docs` once you have hand-written docs.
+Each check reports PASS, WARN, FAIL or SKIP and names the folder it checked. The command exits with a non-zero code when a check fails. A skipped check, for example because you left out `--specs`, does not fail the run unless you add `--strict`. Add `company-docs/docs` once you have hand-written docs.
 
 ## Write Docs by Hand
 

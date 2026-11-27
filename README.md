@@ -2,7 +2,7 @@
 
 [![Build](https://github.com/SulagnaSasmal/repodocs-ai/actions/workflows/validate.yml/badge.svg)](https://github.com/SulagnaSasmal/repodocs-ai/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.2.1-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.2.2-green.svg)](CHANGELOG.md)
 
 AI-prompt-powered docs-as-code documentation system for SaaS API teams.
 
@@ -122,10 +122,10 @@ Running `npm test`:
 
 ```text
  Test Files  10 passed (10)
-      Tests  212 passed (212)
+      Tests  240 passed (240)
 ```
 
-The tests include the full adopter path (`init`, `generate`, `validate`, and the CI step `init` writes), and the CLI installed from a packed tarball. They run against seven OpenAPI specs written by other people in `tests/fixtures/third-party/`. They check the generated docs against each spec, not only that the commands succeed. Before each release, a fresh AI agent also follows the README from scratch; the procedure and past reports are in `.github/release-checks/`.
+The tests include the full adopter path (`init`, `generate`, `validate`, and the CI step `init` writes), and the CLI installed from a packed tarball. They run against eight OpenAPI specs written by other people in `tests/fixtures/third-party/`. They check the generated docs against each spec, not only that the commands succeed. Before each release, a fresh AI agent also follows the README from scratch; the procedure and past reports are in `.github/release-checks/`.
 
 ## Quick Start
 
@@ -134,11 +134,11 @@ Install the `repodocs-ai` command, set up a docs repository, generate docs from 
 > Requires Node.js 20 or later. Check with `node --version`.
 
 ```bash
-npm install -g github:SulagnaSasmal/repodocs-ai#v1.2.1
+npm install -g github:SulagnaSasmal/repodocs-ai#v1.2.2
 repodocs-ai init company-docs
 ```
 
-Or run any command once without installing, with `npx --yes github:SulagnaSasmal/repodocs-ai#v1.2.1 <command>`. Paths resolve from the folder you run the command in. Run `repodocs-ai help` for every command.
+Or run any command once without installing, with `npx --yes github:SulagnaSasmal/repodocs-ai#v1.2.2 <command>`. Paths resolve from the folder you run the command in. Run `repodocs-ai help` for every command.
 
 `init` copies the templates, prompts, diagrams, schema and review checklists, and writes a CI workflow, a CODEOWNERS file to fill in, and a starter README. It does not run `git init` or create the GitHub repository for you. Add `--with-examples` to include the payments example set.
 
@@ -173,12 +173,12 @@ The command exits with a non-zero code when a check fails, so it can gate CI.
 
 Each check reports PASS, WARN, FAIL or SKIP and names the folder it checked:
 
-- **Frontmatter:** required fields and allowed values, from `schema/metadata-frontmatter.md`.
-- **Structure and quality:** leftover placeholders, required sections, examples, suspicious status codes (such as a POST returning 200), unresolved `Needs SME input` labels, placeholder example values, and unassigned owners.
-- **OpenAPI examples:** request and response example fields against the spec, including every shape of a `oneOf`, readOnly fields sent in requests and writeOnly fields shown in responses; parameter tables and their Required flags; request body Required flags; query parameters and their allowed values in the request example; and status codes in the Error Codes table.
+- **Frontmatter:** required fields, which must not be empty, allowed values, and a real `last_reviewed` date, from `schema/metadata-frontmatter.md`.
+- **Structure and quality:** leftover placeholders and template instructions (an error), required sections, examples, suspicious status codes (such as a POST returning 200), unresolved `Needs SME input` labels, placeholder example values, and owners that are `unassigned` or missing from `schema/owners-registry.md` (warnings).
+- **OpenAPI examples:** request and response JSON examples at every depth: unknown fields, values outside an enum, every shape of a `oneOf`, readOnly fields sent in requests and writeOnly fields shown in responses. Request Body table rows: each field exists, with the spec's type and allowed values. Parameter tables and every Required flag. Query parameters and their allowed values, and the server URL, in the request example. The authentication section against the spec's security. The success status and Error Codes against the spec's responses.
 - **API versions:** `api_version` in frontmatter against the spec's version.
 
-Without `--specs`, the last two checks report SKIP. A skipped check did not run; it never counts as a pass. Pass several folders to check them together, for example `company-docs/generated company-docs/docs`.
+Without `--specs`, the last two checks report SKIP. They also report SKIP when the folder has no endpoint docs to compare. A skipped check did not run; it never counts as a pass, and the summary says so. Add `--strict` to make a skipped check fail the run. Pass several folders to check them together, for example `company-docs/generated company-docs/docs`.
 
 `init` also writes `.github/workflows/docs-validate.yml` into your docs repository. Once you push to GitHub, it runs the same checks on every pull request and every push to `main`, against `generated/` and `docs/`, using the specs in `openapi/`. It uses the same RepoDocs AI version that created the repository, and it fails until there is at least one Markdown doc to check.
 
@@ -202,6 +202,7 @@ For hand-authored docs:
 - It does not write descriptions the spec lacks. Those sections say `Needs SME input` until someone fills them in.
 - It does not document response fields as a table. Response examples, error codes and an example error body are generated; field-level response docs are written by hand.
 - It does not check the types of example values against the schema, for example a string where the spec says integer.
+- It cannot tell whether prose is true. If someone replaces `Needs SME input` with an invented sentence, such as a made-up rate limit, the checks pass.
 - It does not upload anything. `npm run export` writes files formatted for Confluence, Google Docs, Notion and print, which you import yourself.
 - It is not published to the npm registry yet. Install it from GitHub, as shown in the Quick Start.
 - The hosted control plane, deployment manifests and site starters are experimental and not covered by the adopter tests.
