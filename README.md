@@ -10,8 +10,6 @@ RepoDocs AI gives engineering teams a reusable template library, structured AI p
 
 **[See it live →](https://sulagnasasmal.github.io/repodocs-ai/)**
 
-If the Pages link is not live yet, finish the last repository setting in `docs/public-launch-checklist.md`.
-
 ## Problem
 
 Most SaaS teams still document APIs with inconsistent structure, slow manual writing, and low-trust AI drafts that drift away from the source contract.
@@ -39,6 +37,7 @@ It includes:
 - `create-payment.md`
 - `error-handling.md`
 - `idempotency.md`
+- `list-payments.md`
 - `retrieve-payment.md`
 - `refund-payment.md`
 - `webhooks.md`
@@ -104,34 +103,31 @@ flowchart LR
 
 ## Validation in Practice
 
-Running `npm run validate` on this repository:
+Running `npm run validate` on this repository prints one line per check (file counts change as the repository grows):
 
 ```text
-$ npm run validate
-
-✓ validate:frontmatter   Validated frontmatter for 39 Markdown files.
-✓ validate:structure     Validated 108 required project files.
-✓ validate:quality       Validated documentation quality for 38 Markdown files. MERGE-SAFE and PUBLICATION-READY.
-✓ validate:openapi       Validated 17 Markdown files against OpenAPI examples.
-✓ validate:versions      Validated version compatibility for 24 Markdown files.
-✓ lint:markdown          0 linting errors.
+Validated frontmatter for 39 Markdown files.
+Validated 108 required project files.
+Checking: examples, generated
+Validated documentation quality for 24 Markdown files. MERGE-SAFE and PUBLICATION-READY.
+Validated 3 Markdown files against OpenAPI examples.
+Validated version compatibility for 10 Markdown files.
 ```
+
+The final step, `lint:markdown`, prints nothing when there are no linting errors.
 
 Running `npm test`:
 
 ```text
-$ npm test
-
- ✓ tests/validate-frontmatter.test.mjs    (18 tests)
- ✓ tests/agent-workflow.test.mjs          (30 tests)
- ✓ tests/validate-structure.test.mjs      (81 tests)
- ✓ tests/prompt-library.test.mjs          (31 tests)
- ✓ tests/example-docs.test.mjs            (25 tests)
- ✓ tests/generate-openapi-docs.test.mjs    (7 tests)
+ ✓ tests/agent-workflow.test.mjs (30 tests)
+ ✓ tests/validate-structure.test.mjs (81 tests)
+ ✓ tests/validate-frontmatter.test.mjs (18 tests)
+ ✓ tests/prompt-library.test.mjs (31 tests)
+ ✓ tests/example-docs.test.mjs (25 tests)
+ ✓ tests/generate-openapi-docs.test.mjs (11 tests)
 
  Test Files  6 passed (6)
-       Tests  192 passed (192)
-    Duration  3.03s
+      Tests  196 passed (196)
 ```
 
 ## Quick Start
@@ -181,27 +177,48 @@ npm run bootstrap:docs-repo -- ../company-docs --with-examples
 
 ### Generate Docs From Your OpenAPI Spec
 
-Once you have a bootstrapped repo and an OpenAPI spec, generate endpoint documentation in one command (run from inside the repodocs-ai clone):
+The bootstrap does not create a spec for you. Put your OpenAPI 3.x file in your docs repository first, for example at `../company-docs/openapi/my-api.yaml`.
+
+Then run the generator from inside the repodocs-ai clone. Both paths are resolved from the repodocs-ai folder:
 
 ```bash
 node scripts/generate-openapi-docs.mjs ../company-docs/openapi/my-api.yaml ../company-docs/generated/my-api
 ```
 
-This produces a `generated/my-api/` directory in your docs repo containing:
+No spec yet? Try the bundled payments example:
 
-- `api-overview.md` — service overview with authentication, base URL, and versioning
-- `endpoints/` — one Markdown file per endpoint, fully structured and ready for SME review
+```bash
+node scripts/generate-openapi-docs.mjs examples/payments-api/payments-openapi.yaml ../company-docs/generated/payments-api
+```
+
+The output folder contains:
+
+- `api-overview.md`: service overview with authentication, base URL, and versioning
+- `endpoints/`: one Markdown file per endpoint, structured and ready for SME review
+
+The generator documents only what the spec says. If the spec leaves something out, such as a required header, the generated docs leave it out too. Review the spec as well as the output.
+
+### Validate Your Generated Docs
+
+Pass the output folder to the quality check:
+
+```bash
+npm run validate:quality -- ../company-docs/generated/my-api
+```
+
+The first line of output names the folder that was checked. Without a path, the command checks this repository's own `examples/` and `generated/` folders, not your docs.
 
 Then open `prompts/review/documentation-review.md` with an AI tool to review each generated doc against the source spec before merging.
 
 ### Manual Documentation
 
-For hand-authored endpoint docs, start with:
+For hand-authored docs:
 
-1. `templates/api/` for API documentation
-2. `templates/features/` for feature documentation
-3. `templates/governance/` for review and quality guardrails
-4. `prompts/` for AI-assisted drafting and review
+1. Start from a template: `templates/api/` for API docs, `templates/features/` for feature docs, or `templates/governance/` for review guardrails.
+2. Add the required frontmatter from `schema/metadata-frontmatter.md`.
+3. Use a matching prompt from `prompts/` to draft and review content with an AI assistant.
+4. Check the result against the checklists in `validation/`.
+5. Commit the docs and review them through pull requests.
 
 ## What This Repo Is
 
@@ -215,27 +232,19 @@ It is not just a folder of Markdown templates. It includes:
 - validation scripts for documentation quality and structure
 - an optional hosted control plane for automation
 
-## How To Use It
+## Evaluate RepoDocs AI
 
-Use RepoDocs AI as the starting kit for your own documentation repository.
+RepoDocs AI is cloned and used directly, not installed from npm. The `"private": true` flag in `package.json` prevents accidental publishing.
 
-The shortest path is:
+To adopt it into your own docs repository, use the [Quick Start](#quick-start). To evaluate the product itself:
 
-1. Create a docs repository for your company or product.
-2. Copy the RepoDocs AI template packs into that repository.
-3. Use the prompts to draft and review content.
-4. Start documenting your APIs and features.
-5. Run validation before publishing.
+1. Clone the repository.
+2. Run `npm install`.
+3. Run `npm run validate` to verify the template packs, prompts, examples, and docs structure.
+4. Run `npm run proof:path` to verify the end-to-end bootstrap, generation, validation, and export path.
+5. Open `docs/index.md` for the source documentation hub or `site/index.html` for the product walkthrough.
 
-## How To Install It
-
-RepoDocs AI is designed to be cloned and used directly — not installed from npm. The `"private": true` flag in `package.json` reflects this: it prevents accidental publishing and keeps the focus on the repository as the install surface.
-
-If you want to evaluate RepoDocs AI itself, clone this repository, install dependencies, and run the validation suite.
-
-If you want to adopt RepoDocs AI into your own docs repository, use the Quick Start below.
-
-Start here if you are evaluating the product:
+Further reading for evaluators:
 
 - `docs/installation.md` for the 5-minute install path
 - `docs/product-guide.md` for product positioning and fit
@@ -267,18 +276,7 @@ Version 1 focuses on:
 - documentation governance
 - Markdown-first repository workflows
 
-## Install RepoDocs AI
-
-The repository should be installable in under 5 minutes for a developer evaluating the system.
-
-1. Clone the repository.
-2. Run `npm install`.
-3. Run `npm run validate` to verify the template packs, prompts, examples, and docs structure.
-4. Run `npm run proof:path` to verify the end-to-end bootstrap, generation, validation, and export path.
-5. Open `docs/index.md` for the source documentation hub or `site/index.html` for the published product walkthrough.
-6. Use the Quick Start section above if your goal is to create your own documentation repository from these assets.
-
-### Live AI Review
+## Live AI Review
 
 If you want to exercise the optional live AI review path rather than prompt-only generation, install dependencies, set an Anthropic API key, and run the documentation agent:
 
@@ -416,14 +414,6 @@ Trust and contribution files at the repository root:
 - GitBook starter integration
 - Next.js docs starter integration
 
-## How To Use
-
-1. Start from a template in `templates/`.
-2. Add required frontmatter from `schema/metadata-frontmatter.md`.
-3. Use a matching prompt from `prompts/` to draft content with an AI assistant.
-4. Validate the result against the checklists in `validation/`.
-5. Commit the documentation into the product repository and review it through pull requests.
-
 ## Product Surface
 
 If you want the repository to feel like a clean developer product, use these entry points first:
@@ -462,19 +452,17 @@ If you want the repository to feel like a clean developer product, use these ent
 - static landing and docs pages added under `site/`
 - GitHub Pages deployment workflow added
 
-## Initial Roadmap
+## Roadmap
 
-- add more template packs for operations and architecture
-- add OpenAPI-to-template generation workflows
-- expand quality checks to cover example payload validation
+See `ROADMAP.md` for planned work.
 
-The repository now includes starter packs for both MkDocs and Docusaurus, plus an end-to-end sample under `examples/complete-system/`.
+The repository includes starter packs for both MkDocs and Docusaurus, plus an end-to-end sample under `examples/complete-system/`.
 
 The repository also includes GitBook and Next.js starter packs, GitLab and Bitbucket support assets, pricing and bundle manifests, and runnable repository automation for documentation agents, knowledge graph indexing, and analytics.
 
 ## UI
 
-Yes. RepoDocs AI already includes a lightweight static UI in `site/` for GitHub Pages deployment. It covers the landing page, roadmap, automation summary, and complete-system walkthrough.
+RepoDocs AI includes a lightweight static UI in `site/` for GitHub Pages deployment. It covers the landing page, roadmap, automation summary, and complete-system walkthrough.
 
 ## Automation Commands
 
@@ -488,7 +476,7 @@ Yes. RepoDocs AI already includes a lightweight static UI in `site/` for GitHub 
 
 See `docs/roadmap-spec-summary.md` for a direct map between the specification, roadmap, current phase coverage, and remaining gaps.
 For the published Pages version, open [sulagnasasmal.github.io/repodocs-ai/spec-summary.html](https://sulagnasasmal.github.io/repodocs-ai/spec-summary.html) (live once GitHub Pages is enabled in repository settings).
-See `docs/spec-scorecard.md` for a strict 17-section scorecard against the attached specification.
+See `docs/spec-scorecard.md` for a strict 17-section scorecard against the product specification in `docs/product-specification.md`.
 
 ## Feedback Loop
 
