@@ -48,7 +48,7 @@ describe("generate-openapi-docs", () => {
   });
 
   it("includes query parameter constraints from the OpenAPI schema", () => {
-    expect(getPayments).toContain("Allowed values: pending, completed, failed, refunded");
+    expect(getPayments).toContain("Allowed values: `pending`, `completed`, `failed`, `refunded`");
     expect(getPayments).toContain("Format: date");
     expect(getPayments).toContain("Minimum: 1");
     expect(getPayments).toContain("Maximum: 100");
