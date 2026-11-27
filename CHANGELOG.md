@@ -27,6 +27,8 @@ This release makes validation work on your own docs and makes the README match w
 - The bootstrapped CODEOWNERS contains commented example rules instead of this repository's owner.
 - README claims now match the code: exports write files and upload nothing, generated docs are drafts for SME review, and the control plane, deployment manifests and site starters are marked experimental.
 - `js-yaml` moved to runtime dependencies. Upgraded `vitest` to 5 and `markdownlint-cli` to 0.50; the test suite now needs Node.js 22 or later.
+- Experimental parts moved to `experimental/`: control plane deployment files, site starters, and GitLab and Bitbucket CI. See `experimental/README.md`.
+- Moved the old static site, demo video assets, pricing notes and internal planning docs to `archive/`, out of the published site.
 
 ### Fixed
 
