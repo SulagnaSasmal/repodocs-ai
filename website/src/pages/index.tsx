@@ -56,7 +56,7 @@ const comparisonRows: ComparisonRow[] = [
   },
   {
     generic: "No publishable output",
-    repodocs: "Export pipelines for Confluence, Google Docs, Notion, and PDF — plus GitHub Pages out of the box"
+    repodocs: "Exports formatted for Confluence, Google Docs, Notion, and print, plus GitHub Pages out of the box"
   },
   {
     generic: "No proof of output quality",

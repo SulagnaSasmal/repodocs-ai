@@ -401,7 +401,7 @@ The repository also includes GitBook and Next.js starter packs, GitLab and Bitbu
 
 ## UI
 
-RepoDocs AI includes a lightweight static UI in `site/` for GitHub Pages deployment. It covers the landing page, roadmap, automation summary, and complete-system walkthrough.
+The published site at [sulagnasasmal.github.io/repodocs-ai](https://sulagnasasmal.github.io/repodocs-ai/) is built with Docusaurus from `website/`, and its docs pages come from `docs/`. The static pages in `site/` are an older version of the site and are not deployed.
 
 ## Automation Commands
 
