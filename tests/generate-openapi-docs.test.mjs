@@ -71,3 +71,57 @@ describe("generate-openapi-docs", () => {
     expect(postPayments).toContain("Authentication is required. Use HTTP Bearer token (JWT).");
   });
 });
+describe("generate-openapi-docs header parameters and errors", () => {
+  it("documents header parameters and adds them to the curl example", async () => {
+    const outputDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "repodocs-openapi-headers-"));
+    await execFileAsync(process.execPath, [
+      path.join(repoRoot, "scripts", "generate-openapi-docs.mjs"),
+      "examples/payments-api/payments-openapi.yaml",
+      outputDirectory
+    ], { cwd: repoRoot });
+
+    const createPayment = await fs.readFile(path.join(outputDirectory, "endpoints", "post-payments.md"), "utf8");
+    expect(createPayment).toContain("## Header Parameters");
+    expect(createPayment).toContain("| Idempotency-Key | string | yes |");
+    expect(createPayment).toContain('-H "Idempotency-Key: checkout-7f3a9c2e"');
+
+    const retrievePayment = await fs.readFile(path.join(outputDirectory, "endpoints", "get-payments-id.md"), "utf8");
+    expect(retrievePayment).not.toContain("## Header Parameters");
+  });
+
+  it("explains a missing spec file instead of printing a stack trace", async () => {
+    await expect(
+      execFileAsync(process.execPath, [
+        path.join(repoRoot, "scripts", "generate-openapi-docs.mjs"),
+        "does-not-exist/openapi.yaml"
+      ], { cwd: repoRoot })
+    ).rejects.toMatchObject({ stderr: expect.stringContaining("OpenAPI spec not found") });
+  });
+});
+
+describe("validate-doc-quality target paths", () => {
+  it("validates only the folder passed on the command line", async () => {
+    const docsDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "repodocs-quality-target-"));
+    await execFileAsync(process.execPath, [
+      path.join(repoRoot, "scripts", "generate-openapi-docs.mjs"),
+      "examples/payments-api/payments-openapi.yaml",
+      docsDirectory
+    ], { cwd: repoRoot });
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      path.join(repoRoot, "scripts", "validate-doc-quality.mjs"),
+      docsDirectory
+    ], { cwd: repoRoot, env: { ...process.env, INIT_CWD: repoRoot } });
+
+    expect(stdout).toContain("Validated documentation quality for 4 Markdown files.");
+  });
+
+  it("fails when the folder passed on the command line does not exist", async () => {
+    await expect(
+      execFileAsync(process.execPath, [
+        path.join(repoRoot, "scripts", "validate-doc-quality.mjs"),
+        path.join(os.tmpdir(), "repodocs-missing-folder")
+      ], { cwd: repoRoot })
+    ).rejects.toMatchObject({ stderr: expect.stringContaining("Path not found") });
+  });
+});
