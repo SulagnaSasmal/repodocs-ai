@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertPathsExist, displayPath, exitWithTargetError, parseTargets } from "./lib/cli-targets.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -80,30 +81,22 @@ function extractLines(content) {
 
 async function main() {
   const markdownFiles = [];
-  const requestedPaths = process.argv.slice(2).filter((arg) => !arg.startsWith("--"));
-  // npm run changes the working directory to the package root; INIT_CWD keeps
-  // the directory the user actually ran the command from. Only trust it when
-  // this script was started by its own npm script, so a direct node call
-  // inside some other npm script still resolves from its own working directory.
-  const startedByOwnNpmScript = process.env.npm_lifecycle_event === "validate:quality";
-  const baseDirectory = (startedByOwnNpmScript && process.env.INIT_CWD) || process.cwd();
+  let targets;
+  try {
+    targets = parseTargets();
+    await assertPathsExist(targets.docPaths, "Docs path");
+  } catch (error) {
+    exitWithTargetError(error);
+  }
 
-  // With path arguments, validate exactly those paths (relative to the current
-  // working directory). Without arguments, validate this repository's own
-  // examples/ and generated/ folders.
-  const directoriesToCheck =
-    requestedPaths.length > 0
-      ? requestedPaths.map((requested) => path.resolve(baseDirectory, requested))
-      : targetDirectories.map((relativeDirectory) => path.join(repoRoot, relativeDirectory));
+  // With path arguments, validate exactly those paths. Without arguments,
+  // validate this repository's own examples/ and generated/ folders.
+  const directoriesToCheck = targets.userMode
+    ? targets.docPaths
+    : targetDirectories.map((relativeDirectory) => path.join(repoRoot, relativeDirectory));
 
   for (const directory of directoriesToCheck) {
     if (!(await directoryExists(directory))) {
-      if (requestedPaths.length > 0) {
-        console.error(`Path not found: ${directory}`);
-        console.error("Pass a folder of generated Markdown docs, for example:");
-        console.error("  npm run validate:quality -- ../company-docs/generated/my-api");
-        process.exit(1);
-      }
       continue;
     }
 
@@ -118,10 +111,8 @@ async function main() {
     markdownFiles.push(...(await collectMarkdownFiles(directory)));
   }
 
-  const displayRoot = requestedPaths.length > 0 ? baseDirectory : repoRoot;
-  const checkedLabel = directoriesToCheck
-    .map((directory) => path.relative(displayRoot, directory).replace(/\\/g, "/") || ".")
-    .join(", ");
+  const displayRoot = targets.userMode ? targets.baseDirectory : repoRoot;
+  const checkedLabel = directoriesToCheck.map((directory) => displayPath(directory, displayRoot)).join(", ");
 
   if (markdownFiles.length === 0) {
     console.error(`No Markdown files found in ${checkedLabel}. Nothing was checked, so no result is reported.`);
@@ -133,7 +124,7 @@ async function main() {
 
   for (const filePath of markdownFiles) {
     const content = await fs.readFile(filePath, "utf8");
-    const relativePath = path.relative(displayRoot, filePath).replace(/\\/g, "/");
+    const relativePath = displayPath(filePath, displayRoot);
     const lines = extractLines(content);
 
     // Placeholder patterns
@@ -223,15 +214,16 @@ async function main() {
     process.exit(1);
   }
 
+  const checksRun = "placeholders, required sections, examples, status codes, SME labels";
   if (warnings.length > 0) {
     console.log(
-      `\nQuality check: ${markdownFiles.length} files in ${checkedLabel} — MERGE-SAFE (0 errors), ` +
-      `NOT PUBLICATION-READY (${warnings.length} warning(s) above must be resolved before publishing).`
+      `\nStructure checks passed for ${markdownFiles.length} Markdown files in ${checkedLabel} (${checksRun}), ` +
+      `with ${warnings.length} warning(s) above to resolve before publishing. Accuracy against the OpenAPI spec is checked separately.`
     );
   } else {
     console.log(
-      `Validated documentation quality for ${markdownFiles.length} Markdown files in ${checkedLabel}. ` +
-      `MERGE-SAFE and PUBLICATION-READY.`
+      `Structure checks passed for ${markdownFiles.length} Markdown files in ${checkedLabel} (${checksRun}). ` +
+      `Accuracy against the OpenAPI spec is checked separately.`
     );
   }
 }

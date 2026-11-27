@@ -82,8 +82,31 @@ function resolveReference(spec, value) {
   return current || value;
 }
 
-function resolveSchema(spec, schema) {
-  return resolveReference(spec, schema);
+function resolveSchema(spec, schema, depth = 0) {
+  const resolved = resolveReference(spec, schema);
+  if (!resolved || depth > 10 || !Array.isArray(resolved.allOf) || resolved.allOf.length === 0) {
+    return resolved;
+  }
+
+  // Flatten allOf so properties and required fields from every part are kept.
+  const merged = { ...resolved, properties: { ...(resolved.properties || {}) }, required: [...(resolved.required || [])] };
+  delete merged.allOf;
+  for (const part of resolved.allOf) {
+    const candidate = resolveSchema(spec, part, depth + 1) || {};
+    Object.assign(merged.properties, candidate.properties || {});
+    merged.required.push(...(candidate.required || []));
+    if (!merged.type && candidate.type) {
+      merged.type = candidate.type;
+    }
+    if (!merged.description && candidate.description) {
+      merged.description = candidate.description;
+    }
+  }
+  merged.required = [...new Set(merged.required)];
+  if (!merged.type && Object.keys(merged.properties).length > 0) {
+    merged.type = "object";
+  }
+  return merged;
 }
 
 function jsonExampleLiteral(value) {
@@ -299,8 +322,56 @@ function buildOverviewAuthentication(spec) {
   const securityRequirements = Array.isArray(spec.security) && spec.security.length > 0
     ? spec.security
     : Object.keys(spec.components?.securitySchemes || {}).map((schemeName) => ({ [schemeName]: [] }));
+  if (securityRequirements.length === 0) {
+    return "No authentication requirements are defined in the OpenAPI specification.";
+  }
   const summaries = summarizeSecuritySchemes(spec, securityRequirements);
   return summaries.length > 0 ? summaries.join(". ") : "Needs SME input";
+}
+
+// The credential arguments a curl example needs, based on the spec's security
+// requirements. No requirements means no credentials are added.
+function buildCredentialArgs(spec, operation) {
+  const securityRequirements = Array.isArray(operation.security)
+    ? operation.security
+    : (Array.isArray(spec.security) ? spec.security : []);
+  const firstRequirement = securityRequirements.find((requirement) => requirement && Object.keys(requirement).length > 0);
+  if (!firstRequirement) {
+    return [];
+  }
+
+  const schemes = spec.components?.securitySchemes || {};
+  const args = [];
+  for (const schemeName of Object.keys(firstRequirement)) {
+    const scheme = resolveReference(spec, schemes[schemeName]);
+    if (!scheme) {
+      continue;
+    }
+    if (scheme.type === "http" && String(scheme.scheme).toLowerCase() === "basic") {
+      args.push('-u "<username>:<password>"');
+    } else if (scheme.type === "apiKey" && scheme.in === "header" && scheme.name) {
+      args.push(`-H "${scheme.name}: <api-key>"`);
+    } else if (scheme.type === "apiKey" && scheme.in === "cookie" && scheme.name) {
+      args.push(`--cookie "${scheme.name}=<api-key>"`);
+    } else if (scheme.type === "http" || scheme.type === "oauth2" || scheme.type === "openIdConnect") {
+      args.push('-H "Authorization: Bearer <token>"');
+    }
+  }
+  return args;
+}
+
+function humanizeOperationId(operationId) {
+  const value = normalizeText(operationId);
+  if (!value) {
+    return "";
+  }
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function extractParameters(spec, operation, pathItem) {
@@ -358,13 +429,13 @@ function buildSplitParameterSections(spec, parameters) {
   return { pathSection, querySection, headerSection, headerParams };
 }
 
-function buildRequestBodyIntro(operation) {
+function buildRequestBodyIntro(spec, operation) {
   const schema = operation.requestBody?.content?.["application/json"]?.schema;
   if (!schema) {
     return "";
   }
 
-  const resolvedSchema = schema;
+  const resolvedSchema = resolveSchema(spec, schema);
   const hasRequiredList = Array.isArray(resolvedSchema?.required) && resolvedSchema.required.length > 0;
 
   return operation.requestBody?.required
@@ -411,6 +482,9 @@ function buildResponseExample(spec, operation) {
   const [statusCode, response] = successResponse;
   const schema = resolveSchema(spec, response.content?.["application/json"]?.schema);
   if (!schema) {
+    if (statusCode === "204" || !response.content) {
+      return null;
+    }
     return JSON.stringify({ status: statusCode, note: "Needs SME input" }, null, 2);
   }
 
@@ -518,7 +592,7 @@ function buildApiOverview(spec, serviceName, owner) {
   const securityImpact = pickAllowedValue(normalizeText(spec.info?.["x-security-impact"]), new Set(["low", "medium", "high"]), "medium");
 
   const frontmatter = stringifyYamlLines({
-    title: `${serviceName} API Overview`,
+    title: `${normalizeText(spec.info?.title, serviceName)} API Overview`,
     description: `Generated API overview for ${serviceName}`,
     service: serviceName,
     component: "api",
@@ -571,7 +645,7 @@ ${formatOverviewValue(spec.info?.["x-example-use-case"])}
 }
 
 function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, method, operation, pathItem) {
-  const summary = normalizeText(operation.summary, titleCaseFromSlug(toSlug(`${method}-${route}`)));
+  const summary = normalizeText(operation.summary, humanizeOperationId(operation.operationId) || titleCaseFromSlug(toSlug(`${method}-${route}`)));
   const parameters = extractParameters(spec, operation, pathItem);
   const endpointSlug = toSlug(`${method}-${route}`);
   const isDeprecated = operation.deprecated === true;
@@ -602,32 +676,45 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
   });
 
   const { pathSection, querySection, headerSection, headerParams } = buildSplitParameterSections(spec, parameters);
-  // Authorization and Content-Type are already written into every example.
-  const headersWrittenByDefault = new Set(["authorization", "content-type"]);
-  const headerLines = headerParams
+  // Skip a header parameter only when the credentials or the request body
+  // already write that header, so it never appears twice.
+  const credentialArgs = buildCredentialArgs(spec, operation);
+  const headersWrittenByDefault = new Set();
+  if (credentialArgs.some((arg) => arg.startsWith('-H "Authorization:'))) {
+    headersWrittenByDefault.add("authorization");
+  }
+  if (operation.requestBody?.content?.["application/json"]?.schema) {
+    headersWrittenByDefault.add("content-type");
+  }
+  const headerArgs = headerParams
     .filter((parameter) => !headersWrittenByDefault.has(parameter.name.toLowerCase()))
     .map((parameter) => {
       const example = buildParameterExampleValue(spec, operation, parameter);
       const value = example === "value" ? `<${parameter.name}>` : String(example);
-      return `  -H "${parameter.name}: ${value.replace(/(["\\$`])/g, "\\$1")}" \\`;
-    })
-    .join("\n");
-  const headerExample = headerLines ? `${headerLines}\n` : "";
-  const requestBodyIntro = buildRequestBodyIntro(operation);
+      return `-H "${parameter.name}: ${value.replace(/(["\\$`])/g, "\\$1")}"`;
+    });
+  const requestBodyIntro = buildRequestBodyIntro(spec, operation);
   const requestBodyExample = buildRequestBodyExample(spec, operation);
   const requestBodyRows = buildRequestBodyRows(spec, operation);
   const requestBodySection = requestBodyRows === "| None | n/a | no | No request body |"
     ? "Not applicable."
     : `${requestBodyIntro ? `${requestBodyIntro}\n\n` : ""}| Field | Type | Required | Description |\n| --- | --- | --- | --- |\n${requestBodyRows}`;
   const exampleUrl = buildExampleUrl(spec, route, operation, pathItem);
-  const requestExample = requestBodyExample
-    ? `curl -X ${method.toUpperCase()} "${exampleUrl}" \\
-  -H "Authorization: Bearer <token>" \\
-${headerExample}  -H "Content-Type: application/json" \\
-  -d '${JSON.stringify(JSON.parse(requestBodyExample))}'`
-    : `curl -X ${method.toUpperCase()} "${exampleUrl}" \\
-  -H "Authorization: Bearer <token>"${headerLines ? ` \\\n${headerLines.replace(/ \\$/, "")}` : ""}`;
+  const curlArgs = [
+    `curl -X ${method.toUpperCase()} "${exampleUrl}"`,
+    ...credentialArgs,
+    ...headerArgs,
+    ...(requestBodyExample
+      ? ['-H "Content-Type: application/json"', `-d '${JSON.stringify(JSON.parse(requestBodyExample))}'`]
+      : [])
+  ];
+  const requestExample = curlArgs.join(" \\\n  ");
   const authText = buildAuthenticationText(spec, operation);
+  const responseExample = buildResponseExample(spec, operation);
+  const successCode = Object.keys(operation.responses || {}).find((code) => code.startsWith("2"));
+  const responseExampleSection = responseExample === null
+    ? `This operation returns \u0000${successCode}\u0000 with no response body.`
+    : `\u0000\u0000\u0000json\n${responseExample}\n\u0000\u0000\u0000`;
   const purpose = normalizeText(operation.description, summary);
   const lifecycleSection = isDeprecated
     ? `
@@ -680,9 +767,7 @@ ${requestExample}
 
 ## Response Example
 
-   json
-${buildResponseExample(spec, operation)}
-   
+${responseExampleSection}
 
 ## Error Codes
 

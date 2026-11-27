@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
+import { assertPathsExist, displayPath, exitWithTargetError, parseTargets } from "./lib/cli-targets.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,10 +50,37 @@ function extractFrontmatter(content) {
 }
 
 async function main() {
+  let targets;
+  try {
+    targets = parseTargets();
+    await assertPathsExist(targets.docPaths, "Docs path");
+  } catch (error) {
+    exitWithTargetError(error);
+  }
+
+  const directoriesToCheck = targets.userMode
+    ? targets.docPaths
+    : targetDirectories.map((directory) => path.join(repoRoot, directory));
+  const displayRoot = targets.userMode ? targets.baseDirectory : repoRoot;
+  const checkedLabel = directoriesToCheck.map((directory) => displayPath(directory, displayRoot)).join(", ");
+
   const markdownFiles = [];
-  for (const directory of targetDirectories) {
-    const fullDirectory = path.join(repoRoot, directory);
-    markdownFiles.push(...(await collectMarkdownFiles(fullDirectory)));
+  for (const fullDirectory of directoriesToCheck) {
+    const stats = await fs.stat(fullDirectory).catch(() => null);
+    if (stats?.isFile()) {
+      if (fullDirectory.endsWith(".md")) {
+        markdownFiles.push(fullDirectory);
+      }
+      continue;
+    }
+    if (stats) {
+      markdownFiles.push(...(await collectMarkdownFiles(fullDirectory)));
+    }
+  }
+
+  if (markdownFiles.length === 0) {
+    console.error(`No Markdown files found in ${checkedLabel}. Nothing was checked, so no result is reported.`);
+    process.exit(1);
   }
 
   const errors = [];
@@ -60,7 +88,7 @@ async function main() {
   for (const filePath of markdownFiles) {
     const content = await fs.readFile(filePath, "utf8");
     const frontmatter = extractFrontmatter(content);
-    const relativePath = path.relative(repoRoot, filePath).replace(/\\/g, "/");
+    const relativePath = displayPath(filePath, displayRoot);
 
     if (!frontmatter) {
       errors.push(`${relativePath}: missing YAML frontmatter`);
@@ -130,7 +158,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`Validated frontmatter for ${markdownFiles.length} Markdown files.`);
+  console.log(`Validated frontmatter for ${markdownFiles.length} Markdown files in ${checkedLabel}.`);
 }
 
 main().catch((error) => {
