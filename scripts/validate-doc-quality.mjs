@@ -276,6 +276,23 @@ async function main() {
       }
     }
 
+    // HTML that runs script on a docs site that renders raw HTML. Code blocks
+    // and code spans are left out, since they are shown as text.
+    const prose = content
+      .replace(/^---\n[\s\S]*?\n---\n/, "")
+      .replace(/^```[^\n]*\n[\s\S]*?^```[ \t]*$/gm, "")
+      .replace(/`+[^`\n]*?`+/g, "");
+    const unsafeHtml = [
+      [/<script\b/i, "<script>"],
+      [/<iframe\b/i, "<iframe>"],
+      [/<[a-z][^>\n]*\son[a-z]+\s*=/i, "an inline event handler (on...=)"],
+      [/\]\(\s*(?:javascript|vbscript|data):/i, "a javascript:, vbscript: or data: link"],
+      [/<a\b[^>\n]*href\s*=\s*["']?\s*(?:javascript|vbscript|data):/i, "a javascript:, vbscript: or data: link"]
+    ].filter(([pattern]) => pattern.test(prose)).map(([, label]) => label);
+    if (unsafeHtml.length > 0) {
+      errors.push(`${relativePath}: unsafe HTML that would run script on a docs site: ${[...new Set(unsafeHtml)].join(", ")}`);
+    }
+
     // A {name} placeholder in the example URL: the spec gave no example value.
     const curlUrl = content.match(/curl -X \w+ "([^"]+)"/)?.[1] || "";
     const urlPlaceholders = [...curlUrl.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]);

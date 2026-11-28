@@ -271,7 +271,9 @@ function splitRow(line) {
     .split(/(?<!\\)\|/)
     .slice(1, -1)
     .map((cell) => cell.trim())
-    .map((cell, index) => (index < 3 ? cell.replace(/^`([^`]*)`$/, "$1") : cell));
+    .map((cell, index) => (index < 3 ? cell.replace(/^`([^`]*)`$/, "$1") : cell))
+    // Generated docs escape "<" outside code (array&lt;string&gt;); compare the text.
+    .map((cell) => cell.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&"));
 }
 
 // Rows of a Markdown table under a "## <heading>" section: [first cell, third cell].

@@ -15,6 +15,34 @@ function normalizeText(value, fallback = "") {
   return value.trim();
 }
 
+// Text from a spec is not trusted: a description can carry <script>, event
+// handlers or javascript: links, and a docs site that renders raw HTML
+// (MkDocs, Jekyll, Hugo with unsafe HTML on) would run them. Outside code
+// blocks and code spans, every "<" is written as "&lt;" (which also keeps
+// types such as array<string> visible) and links to script URLs are dropped.
+// The frontmatter is left alone: its values are already quoted strings.
+function escapeUntrustedHtml(markdown) {
+  const frontmatter = markdown.match(/^---\n[\s\S]*?\n---\n/)?.[0] || "";
+  const body = markdown.slice(frontmatter.length);
+  const segments = body.split(/(^```[^\n]*\n[\s\S]*?^```[ \t]*$)/m);
+  const escaped = segments.map((segment, index) => {
+    if (index % 2 === 1) {
+      return segment; // fenced code block
+    }
+    return segment
+      .split(/(`+[^`\n]*?`+)/)
+      .map((part, partIndex) =>
+        partIndex % 2 === 1
+          ? part // inline code span
+          : part
+              .replace(/</g, "&lt;")
+              .replace(/\]\(\s*(?:javascript|vbscript|data):(?:[^()]|\([^()]*\))*\)/gi, "](#unsafe-link-removed)")
+      )
+      .join("");
+  });
+  return frontmatter + escaped.join("");
+}
+
 function toSlug(value) {
   return value
     .toLowerCase()
@@ -1168,7 +1196,7 @@ async function main() {
   await ensureDirectory(endpointsDirectory);
 
   const apiOverview = buildApiOverview(spec, serviceName, owner);
-  await fs.writeFile(path.join(outputDirectory, "api-overview.md"), apiOverview, "utf8");
+  await fs.writeFile(path.join(outputDirectory, "api-overview.md"), escapeUntrustedHtml(apiOverview), "utf8");
 
   const supportedMethods = ["get", "post", "put", "patch", "delete"];
   for (const [route, pathItem] of Object.entries(spec.paths || {})) {
@@ -1188,7 +1216,7 @@ async function main() {
         pathItem
       );
 
-      await fs.writeFile(path.join(endpointsDirectory, `${endpointSlug}.md`), content, "utf8");
+      await fs.writeFile(path.join(endpointsDirectory, `${endpointSlug}.md`), escapeUntrustedHtml(content), "utf8");
     }
   }
 
