@@ -347,6 +347,20 @@ function mediaExample(spec, media, mode = "any") {
 }
 
 // The first server URL, with server variables replaced by their defaults.
+// Servers after the first, with their variables filled in, for the overview.
+function otherServers(spec) {
+  const servers = (spec.servers || []).slice(1).map((server) => ({
+    url: normalizeText(server?.url).replace(/\{([^}]+)\}/g, (match, name) => {
+      const value = server.variables?.[name]?.default ?? server.variables?.[name]?.enum?.[0];
+      return value !== undefined ? String(value) : match;
+    }),
+    description: oneLine(normalizeText(server?.description))
+  })).filter((server) => server.url);
+  return servers.length === 0
+    ? ""
+    : `\n\nOther servers in the spec:\n\n${servers.map((server) => `- ${codeSpan(server.url)}${server.description ? `: ${server.description}` : ""}`).join("\n")}`;
+}
+
 function serverUrl(spec, fallback) {
   const server = spec.servers?.[0];
   const url = normalizeText(server?.url);
@@ -364,13 +378,24 @@ function jsonExampleLiteral(value) {
   return typeof value === "string" ? `\`${value}\`` : `\`${JSON.stringify(value)}\``;
 }
 
+// A type label inside a table: array<string> goes in a code span so it reads
+// the same in the Markdown source as on the page.
+function typeCell(spec, schema) {
+  const label = schemaTypeLabel(spec, schema);
+  return label.includes("<") && !label.includes("|") ? codeSpan(label) : label;
+}
+
 function schemaTypeLabel(spec, schema) {
   const resolved = resolveSchema(spec, schema);
   if (!resolved) {
     return "string";
   }
 
-  if (resolved.type === "array") {
+  // OpenAPI 3.1 type arrays: the non-null type; "Nullable" is a separate note.
+  const types = [].concat(resolved.type || []);
+  const type = types.length > 1 ? (types.find((candidate) => candidate !== "null") || "null") : types[0];
+
+  if (type === "array") {
     return `array<${schemaTypeLabel(spec, resolved.items)}>`;
   }
 
@@ -380,7 +405,8 @@ function schemaTypeLabel(spec, schema) {
     return `${resolved.oneOf ? "one of" : "any of"}: ${[...new Set(choices.map((choice) => schemaTypeLabel(spec, choice)))].join(" \\| ")}`;
   }
 
-  return resolved.type || (resolved.properties ? "object" : "string");
+  // A schema with no type and no structure accepts any value.
+  return type || (resolved.properties ? "object" : Object.keys(resolved).filter((key) => !["description", "title", "example", "examples", "deprecated", "nullable", "readOnly", "writeOnly"].includes(key)).length === 0 ? "any" : "string");
 }
 
 // mode "request" leaves out readOnly properties (the server sets them);
@@ -406,8 +432,17 @@ function buildExampleValue(spec, schema, mode = "any", depth = 0) {
     return resolved.example;
   }
 
+  // OpenAPI 3.1 schemas list examples in an array.
+  if (Array.isArray(resolved.examples) && resolved.examples.length > 0) {
+    return resolved.examples[0];
+  }
+
   if (resolved.default !== undefined) {
     return resolved.default;
+  }
+
+  if (resolved.const !== undefined) {
+    return resolved.const;
   }
 
   if (Array.isArray(resolved.enum) && resolved.enum.length > 0) {
@@ -433,7 +468,14 @@ function buildExampleValue(spec, schema, mode = "any", depth = 0) {
     return buildExampleValue(spec, merged, mode, depth + 1);
   }
 
-  if (resolved.type === "object" || (!resolved.type && resolved.properties)) {
+  // OpenAPI 3.1 type arrays such as ["integer", "null"]: show the real type.
+  const types = [].concat(resolved.type || []);
+  const type = types.find((candidate) => candidate !== "null") || (types.includes("null") ? "null" : undefined);
+  if (type === "null") {
+    return null;
+  }
+
+  if (type === "object" || (!type && resolved.properties)) {
     const payload = {};
     for (const [name, propertySchema] of Object.entries(resolved.properties || {})) {
       if (includeProperty(spec, propertySchema, mode)) {
@@ -443,26 +485,47 @@ function buildExampleValue(spec, schema, mode = "any", depth = 0) {
     return payload;
   }
 
-  if (resolved.type === "array") {
+  if (type === "array") {
     return [buildExampleValue(spec, resolved.items, mode, depth + 1)];
   }
 
-  if (resolved.format === "date") {
-    return "2026-01-01";
+  // A value of the right shape for common formats, so the example passes
+  // the format check instead of showing "value".
+  const formatExamples = {
+    date: "2026-01-01",
+    "date-time": "2026-01-01T00:00:00Z",
+    time: "12:00:00",
+    email: "user@example.com",
+    "idn-email": "user@example.com",
+    uuid: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    uri: "https://example.com",
+    url: "https://example.com",
+    "uri-reference": "https://example.com",
+    hostname: "example.com",
+    ipv4: "192.0.2.1",
+    ipv6: "2001:db8::1",
+    byte: "U3dhZ2dlciByb2Nrcw=="
+  };
+  if ((type === "string" || !type) && formatExamples[resolved.format]) {
+    return formatExamples[resolved.format];
   }
 
-  if (resolved.format === "date-time") {
-    return "2026-01-01T00:00:00Z";
-  }
-
-  switch (resolved.type) {
+  switch (type) {
     case "integer":
-    case "number":
-      return 1;
+    case "number": {
+      // Inside the schema's range.
+      let number = 1;
+      if (typeof resolved.minimum === "number") number = Math.max(number, resolved.minimum);
+      if (typeof resolved.exclusiveMinimum === "number") number = Math.max(number, Math.floor(resolved.exclusiveMinimum) + 1);
+      if (typeof resolved.maximum === "number") number = Math.min(number, resolved.maximum);
+      return number;
+    }
     case "boolean":
       return true;
-    default:
-      return "value";
+    default: {
+      const minLength = typeof resolved.minLength === "number" ? resolved.minLength : 0;
+      return minLength > 5 ? "value".padEnd(minLength, "x") : "value";
+    }
   }
 }
 
@@ -478,6 +541,9 @@ function buildConstraintNotes(spec, schema, ownerDescription = "") {
   }
   if (resolved.nullable === true || (Array.isArray(resolved.type) && resolved.type.includes("null"))) {
     notes.push("Nullable");
+  }
+  if (resolved.additionalProperties === true || (resolved.additionalProperties && typeof resolved.additionalProperties === "object")) {
+    notes.push(resolved.properties ? "Other keys are also accepted" : "A map: any keys are accepted");
   }
   if (resolved.minLength !== undefined) {
     notes.push(`Minimum length: ${resolved.minLength}`);
@@ -630,7 +696,7 @@ function buildAuthenticationText(spec, operation) {
     : (Array.isArray(spec.security) ? spec.security : []);
 
   if (securityRequirements.length === 0) {
-    return "No authentication requirements are defined in the OpenAPI specification.";
+    return noSecurityText(spec, extractParameters(spec, operation, spec.paths?.[Object.keys(spec.paths || {}).find((route) => Object.values(spec.paths[route] || {}).includes(operation))]));
   }
 
   const summaries = summarizeSecuritySchemes(spec, securityRequirements, { brief: true });
@@ -641,12 +707,29 @@ function buildAuthenticationText(spec, operation) {
   return `Authentication is required. Use ${summaries.join(" or ")}.`;
 }
 
+// With no security scheme, a spec may still send credentials as ordinary
+// header parameters (Api-Key, X-Auth-Token). Say so instead of "none".
+function credentialHeaderNames(parameters) {
+  return parameters
+    .filter((parameter) => parameter.in === "header" && /(api[-_]?key|token|auth|secret|session|password|username)/i.test(parameter.name))
+    .map((parameter) => parameter.name);
+}
+
+function noSecurityText(spec, parameters) {
+  const names = [...new Set(credentialHeaderNames(parameters || []))];
+  return names.length > 0
+    ? `The spec defines no security scheme, but this operation takes credential-like headers: ${names.map((name) => `\u0000${name}\u0000`).join(", ")}. See the Header Parameters table and confirm with an SME.`
+    : "No authentication requirements are defined in the OpenAPI specification.";
+}
+
 function buildOverviewAuthentication(spec) {
   const securityRequirements = Array.isArray(spec.security) && spec.security.length > 0
     ? spec.security
     : Object.keys(spec.components?.securitySchemes || {}).map((schemeName) => ({ [schemeName]: [] }));
   if (securityRequirements.length === 0) {
-    return "No authentication requirements are defined in the OpenAPI specification.";
+    const allParameters = Object.entries(spec.paths || {}).flatMap(([route, pathItem]) =>
+      ["get", "post", "put", "patch", "delete"].filter((method) => pathItem?.[method]).flatMap((method) => extractParameters(spec, pathItem[method], pathItem)));
+    return noSecurityText(spec, allParameters).replace("this operation takes", "operations take").replace("See the Header Parameters table and confirm", "Confirm the scheme");
   }
   const summaries = summarizeSecuritySchemes(spec, securityRequirements);
   if (summaries.length === 0) {
@@ -727,10 +810,10 @@ function buildParameterRows(spec, parameters) {
 
   return parameters
     .map((parameter) => {
-      const type = schemaTypeLabel(spec, parameter.schema);
+      const type = typeCell(spec, parameter.schema);
       const required = parameter.required ? "yes" : "no";
       const description = tableCell(joinSentenceParts([
-        normalizeText(parameter.description, `Parameter in ${parameter.in}`),
+        normalizeText(parameter.description, "Needs SME input"),
         ...(parameter.deprecated ? ["Deprecated"] : []),
         ...buildConstraintNotes(spec, parameter.schema, parameter.description)
       ]));
@@ -760,7 +843,7 @@ function deepObjectRows(spec, parameter) {
       ...(resolved.deprecated ? ["Deprecated"] : []),
       ...buildConstraintNotes(spec, propertySchema)
     ]));
-    return `| ${tableCell(`${parameter.name}[${key}]`)} | ${schemaTypeLabel(spec, propertySchema)} | ${required.has(key) ? "yes" : "no"} | ${description} |`;
+    return `| ${tableCell(`${parameter.name}[${key}]`)} | ${typeCell(spec, propertySchema)} | ${required.has(key) ? "yes" : "no"} | ${description} |`;
   });
 }
 
@@ -806,7 +889,7 @@ function bodyFieldRows(spec, schema, requestBodyIsRequired, prefix = "", depth =
     const required = prefix
       ? (requiredFields.has(name) ? "yes" : "no")
       : formatRequiredValue(requiredFields.has(name), requestBodyIsRequired, hasRequiredList);
-    rows.push(`| ${fullName} | ${schemaTypeLabel(spec, propertySchema)} | ${required} | ${optionLabel}${buildSchemaDescription(spec, propertySchema)} |`);
+    rows.push(`| ${fullName} | ${typeCell(spec, propertySchema)} | ${required} | ${optionLabel}${buildSchemaDescription(spec, propertySchema)} |`);
 
     if (depth >= 2) {
       continue;
@@ -914,14 +997,28 @@ function buildRequestBodyExample(spec, operation) {
     value = structuredClone(value);
     removedFields = pruneToSchema(spec, value, media.media.schema);
   }
-  return { kind: media.kind, type: media.type, value, addedFields, removedFields };
+  return { kind: media.kind, type: media.type, value, addedFields, removedFields, schema: media.media.schema, encoding: media.media.encoding };
 }
 
 function shellQuote(value) {
   return String(value).replace(/(["\\$`])/g, "\\$1");
 }
 
-function buildRequestBodyArgs(body) {
+// A multipart field that carries a file rather than text.
+function isFileField(spec, name, schema, encoding) {
+  const resolved = resolveSchema(spec, schema) || {};
+  const itemSchema = resolveSchema(spec, resolved.items) || {};
+  return ["binary", "base64"].includes(resolved.format) || ["binary", "base64"].includes(itemSchema.format)
+    || Boolean(resolved.contentMediaType) || Boolean(encoding?.[name]?.contentType && !/^text\//.test(encoding[name].contentType))
+    || (Object.keys(resolved).length === 0 && /file|upload|image|avatar|attachment|document/i.test(name));
+}
+
+// Multipart field names go inside a curl -F argument, where = ; @ < have meaning.
+function formFieldName(name) {
+  return String(name).replace(/[=;@<>"`$\\\r\n\t\u0000-\u001f]/g, "");
+}
+
+function buildRequestBodyArgs(body, spec = null) {
   if (!body) {
     return [];
   }
@@ -937,7 +1034,12 @@ function buildRequestBodyArgs(body) {
     ];
   }
   if (body.kind === "multipart") {
-    return fields.map(([name, value]) => `-F "${shellQuote(name)}=${shellQuote(fieldText(value))}"`);
+    // Text fields use --form-string, which never reads a file even if the
+    // value starts with @ or <. File fields show a placeholder to replace.
+    const properties = resolveSchema(spec, body.schema)?.properties || {};
+    return fields.map(([name, value]) => (spec && isFileField(spec, name, properties[name], body.encoding)
+      ? `-F "${formFieldName(name)}=@<file>"`
+      : `--form-string "${formFieldName(name)}=${shellText(fieldText(value))}"`));
   }
   return [`-H "Content-Type: ${shellText(body.type)}"`, '--data-binary "@<file>"'];
 }
@@ -947,7 +1049,8 @@ function buildResponseExample(spec, operation) {
   const successResponse = responseEntries.find(([code]) => code.startsWith("2"));
 
   if (!successResponse) {
-    return '{\n  "status": "Needs SME input"\n}';
+    // Nothing to show; an invented body would be checked as if it were real.
+    return { lang: "prose", text: "The spec defines no success (2xx) response for this operation. See Error Codes for the responses it does define." };
   }
 
   const [statusCode, response] = successResponse;
@@ -1014,6 +1117,10 @@ function findNamedPropertyExample(spec, schema, propertyName) {
 function buildParameterExampleValue(spec, operation, parameter) {
   if (parameter.example !== undefined) {
     return parameter.example;
+  }
+  const namedExample = parameter.examples ? resolveReference(spec, Object.values(parameter.examples)[0]) : undefined;
+  if (namedExample?.value !== undefined) {
+    return namedExample.value;
   }
 
   const schemaExample = buildExampleValue(spec, parameter.schema);
@@ -1133,13 +1240,15 @@ function buildExampleUrl(spec, route, operation, pathItem) {
 // would act on there, and any whitespace, are percent-encoded, so a crafted
 // server URL cannot end the string or run a command.
 function safeUrl(url) {
-  return String(url).replace(/[\s"`$\\]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
+  return String(url).replace(/[\s"`$\\!]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
 }
 
 // Text placed inside a double-quoted shell argument: no line breaks, and the
 // characters the shell interprets there are escaped.
 function shellText(value) {
-  return shellQuote(String(value).replace(/[\r\n\t\u0000-\u001f\u007f]+/g, " "));
+  // "!" triggers history expansion inside double quotes in an interactive
+  // shell, so it is written as a single-quoted '!' between the quoted parts.
+  return shellQuote(String(value).replace(/[\r\n\t\u0000-\u001f\u007f]+/g, " ")).replace(/!/g, `"'!'"`);
 }
 
 // Header names are tokens; anything else is dropped so a name cannot end the
@@ -1199,7 +1308,7 @@ ${buildOverviewAuthentication(spec)}
 
 ## Base URL
 
-\u0000${baseUrl}\u0000
+${codeSpan(baseUrl)}${otherServers(spec)}
 
 ## Versioning Strategy
 
@@ -1234,7 +1343,7 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
   const migrationGuide = normalizeText(operation["x-migration-guide"]);
   const securityImpact = pickAllowedValue(normalizeText(operation["x-security-impact"] || spec.info?.["x-security-impact"]), new Set(["low", "medium", "high"]), "medium");
   const frontmatter = stringifyYamlLines({
-    title: `${summary}`,
+    title: `${summary.replace(/<[^>]*>/g, "").trim() || summary}`,
     description: `Generated endpoint documentation for ${method.toUpperCase()} ${route}`,
     service: serviceName,
     component: "endpoint",
@@ -1281,7 +1390,7 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
     `curl -X ${method.toUpperCase()} "${exampleUrl}"`, // safeUrl already removed shell characters
     ...credentialArgs,
     ...headerArgs,
-    ...buildRequestBodyArgs(requestBodyExample)
+    ...buildRequestBodyArgs(requestBodyExample, spec)
   ];
   const requestExample = curlArgs.join(" \\\n  ");
   const requestExampleNote = requestBodyExample?.addedFields?.length
@@ -1295,9 +1404,10 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
   const responseExampleSection = responseExample === null
     ? `This operation returns \u0000${successCode}\u0000 with no response body.`
     : typeof responseExample === "object"
-      ? fenced(responseExample.lang, responseExample.text)
+      ? (responseExample.lang === "prose" ? responseExample.text : fenced(responseExample.lang, responseExample.text))
       : fenced("json", responseExample);
-  const purpose = normalizeText(operation.description, summary);
+  // Headings inside the spec's description must not become sections of the doc.
+  const purpose = demoteHeadings(normalizeText(operation.description, summary));
   const lifecycleSection = isDeprecated
     ? `
 
@@ -1366,13 +1476,16 @@ async function ensureDirectory(directory) {
 
 async function parseSpec(inputPath) {
   const raw = await fs.readFile(inputPath, "utf8");
-  if (inputPath.endsWith(".json")) {
-    return JSON.parse(raw);
+  try {
+    if (inputPath.endsWith(".json")) {
+      return JSON.parse(raw);
+    }
+    // CORE_SCHEMA keeps values like 2018-01-01 10:00:00 as written instead of
+    // turning them into local-time Date objects.
+    return yaml.load(raw, { schema: yaml.CORE_SCHEMA });
+  } catch (error) {
+    throw new Error(`Could not read ${inputPath}: ${String(error.message).split("\n")[0]}`);
   }
-
-  // CORE_SCHEMA keeps values like 2018-01-01 10:00:00 as written instead of
-  // turning them into local-time Date objects.
-  return yaml.load(raw, { schema: yaml.CORE_SCHEMA });
 }
 
 async function main() {
@@ -1443,6 +1556,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error);
+  console.error(String(error?.message || "").startsWith("Could not read") ? error.message : error);
   process.exit(1);
 });
