@@ -356,7 +356,7 @@ async function main() {
     process.stderr.write(`\nDocumentation quality warnings:\n\n${warnings.map((warning) => `- ${warning}`).join("\n")}\n`);
   }
 
-  const checksRun = "placeholders, leftover template text, required sections, examples, suspicious status codes, SME labels, placeholder example values, owners";
+  const checksRun = "placeholders, leftover template text, required sections, examples, suspicious status codes, SME labels, placeholder example values, owners, unsafe HTML";
   if (warnings.length > 0) {
     console.log(
       `\nStructure checks passed for ${markdownFiles.length} Markdown files in ${checkedLabel} (${checksRun}), ` +

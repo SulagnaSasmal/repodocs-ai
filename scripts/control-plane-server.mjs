@@ -80,7 +80,8 @@ const redisKeys = {
   queue: "repodocs:control-plane:queue",
   runs: "repodocs:control-plane:runs",
   history: "repodocs:control-plane:history",
-  running: "repodocs:control-plane:running"
+  running: "repodocs:control-plane:running",
+  rate: "repodocs:control-plane:rate"
 };
 
 const redis = createClient({ url: redisUrl });
@@ -303,11 +304,6 @@ async function getActiveRuns() {
   return runs;
 }
 
-async function getPrimaryActiveRun() {
-  const activeRuns = await getActiveRuns();
-  return activeRuns[0] || null;
-}
-
 async function getAuthEnabled() {
   const users = await getUsers();
   return users.some((user) =>
@@ -471,42 +467,54 @@ class HttpError extends Error {
 }
 
 function isLoopback(request) {
+  // A request forwarded by a proxy on this machine is not local, whatever
+  // the socket says: it came from somewhere else.
+  if (request.headers["x-forwarded-for"] || request.headers.forwarded || request.headers["x-real-ip"]) {
+    return false;
+  }
   const address = request.socket.remoteAddress || "";
   return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
 }
 
-// Fixed-window limits per client address, kept in memory for this process.
-const rateWindows = new Map();
+// Behind a load balancer or reverse proxy, set REPODOCS_TRUST_PROXY=1 so
+// limits apply per client, using the address the proxy appends last to
+// X-Forwarded-For. Without it, the socket address is used.
+const TRUST_PROXY = process.env.REPODOCS_TRUST_PROXY === "1";
 
-function overLimit(request, kind, limit) {
-  const key = `${kind}:${request.socket.remoteAddress || "unknown"}`;
-  const now = Date.now();
-  const window = rateWindows.get(key);
-  if (!window || now - window.started >= RATE_LIMIT_WINDOW_MS) {
-    rateWindows.set(key, { started: now, count: 1 });
-    return false;
-  }
-  window.count += 1;
-  return window.count > limit;
-}
-
-function countFailedAuth(request) {
-  overLimit(request, "failed-auth", RATE_LIMIT_MAX_FAILED_AUTH);
-}
-
-function failedAuthBlocked(request) {
-  const window = rateWindows.get(`failed-auth:${request.socket.remoteAddress || "unknown"}`);
-  return Boolean(window && Date.now() - window.started < RATE_LIMIT_WINDOW_MS && window.count >= RATE_LIMIT_MAX_FAILED_AUTH);
-}
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, window] of rateWindows) {
-    if (now - window.started >= RATE_LIMIT_WINDOW_MS) {
-      rateWindows.delete(key);
+function clientAddress(request) {
+  if (TRUST_PROXY) {
+    const forwarded = String(request.headers["x-forwarded-for"] || "").split(",").map((entry) => entry.trim()).filter(Boolean);
+    if (forwarded.length > 0) {
+      return forwarded[forwarded.length - 1];
     }
   }
-}, RATE_LIMIT_WINDOW_MS).unref();
+  return request.socket.remoteAddress || "unknown";
+}
+
+// Fixed one-minute windows per client address, counted in Redis so every
+// instance of the control plane shares the same limits.
+function rateKey(request, kind) {
+  const windowId = Math.floor(Date.now() / RATE_LIMIT_WINDOW_MS);
+  return `${redisKeys.rate}:${kind}:${clientAddress(request)}:${windowId}`;
+}
+
+async function hitCount(request, kind) {
+  const key = rateKey(request, kind);
+  const [count] = await redis.multi().incr(key).expire(key, Math.ceil((RATE_LIMIT_WINDOW_MS * 2) / 1000)).exec();
+  return Number(count);
+}
+
+async function overLimit(request, kind, limit) {
+  return (await hitCount(request, kind)) > limit;
+}
+
+async function countFailedAuth(request) {
+  await hitCount(request, "failed-auth");
+}
+
+async function failedAuthBlocked(request) {
+  return Number((await redis.get(rateKey(request, "failed-auth"))) || 0) >= RATE_LIMIT_MAX_FAILED_AUTH;
+}
 
 function appendCapped(current, chunk) {
   const next = current + chunk;
@@ -559,7 +567,7 @@ async function findAuthenticatedPrincipal(request) {
 }
 
 async function requireAuth(request, response) {
-  if (failedAuthBlocked(request)) {
+  if (await failedAuthBlocked(request)) {
     sendJson(response, 429, { error: "Too many failed authentication attempts. Try again in a minute." }, { "Retry-After": "60" });
     return null;
   }
@@ -583,7 +591,7 @@ async function requireAuth(request, response) {
   }
 
   if (getPresentedApiKey(request)) {
-    countFailedAuth(request);
+    await countFailedAuth(request);
   }
 
   response.writeHead(401, {
@@ -663,6 +671,35 @@ const USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 function scopeAllows(serviceScope, jobName) {
   const allowed = String(serviceScope || "").split(",").map((entry) => entry.trim()).filter(Boolean);
   return allowed.length === 0 || allowed.includes(jobName);
+}
+
+// What a principal may see. Admins, and local development with no keys,
+// see everything; operators see their own runs and the artifacts of jobs
+// their scope allows.
+function seesEverything(principal) {
+  return !principal?.user || principal.user.role === "admin";
+}
+
+function visibleRuns(principal, runs) {
+  if (seesEverything(principal)) {
+    return runs;
+  }
+  return runs.filter((run) => run?.requested_by_user?.id === principal.user.id);
+}
+
+const artifactJobs = {
+  "agents/output/last-run.json": ["agent", "automation"],
+  "analytics/output/report.json": ["analytics", "automation"],
+  "knowledge-graph/output/graph.json": ["graph", "automation"],
+  "exports/manifest.json": ["export"]
+};
+
+function visibleArtifacts(principal, artifacts) {
+  if (seesEverything(principal)) {
+    return artifacts;
+  }
+  const scope = principal.user.service_scope || "";
+  return artifacts.filter((artifact) => (artifactJobs[artifact.path] || []).some((job) => scopeAllows(scope, job)));
 }
 
 function isLastActiveAdmin(users, userId) {
@@ -993,12 +1030,14 @@ function renderDashboard(nonce) {
 
       async function refreshOverview() {
         try {
-          const [authData, jobsData, runsData, artifactsData, usersData] = await Promise.all([
-            fetch('/auth/status', { headers: headers() }).then((result) => result.json()),
+          const authData = await fetch('/auth/status', { headers: headers() }).then((result) => result.json());
+          // Only admins may list users; operators see their own runs and artifacts.
+          const isAdmin = !authData.authenticated_user || authData.authenticated_user.role === 'admin';
+          const [jobsData, runsData, artifactsData, usersData] = await Promise.all([
             apiRequest('/jobs'),
             apiRequest('/runs'),
             apiRequest('/artifacts'),
-            apiRequest('/users')
+            isAdmin ? apiRequest('/users') : Promise.resolve({ users: [] })
           ]);
 
           overviewTitle.textContent = authData.auth_enabled
@@ -1158,6 +1197,12 @@ async function startWorkerLoop() {
       if (!next?.element) {
         continue;
       }
+      if (shutdownRequested) {
+        // Taken off the queue while shutting down: put it back at the front
+        // for another worker instead of losing it.
+        await redis.lPush(redisKeys.queue, next.element);
+        break;
+      }
 
       const run = await getRun(next.element);
       if (!run || run.status !== "queued") {
@@ -1174,8 +1219,13 @@ async function startWorkerLoop() {
   log("info", "worker loop stopped", { worker: workerId });
 }
 
+let workerLoopDone = null;
+
 async function shutdown() {
   shutdownRequested = true;
+  // Let the worker finish its current wait (at most one poll interval), so
+  // a job it receives can be returned to the queue before Redis closes.
+  await Promise.race([workerLoopDone, new Promise((resolve) => setTimeout(resolve, (queuePollTimeoutSeconds + 1) * 1000))]);
   for (const client of [blockingRedis, redis]) {
     try {
       await client.quit();
@@ -1194,7 +1244,7 @@ const stateReady = (async () => {
   await blockingRedis.connect();
   await migrateFileStateToRedisIfNeeded();
   await bootstrapAdminIfNeeded();
-  startWorkerLoop().catch((error) => {
+  workerLoopDone = startWorkerLoop().catch((error) => {
     log("error", "failed to start control-plane worker loop", { error: error.message });
   });
 })();
@@ -1205,7 +1255,7 @@ const server = http.createServer(async (request, response) => {
     // Parse the path only; the Host header is not trusted.
     const url = new URL(request.url || "/", "http://control-plane.local");
 
-    if (url.pathname !== "/health" && overLimit(request, "requests", RATE_LIMIT_MAX_REQUESTS)) {
+    if (url.pathname !== "/health" && (await overLimit(request, "requests", RATE_LIMIT_MAX_REQUESTS))) {
       return sendJson(response, 429, { error: "Too many requests. Try again in a minute." }, { "Retry-After": "60" });
     }
 
@@ -1242,13 +1292,14 @@ const server = http.createServer(async (request, response) => {
       if (!principal) {
         return;
       }
-      const activeRuns = await getActiveRuns();
-      const queuedRuns = await getQueuedRuns();
+      const activeRuns = visibleRuns(principal, await getActiveRuns());
+      const allQueuedRuns = await getQueuedRuns();
+      const queuedRuns = visibleRuns(principal, allQueuedRuns);
       return sendJson(response, 200, {
-        jobs: Object.keys(jobs),
+        jobs: Object.keys(jobs).filter((job) => seesEverything(principal) || scopeAllows(principal.user.service_scope, job)),
         active_run: activeRuns[0] || null,
         active_runs: activeRuns,
-        queue_depth: queuedRuns.length,
+        queue_depth: allQueuedRuns.length,
         queued_runs: queuedRuns.map((run) => ({
           id: run.id,
           job: run.job,
@@ -1264,11 +1315,12 @@ const server = http.createServer(async (request, response) => {
       if (!principal) {
         return;
       }
+      const activeRuns = visibleRuns(principal, await getActiveRuns());
       return sendJson(response, 200, {
-        active_run: await getPrimaryActiveRun(),
-        active_runs: await getActiveRuns(),
-        queued_runs: await getQueuedRuns(),
-        recent_runs: await getRecentRuns()
+        active_run: activeRuns[0] || null,
+        active_runs: activeRuns,
+        queued_runs: visibleRuns(principal, await getQueuedRuns()),
+        recent_runs: visibleRuns(principal, await getRecentRuns())
       });
     }
 
@@ -1277,7 +1329,7 @@ const server = http.createServer(async (request, response) => {
       if (!principal) {
         return;
       }
-      return sendJson(response, 200, { artifacts: await loadArtifacts() });
+      return sendJson(response, 200, { artifacts: visibleArtifacts(principal, await loadArtifacts()) });
     }
 
     if (request.method === "GET" && url.pathname === "/users") {
@@ -1464,7 +1516,7 @@ const server = http.createServer(async (request, response) => {
         message: `Job '${jobName}' queued successfully`,
         run,
         queue_depth: await redis.lLen(redisKeys.queue),
-        active_run: await getPrimaryActiveRun()
+        active_run: visibleRuns(principal, await getActiveRuns())[0] || null
       });
     }
 

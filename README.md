@@ -2,7 +2,7 @@
 
 [![Build](https://github.com/SulagnaSasmal/repodocs-ai/actions/workflows/validate.yml/badge.svg)](https://github.com/SulagnaSasmal/repodocs-ai/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.2.3-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.2.4-green.svg)](CHANGELOG.md)
 
 AI-prompt-powered docs-as-code documentation system for SaaS API teams.
 
@@ -108,7 +108,7 @@ Running `npm run validate` checks this repository itself and prints one line per
 
 ```text
 Validated frontmatter for 39 Markdown files in templates, examples.
-Validated 99 required project files.
+Validated 98 required project files.
 Structure checks passed for 28 Markdown files in examples, generated (placeholders, leftover template text, required sections, examples, suspicious status codes, SME labels, placeholder example values, owners, unsafe HTML). Accuracy against the OpenAPI spec is checked separately.
 Compared 11 endpoint docs in examples/api-docs, examples/payments-api, examples/complete-system, generated against the OpenAPI spec (13 Markdown files describe no endpoint and were not compared).
 Checked api_version for 24 Markdown files in examples/api-docs, examples/payments-api, examples/complete-system, generated. 3 of them use api_version 'n/a', which is allowed only for docs that describe no endpoint and is not compared with a spec version.
@@ -122,7 +122,7 @@ Running `npm test`:
 
 ```text
  Test Files  10 passed (10)
-      Tests  289 passed (289)
+      Tests  292 passed (292)
 ```
 
 The tests include the full adopter path (`init`, `generate`, `validate`, and the CI step `init` writes), and the CLI installed from a packed tarball. They run against eight OpenAPI specs written by other people in `tests/fixtures/third-party/`. They check the generated docs against each spec, not only that the commands succeed. Before each release, a fresh AI agent also follows the README from scratch; the procedure and past reports are in `.github/release-checks/`.
@@ -134,11 +134,11 @@ Install the `repodocs-ai` command, set up a docs repository, generate docs from 
 > Requires Node.js 20 or later. Check with `node --version`.
 
 ```bash
-npm install -g github:SulagnaSasmal/repodocs-ai#v1.2.3
+npm install -g github:SulagnaSasmal/repodocs-ai#v1.2.4
 repodocs-ai init company-docs
 ```
 
-Or run any command once without installing, with `npx --yes github:SulagnaSasmal/repodocs-ai#v1.2.3 <command>`. Paths resolve from the folder you run the command in. Run `repodocs-ai help` for every command.
+Or run any command once without installing, with `npx --yes github:SulagnaSasmal/repodocs-ai#v1.2.4 <command>`. Paths resolve from the folder you run the command in. Run `repodocs-ai help` for every command.
 
 `init` copies the templates, prompts, diagrams, schema and review checklists, and writes a CI workflow, a CODEOWNERS file to fill in, and a starter README. It does not run `git init` or create the GitHub repository for you. Add `--with-examples` to include the payments example set.
 
@@ -180,7 +180,7 @@ Each check reports PASS, WARN, FAIL or SKIP and names the folder it checked:
 
 Without `--specs`, the last two checks report SKIP. They also report SKIP when the folder has no endpoint docs to compare. A skipped check did not run; it never counts as a pass, and the summary gives the reason for each one. Add `--strict` to make a skipped check fail the run. Pass several folders to check them together, for example `company-docs/generated company-docs/docs`.
 
-`init` also writes `.github/workflows/docs-validate.yml` into your docs repository. Once you push to GitHub, it runs the same checks on every pull request and every push to `main`, against `generated/` and `docs/`, using the specs in `openapi/`. It uses the same RepoDocs AI version that created the repository, and it fails until there is at least one Markdown doc to check.
+`init` also writes `.github/workflows/docs-validate.yml` into your docs repository. Once you push to GitHub, it runs the same checks on every pull request and every push to `main`, against `generated/` and `docs/`, using the specs in `openapi/`. It uses the same RepoDocs AI version that created the repository, and it fails until there is at least one Markdown doc to check. Its token is read-only and its actions are pinned to commit SHAs. To pin RepoDocs AI itself to an exact commit rather than a release tag, replace the `#v` version in its `npx` line with the commit SHA.
 
 These checks cover format and consistency with the spec. They cannot tell whether the spec itself is right or complete.
 
@@ -285,8 +285,7 @@ repodocs-ai/
 │   └── governance/
 ├── scripts/
 ├── website/        # published site (Docusaurus)
-├── experimental/   # control plane deployment, site starters, other CI platforms
-└── archive/        # history: old site, planning notes, earlier specs
+└── experimental/   # control plane deployment, site starters, other CI platforms
 ```
 
 Product-facing entry points inside `docs/`:
@@ -442,6 +441,8 @@ The optional, experimental hosted control plane runs automation over HTTP with R
 - `REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER`
 - `REPODOCS_CONTROL_PLANE_BOOTSTRAP_DISPLAY_NAME`
 - `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY`
+- `REPODOCS_TRUST_PROXY` (set to `1` behind a load balancer or reverse proxy)
+- `REPODOCS_RATE_LIMIT_PER_MINUTE` and `REPODOCS_FAILED_AUTH_PER_MINUTE` (defaults 120 and 10)
 
 The control plane stores queue state, run metadata, and user/key records in Redis so multiple app instances can safely accept and process jobs against shared state. The legacy `.control-plane/*.json` files are only used as a one-time migration source when Redis starts empty.
 

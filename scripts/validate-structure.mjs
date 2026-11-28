@@ -104,8 +104,7 @@ const requiredPaths = [
   "TEMPLATE_VERSION",
   "ROADMAP.md",
   "SECURITY.md",
-  "experimental/README.md",
-  "archive/README.md"
+  "experimental/README.md"
 ];
 
 async function exists(relativePath) {

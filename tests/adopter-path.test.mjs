@@ -15,7 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import yaml from "js-yaml";
+import * as yaml from "js-yaml";
 import { beforeAll, describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);

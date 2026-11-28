@@ -19,7 +19,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const ANTHROPIC_API_KEY = (process.env.ANTHROPIC_API_KEY || "").trim();
-const AI_MODEL = process.env.REPODOCS_AI_MODEL || "claude-opus-4-6";
+const AI_MODEL = process.env.REPODOCS_AI_MODEL || "claude-opus-5-5";
 const AI_REVIEW_ENABLED = Boolean(ANTHROPIC_API_KEY);
 const AI_REVIEW_MAX_TOKENS = Number.parseInt(process.env.REPODOCS_AI_REVIEW_MAX_TOKENS || "3072", 10);
 
