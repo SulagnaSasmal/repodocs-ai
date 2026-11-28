@@ -9,6 +9,90 @@ const repoRoot = path.resolve(__dirname, "..");
 
 const targetDirectories = ["examples", "generated"];
 
+// Link targets that would run script once a renderer decodes entities and
+// drops the whitespace browsers ignore: inline links, reference definitions
+// and href attributes.
+function scriptLinks(prose) {
+  const targets = [
+    ...[...prose.matchAll(/\]\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)/g)].map((match) => match[1]),
+    ...[...prose.matchAll(/^\s{0,3}\[[^\]]+\]:\s*(\S+)/gm)].map((match) => match[1]),
+    ...[...prose.matchAll(/\bhref\s*=\s*["']?([^"'>]+)/gi)].map((match) => match[1])
+  ];
+  return targets.filter((target) => {
+    const decoded = String(target)
+      .replace(/&amp;/gi, "&")
+    .replace(/&#x([0-9a-f]+);?/gi, (match, hex) => String.fromCodePoint(parseInt(hex, 16)))
+      .replace(/&#(\d+);?/g, (match, decimal) => String.fromCodePoint(Number(decimal)))
+      .replace(/&colon;/gi, ":")
+      .replace(/&tab;|&newline;/gi, "")
+      .replace(/[\u0000- \u007f]+/g, "")
+      .toLowerCase();
+    return /^(javascript|vbscript|data):/.test(decoded);
+  });
+}
+
+// Markdown mistakes that change what renders: an unclosed code fence (the
+// rest of the page becomes code), more than one H1, and table rows that do
+// not match their header.
+function markdownProblems(content) {
+  const problems = [];
+  const body = content.replace(/^---\n[\s\S]*?\n---\n/, "");
+  const lines = body.split(/\r?\n/);
+  let openFence = null;
+  let openLine = 0;
+  let h1Count = 0;
+  let table = null;
+  lines.forEach((line, index) => {
+    const fence = line.match(/^(`{3,}|~{3,})/);
+    if (openFence) {
+      if (fence && fence[1][0] === openFence[0] && fence[1].length >= openFence.length && /^(`{3,}|~{3,})\s*$/.test(line)) {
+        openFence = null;
+      } else if (fence && fence[1][0] === openFence[0] && fence[1].length >= openFence.length && /^(`{3,}|~{3,})[A-Za-z]/.test(line)) {
+        // "```json" inside an open block is text, so the block above was
+        // probably never closed and everything since renders as code.
+        problems.push(`line ${index + 1} opens a code block inside the one opened on line ${openLine}; that block is probably missing its closing fence`);
+      }
+      return;
+    }
+    if (fence) {
+      openFence = fence[1];
+      openLine = index + 1;
+      table = null;
+      return;
+    }
+    if (/^#\s/.test(line)) {
+      h1Count += 1;
+    }
+    if (!/^\s*\|.*\|\s*$/.test(line)) {
+      table = null;
+      return;
+    }
+    const cells = line.trim().replace(/^\||\|$/g, "").split(/(?<!\\)\|/).length;
+    if (!table) {
+      table = { cells, header: line.trim(), checkedSeparator: false };
+      return;
+    }
+    if (!table.checkedSeparator) {
+      table.checkedSeparator = true;
+      if (!/^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(line)) {
+        problems.push(`the table starting "${table.header.slice(0, 40)}" has no separator row (| --- |) under its header, so it renders as plain text`);
+        table.broken = true;
+      }
+      return;
+    }
+    if (!table.broken && cells !== table.cells) {
+      problems.push(`table row ${index + 1} has ${cells} cells but its header has ${table.cells}; an unescaped "|" or a missing cell breaks the row`);
+    }
+  });
+  if (openFence) {
+    problems.push(`the code fence opened on line ${openLine} is never closed, so the rest of the page renders as code`);
+  }
+  if (h1Count > 1) {
+    problems.push(`has ${h1Count} H1 headings; a page should have one`);
+  }
+  return problems;
+}
+
 const placeholderPatterns = [
   /\{endpoint-name\}/g,
   /\{feature-name\}/g,
@@ -186,6 +270,7 @@ async function main() {
 
   const errors = [];
   const warnings = [];
+  let ownersUnchecked = false;
 
   const templateText = targets.userMode ? await loadTemplateText() : { instructionLines: new Set(), descriptions: new Set(), headingsByComponent: new Map() };
 
@@ -212,10 +297,29 @@ async function main() {
       }
     }
 
-    // Section structure
-    if (!content.includes("## ")) {
-      errors.push(`${relativePath}: expected structured section headings`);
+    // Prose: the text outside frontmatter, fenced code blocks (any fence
+    // length) and code spans, which are shown as text.
+    const prose = content
+      .replace(/^---\n[\s\S]*?\n---\n/, "")
+      .replace(/^(`{3,})[^\n]*\n[\s\S]*?^\1`*[ \t]*$/gm, "")
+      .replace(/`+[^`\n]*?`+/g, "");
+
+    // Placeholders a person leaves while drafting, in prose.
+    // ("XXX" is not one: it is an ISO currency code and a common format mask.)
+    for (const [pattern, label] of [[/\[(?:PLACEHOLDER|TBD|TODO|INSERT[^\]]*)\]/i, null], [/\btodo:/i, null]]) {
+      const found = prose.match(pattern);
+      if (found) {
+        errors.push(`${relativePath}: unresolved placeholder content detected (${label || found[0]})`);
+      }
     }
+
+    // Section structure. A short page may have none; it is worth a look, not a failure.
+    if (!content.includes("## ")) {
+      warnings.push(`${relativePath}: no ## section headings`);
+    }
+
+    // Markdown that renders differently from how it reads.
+    markdownProblems(content).forEach((problem) => errors.push(`${relativePath}: ${problem}`));
 
     // Endpoint-specific checks — only run when the doc identifies an HTTP method
     const isEndpointDoc = /- Method: `[A-Z]+`/.test(content);
@@ -230,11 +334,12 @@ async function main() {
         );
       }
 
-      // Required section headings (prefix match)
+      // Required section headings (prefix match). The Response section is
+      // needed to compare the doc with the spec; the others are warnings.
       for (const { prefix, label } of requiredEndpointSectionPrefixes) {
         const found = lines.some((line) => line.startsWith(prefix));
         if (!found) {
-          errors.push(
+          (label === "Response" ? errors : warnings).push(
             `${relativePath}: missing required section '${label}' ` +
             `(expected a heading starting with '${prefix}')`
           );
@@ -271,24 +376,29 @@ async function main() {
     const owner = content.match(/^owner:\s*"?([^"\n]+?)"?\s*$/m)?.[1];
     if (targets.userMode && owner && owner !== "unassigned") {
       const registry = (await ownersRegistryFor(filePath)) || (await ownersRegistryFor(path.join(targets.baseDirectory, "index.md")));
+      if (!registry) {
+        ownersUnchecked = true;
+      }
       if (registry && registry.owners.size > 0 && !registry.owners.has(owner)) {
         warnings.push(`${relativePath}: owner '${owner}' is not listed in ${displayPath(registry.path, displayRoot)}`);
       }
     }
 
-    // HTML that runs script on a docs site that renders raw HTML. Code blocks
-    // and code spans are left out, since they are shown as text.
-    const prose = content
-      .replace(/^---\n[\s\S]*?\n---\n/, "")
-      .replace(/^```[^\n]*\n[\s\S]*?^```[ \t]*$/gm, "")
-      .replace(/`+[^`\n]*?`+/g, "");
+    // HTML that runs script, loads content or redirects on a docs site that
+    // renders raw HTML. Code blocks and code spans are left out.
     const unsafeHtml = [
       [/<script\b/i, "<script>"],
       [/<iframe\b/i, "<iframe>"],
-      [/<[a-z][^>\n]*\son[a-z]+\s*=/i, "an inline event handler (on...=)"],
-      [/\]\(\s*(?:javascript|vbscript|data):/i, "a javascript:, vbscript: or data: link"],
-      [/<a\b[^>\n]*href\s*=\s*["']?\s*(?:javascript|vbscript|data):/i, "a javascript:, vbscript: or data: link"]
+      [/<object\s|<\/object>|<embed[\s>/]/i, "<object> or <embed>"],
+      [/<meta\s[^>]*http-equiv/i, "<meta http-equiv>"],
+      [/<form[\s>]/i, "<form>"],
+      [/<style[\s>]|<link\s[^>]*rel\s*=/i, "<style> or <link>"],
+      [/<base\s/i, "<base>"],
+      [/<[a-z][^>\n]*\son[a-z]+\s*=/i, "an inline event handler (on...=)"]
     ].filter(([pattern]) => pattern.test(prose)).map(([, label]) => label);
+    if (scriptLinks(prose).length > 0) {
+      unsafeHtml.push("a javascript:, vbscript: or data: link");
+    }
     if (unsafeHtml.length > 0) {
       errors.push(`${relativePath}: unsafe HTML that would run script on a docs site: ${[...new Set(unsafeHtml)].join(", ")}`);
     }
@@ -321,7 +431,9 @@ async function main() {
     }
 
     // Generated placeholder values: the spec gave no example for these fields.
-    const placeholderValueCount = (content.match(/":\s*"value"/g) || []).length;
+    // Only in code blocks: a JSON example with "value" in it, not prose.
+    const codeOnly = [...content.matchAll(/^(`{3,})[^\n]*\n([\s\S]*?)^\1`*[ \t]*$/gm)].map((block) => block[2]).join("\n");
+    const placeholderValueCount = (codeOnly.match(/":\s*"value"/g) || []).length;
     if (placeholderValueCount > 0) {
       warnings.push(
         `${relativePath}: ${placeholderValueCount} example value(s) are the placeholder "value". Add examples to the spec or edit the doc before publication`
@@ -335,6 +447,10 @@ async function main() {
         `${relativePath}: ${smeCount} 'Needs SME input' label(s) — resolve before publication`
       );
     }
+  }
+
+  if (ownersUnchecked) {
+    warnings.push("owners were not checked: no schema/owners-registry.md was found above the docs. Add one to check owner names");
   }
 
   // One write per stream, then let Node exit on its own, so no line is lost
@@ -356,7 +472,7 @@ async function main() {
     process.stderr.write(`\nDocumentation quality warnings:\n\n${warnings.map((warning) => `- ${warning}`).join("\n")}\n`);
   }
 
-  const checksRun = "placeholders, leftover template text, required sections, examples, suspicious status codes, SME labels, placeholder example values, owners, unsafe HTML";
+  const checksRun = "placeholders, leftover template text, required sections, examples, suspicious status codes, SME labels, placeholder example values, owners, unsafe HTML, broken Markdown";
   if (warnings.length > 0) {
     console.log(
       `\nStructure checks passed for ${markdownFiles.length} Markdown files in ${checkedLabel} (${checksRun}), ` +

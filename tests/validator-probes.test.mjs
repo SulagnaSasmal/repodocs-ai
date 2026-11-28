@@ -310,7 +310,7 @@ describe("Adyen Checkout API (v1.2.2 release check)", () => {
     ["a Bearer token the spec does not use", captures, (doc) => doc.replace('-u "<username>:<password>" \\', '-H "Authorization: Bearer <token>" \\'), "the request example sends a Bearer token, but the spec's security"],
     ["a Content-Type the spec does not accept", captures, (doc) => doc.replace('-H "Content-Type: application/json"', '-H "Content-Type: application/xml"'), "the request example sends Content-Type application/xml"],
     ["an optional body described as required", captures, (doc) => doc.replace("Request body is optional.", "Request body is required."), "the Request Body says the body is required, but the spec says it is optional"],
-    ["an overview that names the wrong auth", "api-overview.md", (doc) => doc.replace("API key in header `X-API-Key`. HTTP Basic authentication", "OAuth 2.0 client credentials."), "Authentication mentions OAuth, but the spec's security for the API does not use it"]
+    ["an overview that names the wrong auth", "api-overview.md", (doc) => doc.replace("Use any one of these:\n\n- API key in header `X-API-Key`.\n- HTTP Basic authentication.", "OAuth 2.0 client credentials."), "Authentication mentions OAuth, but the spec's security for the API does not use it"]
   ])("catches %s", async (name, file, edit, expected) => {
     const result = await adyenProbe(file, edit);
     expect(result.failed).toBe(true);
@@ -343,7 +343,8 @@ describe("hand-written docs written by people", () => {
     const docs = await fs.mkdtemp(path.join(os.tmpdir(), "repodocs-hand-"));
     const specs = path.join(docs, "openapi");
     await fs.mkdir(specs);
-    await fs.copyFile(path.join(repoRoot, "examples", "openapi", "payments-openapi.yaml"), path.join(specs, "payments-openapi.yaml"));
+    // The payments example set is checked against its own bundled spec.
+    await fs.copyFile(path.join(repoRoot, "examples", "payments-api", "payments-openapi.yaml"), path.join(specs, "payments-openapi.yaml"));
     const original = await fs.readFile(path.join(repoRoot, "examples", "payments-api", "list-payments.md"), "utf8");
     await fs.writeFile(path.join(docs, "list-payments.md"), original, "utf8");
     await expect(execFileAsync(process.execPath, [script("validate-openapi-examples.mjs"), docs, "--specs", specs])).resolves.toBeDefined();
@@ -367,5 +368,136 @@ describe("hand-written docs written by people", () => {
     );
     const { stderr } = await execFileAsync(process.execPath, [script("validate-doc-quality.mjs"), docs]);
     expect(stderr).toContain(`missing section(s) from the operations template: ${headings[headings.length - 1]}`);
+  });
+});
+
+describe("Apideck CRM API (v1.2.4 release check)", () => {
+  const apideckSpec = path.join(repoRoot, "tests", "fixtures", "third-party", "apideck-crm.yaml");
+  const createContact = path.join("endpoints", "post-crm-contacts.md");
+  const listContacts = path.join("endpoints", "get-crm-contacts.md");
+  const getContact = path.join("endpoints", "get-crm-contacts-id.md");
+  const createActivity = path.join("endpoints", "post-crm-activities.md");
+  let root;
+  let specs;
+  let docs;
+
+  async function probe(file, edit, scriptName = "validate-openapi-examples.mjs") {
+    const target = await fs.mkdtemp(path.join(root, "probe-"));
+    await fs.cp(docs, target, { recursive: true });
+    const filePath = path.join(target, file);
+    const original = await fs.readFile(filePath, "utf8");
+    const edited = edit(original);
+    expect(edited).not.toBe(original);
+    await fs.writeFile(filePath, edited, "utf8");
+    const args = scriptName === "validate-openapi-examples.mjs" ? [target, "--specs", specs] : [target];
+    try {
+      const { stderr } = await execFileAsync(process.execPath, [script(scriptName), ...args]);
+      return { failed: false, output: stderr };
+    } catch (error) {
+      return { failed: true, output: `${error.stdout}${error.stderr}` };
+    }
+  }
+
+  // Edit the JSON body of the curl example.
+  const requestJson = (change) => (doc) => doc.replace(/-d '(.*)'\n/, (match, body) => {
+    const value = JSON.parse(body.replace(/'\\''/g, "'"));
+    change(value);
+    return `-d '${JSON.stringify(value).replace(/'/g, "'\\''")}'\n`;
+  });
+
+  beforeAll(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "repodocs-apideck-"));
+    specs = path.join(root, "openapi");
+    docs = path.join(root, "generated");
+    await fs.mkdir(specs);
+    await fs.copyFile(apideckSpec, path.join(specs, "apideck-crm.yaml"));
+    await execFileAsync(process.execPath, [script("generate-openapi-docs.mjs"), path.join(specs, "apideck-crm.yaml"), docs, "--owner", "customers-eng"]);
+  });
+
+  it("generates docs that pass every check, with deepObject parameters sent and documented properly", async () => {
+    await expect(execFileAsync(process.execPath, [script("validate-openapi-examples.mjs"), docs, "--specs", specs])).resolves.toBeDefined();
+    await expect(execFileAsync(process.execPath, [script("validate-doc-quality.mjs"), docs])).resolves.toBeDefined();
+    const list = await fs.readFile(path.join(docs, listContacts), "utf8");
+    expect(list).not.toContain("object%20Object");
+    expect(list).toContain("sort[by]=created_at&sort[direction]=desc");
+    expect(list).toMatch(/^\| sort\[direction\] \| string \| no \| .*Allowed values: `asc`, `desc`\. Default: asc \|$/m);
+    expect(list).not.toContain("cursor={cursor}");
+    const create = await fs.readFile(path.join(docs, createContact), "utf8");
+    expect(create).toContain('-H "Authorization: Bearer <api-key>"');
+    expect(create).toMatch(/^\| emails\[\]\.email \| string \| yes \| .*Nullable\. Minimum length: 1\. Format: email \|$/m);
+    expect(create).toContain("| custom_fields[].value | any of: ");
+  });
+
+  it("writes docs that pass the markdownlint config init ships", async () => {
+    await expect(execFileAsync(process.execPath, [path.join(repoRoot, "node_modules", "markdownlint-cli", "markdownlint.js"), "--config", path.join(repoRoot, ".markdownlint.json"), docs])).resolves.toBeDefined();
+  });
+
+  it.each([
+    ["a deepObject value outside its enum", listContacts, (doc) => doc.replace("sort[by]=created_at", "sort[by]=age"), "query parameter 'sort[by]' uses 'age', which is not one of its allowed values"],
+    ["a deepObject key the parameter does not have", listContacts, (doc) => doc.replace("sort[by]=created_at", "sort[order]=created_at"), "'order' is not a key of 'sort'"],
+    ["a query value above its maximum", listContacts, (doc) => doc.replace("limit=20", "limit=500"), "query parameter 'limit' is 500, above the spec's maximum of 200"],
+    ["a query value of the wrong type", listContacts, (doc) => doc.replace("raw=false", "raw=maybe"), "query parameter 'raw' uses 'maybe', which is not a valid boolean"],
+    ["the credentials removed from the curl", createContact, (doc) => doc.replace('  -H "Authorization: Bearer <api-key>" \\\n', ""), "the request example sends no credentials"],
+    ["the auth header renamed", createContact, (doc) => doc.replace('-H "Authorization: Bearer <api-key>"', '-H "X-API-Key: <api-key>"'), "sends header 'X-API-Key', which apideck-crm.yaml does not define"],
+    ["Basic where the spec says Bearer", createContact, (doc) => doc.replace('-H "Authorization: Bearer <api-key>"', '-H "Authorization: Basic dXNlcjpwYXNz"'), "but the spec says to send 'Bearer <key>'"],
+    ["a required header removed", createContact, (doc) => doc.replace('  -H "x-apideck-consumer-id: <x-apideck-consumer-id>" \\\n', ""), "leaves out required header 'x-apideck-consumer-id'"],
+    ["a header name with a typo", createContact, (doc) => doc.replace('-H "x-apideck-app-id:', '-H "x-apideck-appid:'), "sends header 'x-apideck-appid'"],
+    ["the wrong HTTP method", createContact, (doc) => doc.replace("curl -X POST", "curl -X PUT"), "the request example sends PUT, but this doc describes POST"],
+    ["the Content-Type removed from a body", createContact, (doc) => doc.replace('  -H "Content-Type: application/json" \\\n', ""), "sends a body without a Content-Type header"],
+    ["a path placeholder the operation does not have", getContact, (doc) => doc.replace("apideck.com/crm/contacts/{id}", "apideck.com/crm/contacts/{contactId}"), "placeholder {contactId}, which is not a path parameter"],
+    ["a nested required field removed from the body", createContact, requestJson((body) => { delete body.emails[0].email; }), "request example field 'emails[].email' is missing, and the spec requires it"],
+    ["a number below its minimum", createActivity, requestJson((body) => { body.duration_seconds = -5; }), "is -5, below the spec's minimum of 0"],
+    ["a string shorter than its minimum length", createContact, requestJson((body) => { body.name = ""; }), "shorter than the spec's minimum length of 1"],
+    ["an invalid email", createContact, requestJson((body) => { body.emails[0].email = "not-an-email"; }), "is 'not-an-email', which is not a valid email"],
+    ["an anyOf type list cut to one type", createContact, (doc) => doc.replace(/\| custom_fields\[\]\.value \| any of: [^|]*(\\\|[^|]*)*\|/, "| custom_fields[].value | string |"), "is documented as string, but the spec allows"],
+    ["a deprecated marker removed", createContact, (doc) => doc.replace("`https://unavatar.io/elon-musk`. Deprecated. Nullable |", "`https://unavatar.io/elon-musk`. Nullable |"), "'image' is deprecated in apideck-crm.yaml, but the doc does not say so"],
+    ["the response fence language changed", getContact, (doc) => doc.replace(/(## Response Example[\s\S]*?)```json/, "$1```text"), "the Response Example has no `json` code block"],
+    ["the overview naming a header the spec does not use", "api-overview.md", (doc) => doc.replace("API key in header `x-apideck-app-id`", "API key in header `X-App-Key`"), "Authentication names the header 'X-App-Key'"]
+  ])("catches %s", async (name, file, edit, expected) => {
+    const result = await probe(file, edit);
+    expect(result.failed).toBe(true);
+    expect(result.output).toContain(expected);
+  });
+
+  it("catches a second doc for the same operation in one folder", async () => {
+    const result = await probe(path.join("endpoints", "get-crm-contacts-copy.md"), () => "x", "validate-openapi-examples.mjs").catch(() => null);
+    expect(result).toBeNull(); // the copy does not exist yet; build it below
+    const target = await fs.mkdtemp(path.join(root, "dup-"));
+    await fs.cp(docs, target, { recursive: true });
+    await fs.copyFile(path.join(target, listContacts), path.join(target, "endpoints", "list-contacts-again.md"));
+    const failure = await execFileAsync(process.execPath, [script("validate-openapi-examples.mjs"), target, "--specs", specs]).catch((error) => error);
+    expect(failure.code).toBe(1);
+    expect(failure.stderr).toContain("describes the same operation (GET /crm/contacts)");
+  });
+
+  it.each([
+    ["an unclosed code fence", (doc) => doc.replace(/\n```\n\n## Response Example/, "\n\n## Response Example"), "probably missing its closing fence"],
+    ["an unescaped pipe in a table row", (doc) => doc.replace("| first_name | string | no | The first name of the contact.", "| first_name | string | no | The first | name of the contact."), "cells but its header has 4"],
+    ["a table with no separator row", (doc) => doc.replace(/(## Request Body[\s\S]*?\| Field \| Type \| Required \| Description \|\n)\| --- \| --- \| --- \| --- \|\n/, "$1"), "has no separator row"],
+    ["a second H1", (doc) => doc.replace("## Summary", "# Another title\n\n## Summary"), "has 2 H1 headings"],
+    ["a reference-style javascript: link", (doc) => doc.replace("## Summary\n", "## Summary\n\nSee [the guide][g].\n\n[g]: javascript:alert(1)\n"), "a javascript:, vbscript: or data: link"],
+    ["an entity-encoded javascript: link", (doc) => doc.replace("## Summary\n", "## Summary\n\n[x](&#106;avascript:alert(1))\n"), "a javascript:, vbscript: or data: link"],
+    ["a javascript: link split by a tab", (doc) => doc.replace("## Summary\n", "## Summary\n\n[x](java\tscript:alert(1))\n"), "a javascript:, vbscript: or data: link"],
+    ["an <object> element", (doc) => doc.replace("## Summary\n", "## Summary\n\n<object data=\"x.swf\"></object>\n"), "<object> or <embed>"],
+    ["a <form>", (doc) => doc.replace("## Summary\n", "## Summary\n\n<form action=\"https://evil.example\"><input name=k></form>\n"), "<form>"],
+    ["a <meta> refresh", (doc) => doc.replace("## Summary\n", "## Summary\n\n<meta http-equiv=\"refresh\" content=\"0;url=https://evil.example\">\n"), "<meta http-equiv>"],
+    ["a <style> import", (doc) => doc.replace("## Summary\n", "## Summary\n\n<style>@import url(https://evil.example/x.css)</style>\n"), "<style> or <link>"],
+    ["a [PLACEHOLDER]", (doc) => doc.replace("## Summary\n", "## Summary\n\n[PLACEHOLDER]\n"), "unresolved placeholder content detected ([PLACEHOLDER])"],
+    ["a lowercase todo:", (doc) => doc.replace("## Summary\n", "## Summary\n\ntodo: check this\n"), "unresolved placeholder content detected (todo:)"]
+  ])("the quality check catches %s", async (name, edit, expected) => {
+    const result = await probe(createContact, edit, "validate-doc-quality.mjs");
+    expect(result.failed).toBe(true);
+    expect(result.output).toContain(expected);
+  });
+
+  it("accepts natural edits: an env var credential, reordered deepObject keys, todo_items in code", async () => {
+    for (const edit of [
+      (doc) => doc.replace('"Authorization: Bearer <api-key>"', '"Authorization: $APIDECK_API_KEY"'),
+      (doc) => doc.replace("x-apideck-consumer-id: <x-apideck-consumer-id>", "x-apideck-consumer-id: test-consumer")
+    ]) {
+      expect((await probe(createContact, edit)).failed).toBe(false);
+    }
+    expect((await probe(listContacts, (doc) => doc.replace("sort[by]=created_at&sort[direction]=desc", "sort[direction]=asc&sort[by]=updated_at"))).failed).toBe(false);
+    expect((await probe(createContact, (doc) => doc.replace("## Summary\n", "## Summary\n\nThe `todo_items` field is not used here.\n"), "validate-doc-quality.mjs")).failed).toBe(false);
   });
 });

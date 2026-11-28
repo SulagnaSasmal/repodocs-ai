@@ -92,26 +92,43 @@ function extractOperation(content) {
   return { method, url };
 }
 
+// Fenced code blocks in a piece of text. A fence of three or more backticks is
+// closed by a fence at least as long, so content with ``` inside stays whole.
+function codeBlocks(text) {
+  const blocks = [];
+  const pattern = /^(`{3,})([^\n`]*)\n([\s\S]*?)^\1`*[ \t]*$/gm;
+  let match;
+  while ((match = pattern.exec(String(text || "")))) {
+    blocks.push({ lang: match[2].trim().toLowerCase(), body: match[3].replace(/\n$/, "") });
+  }
+  return blocks;
+}
+
+// The curl command in the Request Example section, if there is one.
+function requestCurl(content) {
+  return codeBlocks(sectionText(content, "Request Example")).find((block) => /^\s*curl\b/.test(block.body))?.body || "";
+}
+
 function extractResponseJson(content) {
-  const responseMatch = content.match(/## Response Example\s+[\s\S]*?```json\s*([\s\S]*?)```/);
-  if (!responseMatch) {
+  // Only the Response Example section's own JSON block, never a later one.
+  const block = codeBlocks(sectionText(content, "Response Example")).find((candidate) => candidate.lang === "json");
+  if (!block) {
     return null;
   }
 
   try {
-    return JSON.parse(responseMatch[1]);
+    return JSON.parse(block.body);
   } catch {
     return { __parseError: true };
   }
 }
 
 function extractRequestJson(content) {
-  const requestMatch = content.match(/## Request Example\s+[\s\S]*?```bash\s*([\s\S]*?)```/);
-  if (!requestMatch) {
+  const curlBlock = requestCurl(content);
+  if (!curlBlock) {
     return null;
   }
 
-  const curlBlock = requestMatch[1];
   const bodyMatch = curlBlock.match(/(?:-d|--data|--data-raw)\s+'((?:[^']|'\\'')*)'\s*$/m);
   if (!bodyMatch) {
     return null;
@@ -143,8 +160,7 @@ function extractParameterNames(content) {
 }
 
 function extractCurlUrl(content) {
-  const requestMatch = content.match(/## Request Example\s+[\s\S]*?```bash\s*([\s\S]*?)```/);
-  const urlMatch = requestMatch?.[1].match(/curl\s+(?:-X\s+\w+\s+)?"([^"]+)"/);
+  const urlMatch = requestCurl(content).match(/curl\s+(?:(?:-X|--request)\s+\w+\s+)?["']([^"']+)["']/);
   try {
     return urlMatch ? new URL(urlMatch[1]) : null;
   } catch {
@@ -335,6 +351,135 @@ function jsonErrors(spec, value, schemas, label, kind, depth) {
   return best;
 }
 
+// A value outside the schema's range, length or format.
+function valueConstraintError(value, shape) {
+  if (typeof value === "number") {
+    if (typeof shape.minimum === "number" && (shape.exclusiveMinimum === true ? value <= shape.minimum : value < shape.minimum)) {
+      return `is ${value}, below the spec's minimum of ${shape.minimum}`;
+    }
+    if (typeof shape.maximum === "number" && (shape.exclusiveMaximum === true ? value >= shape.maximum : value > shape.maximum)) {
+      return `is ${value}, above the spec's maximum of ${shape.maximum}`;
+    }
+    if (typeof shape.exclusiveMinimum === "number" && value <= shape.exclusiveMinimum) {
+      return `is ${value}, not above the spec's exclusive minimum of ${shape.exclusiveMinimum}`;
+    }
+    if (typeof shape.exclusiveMaximum === "number" && value >= shape.exclusiveMaximum) {
+      return `is ${value}, not below the spec's exclusive maximum of ${shape.exclusiveMaximum}`;
+    }
+  }
+  if (typeof value === "string") {
+    if (typeof shape.minLength === "number" && [...value].length < shape.minLength) {
+      return `is ${[...value].length} characters, shorter than the spec's minimum length of ${shape.minLength}`;
+    }
+    if (typeof shape.maxLength === "number" && [...value].length > shape.maxLength) {
+      return `is ${[...value].length} characters, longer than the spec's maximum length of ${shape.maxLength}`;
+    }
+    const formats = {
+      email: /^[^@\s]+@[^@\s]+\.[^@\s]+$/,
+      date: /^\d{4}-\d{2}-\d{2}$/,
+      "date-time": /^\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?([Zz]|[+-]\d{2}:?\d{2})?$/,
+      uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+      uri: /^[A-Za-z][A-Za-z0-9+.-]*:\S*$/
+    };
+    if (formats[shape.format] && value !== "" && !formats[shape.format].test(value)) {
+      return `is '${value}', which is not a valid ${shape.format}`;
+    }
+  }
+  return null;
+}
+
+// Required fields an example leaves out, at every depth, for schemas with a
+// single shape (oneOf/anyOf shapes are compared by the type checks instead).
+function missingRequiredFields(spec, value, schema, label = "", depth = 0) {
+  const resolved = resolveSchema(spec, schema);
+  if (!resolved || depth > 8 || resolved.oneOf || resolved.anyOf) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0 ? missingRequiredFields(spec, value[0], resolved.items, `${label}[]`, depth + 1) : [];
+  }
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  const missing = (resolved.required || []).filter((key) => !(key in value) && !resolveSchema(spec, resolved.properties?.[key])?.writeOnly).map((key) => (label ? `${label}.${key}` : key));
+  for (const [key, child] of Object.entries(value)) {
+    if (resolved.properties?.[key]) {
+      missing.push(...missingRequiredFields(spec, child, resolved.properties[key], label ? `${label}.${key}` : key, depth + 1));
+    }
+  }
+  return missing;
+}
+
+// The header cells of the first table under a "## <heading>" section.
+function sectionTableHeader(content, heading) {
+  const section = sectionText(content, heading);
+  const line = (section || "").split(/\r?\n/).find((candidate) => /^\s*\|.*\|\s*$/.test(candidate));
+  return line ? line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim()) : null;
+}
+
+// What a curl command sends: method, headers, cookies, body, Basic auth.
+function parseCurl(text) {
+  const joined = String(text).replace(/\\\n\s*/g, " ");
+  const tokens = [];
+  const pattern = /"((?:[^"\\]|\\.)*)"|'((?:[^']|'\\'')*)'|(\S+)/g;
+  let match;
+  while ((match = pattern.exec(joined))) {
+    tokens.push(match[1] !== undefined ? match[1].replace(/\\(.)/g, "$1") : match[2] !== undefined ? match[2].replace(/'\\''/g, "'") : match[3]);
+  }
+  const result = { method: null, headers: new Map(), headerNames: new Map(), cookies: new Set(), hasBody: false, multipart: false, basicAuth: false };
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const next = tokens[index + 1] || "";
+    if (token === "-X" || token === "--request") {
+      result.method = next.toUpperCase();
+      index += 1;
+    } else if (token === "-H" || token === "--header") {
+      const separator = next.indexOf(":");
+      if (separator > 0) {
+        const name = next.slice(0, separator).trim();
+        result.headers.set(name.toLowerCase(), next.slice(separator + 1).trim());
+        result.headerNames.set(name.toLowerCase(), name);
+        if (name.toLowerCase() === "cookie") {
+          next.slice(separator + 1).split(";").forEach((pair) => result.cookies.add(pair.split("=")[0].trim()));
+        }
+      }
+      index += 1;
+    } else if (token === "-b" || token === "--cookie") {
+      next.split(";").forEach((pair) => result.cookies.add(pair.split("=")[0].trim()));
+      index += 1;
+    } else if (/^(-d|--data|--data-raw|--data-binary|--data-urlencode|--json)$/.test(token)) {
+      result.hasBody = true;
+      if (token === "--json") result.headers.set("content-type", "application/json");
+      index += 1;
+    } else if (token === "-F" || token === "--form") {
+      result.hasBody = true;
+      result.multipart = true;
+      index += 1;
+    } else if (token === "-u" || token === "--user") {
+      result.basicAuth = true;
+      index += 1;
+    }
+  }
+  return result;
+}
+
+function credentialLabel(scheme, name) {
+  if (scheme.type === "http" && /basic/i.test(scheme.scheme)) return "Basic credentials (-u)";
+  if (scheme.type === "http" || scheme.type === "oauth2" || scheme.type === "openIdConnect") return "an Authorization header";
+  if (scheme.type === "apiKey") return `the ${scheme.in || "header"} '${scheme.name || name}'`;
+  return `'${name}'`;
+}
+
+// The basic types a oneOf/anyOf allows, such as ["string", "number"].
+function choiceTypes(spec, schema) {
+  const resolved = resolveSchema(spec, schema) || {};
+  const choices = resolved.oneOf || resolved.anyOf;
+  if (resolved.type || !Array.isArray(choices)) {
+    return [];
+  }
+  return [...new Set(choices.map((choice) => basicType(spec, choice)).filter(Boolean))];
+}
+
 // The JSON type of a value, in schema terms.
 function jsonType(value) {
   if (value === null) return "null";
@@ -356,6 +501,11 @@ function shapeErrors(spec, value, shape, label, kind, depth) {
       return [`${where} is ${/^[aeiou]/.test(actual) ? "an" : "a"} ${actual}, but the spec says ${allowedTypes.join(" or ")}`];
     }
   }
+  const constraint = valueConstraintError(value, shape);
+  if (constraint) {
+    const where = label ? `${kind} example field '${label}'` : `the ${kind} example`;
+    return [`${where} ${constraint}`];
+  }
   if (Array.isArray(shape.enum) && (value === null || typeof value !== "object")) {
     return shape.enum.map(String).includes(String(value))
       ? []
@@ -373,6 +523,14 @@ function shapeErrors(spec, value, shape, label, kind, depth) {
       return [];
     }
     const errors = [];
+    if (kind === "request" && label) {
+      // Required fields of nested objects; the top level is checked separately.
+      for (const key of shape.required || []) {
+        if (!(key in value) && !resolveSchema(spec, properties[key])?.readOnly) {
+          errors.push(`request example field '${label}.${key}' is missing, and the spec requires it`);
+        }
+      }
+    }
     for (const [key, child] of Object.entries(value)) {
       const childLabel = label ? `${label}.${key}` : key;
       if (!(key in properties)) {
@@ -550,16 +708,27 @@ function scoreOperationMatch(candidate, route, requestJson, responseJson, docume
   return score;
 }
 
-function findBestSpecOperation(specs, route, method, requestJson, responseJson, documentedParameters) {
+function findBestSpecOperation(specs, route, method, requestJson, responseJson, documentedParameters, docPath = "", exampleUrl = null) {
   const candidates = findSpecOperations(specs, route, method);
   if (candidates.length === 0) {
     return null;
   }
 
+  // When several specs define the operation, the one in the doc's own folder,
+  // or the nearest folder above it, describes it.
+  const proximity = (candidate) => {
+    const specDirectory = path.dirname(path.resolve(candidate.filePath));
+    const docDirectory = path.dirname(path.resolve(docPath || "."));
+    const relative = path.relative(specDirectory, docDirectory);
+    return docPath && !relative.startsWith("..") && !path.isAbsolute(relative) ? 100 - relative.split(path.sep).filter(Boolean).length : 0;
+  };
+
   return candidates
     .map((candidate) => ({
       candidate,
-      score: scoreOperationMatch(candidate, route, requestJson, responseJson, documentedParameters)
+      // The spec whose server the request example calls is the one it documents.
+      score: scoreOperationMatch(candidate, route, requestJson, responseJson, documentedParameters) + proximity(candidate) +
+        (exampleUrl && serverBases(candidate.spec).some((base) => /^https?:\/\//.test(base) && exampleUrl.href.startsWith(base)) ? 50 : 0)
     }))
     .sort((left, right) => right.score - left.score)[0].candidate;
 }
@@ -607,6 +776,15 @@ function authenticationErrors(spec, authText, requirements, subject) {
         errors.push(`Authentication mentions ${label}, but the spec's security for ${subject} does not use it`);
       }
     }
+    // A header named in the prose ("header `X-API-Key`") must be one the spec uses.
+    const knownHeaders = new Set(inUse.filter((scheme) => scheme.type === "apiKey" && scheme.in === "header").map((scheme) => String(scheme.name).toLowerCase()));
+    if (inUse.some((scheme) => scheme.type !== "apiKey")) knownHeaders.add("authorization");
+    for (const found of authText.matchAll(/\bheader\s+`([^`]+)`|`([^`]+)`\s+header\b/gi)) {
+      const name = (found[1] || found[2]).replace(/:.*$/, "").trim();
+      if (/^[A-Za-z][A-Za-z0-9-]*$/.test(name) && !knownHeaders.has(name.toLowerCase()) && !descriptions.toLowerCase().includes(name.toLowerCase())) {
+        errors.push(`Authentication names the header '${name}', but the spec's security for ${subject} uses ${[...knownHeaders].join(", ") || "no header"}`);
+      }
+    }
   }
   return errors;
 }
@@ -615,9 +793,14 @@ function routePattern(route) {
   return new RegExp(`^${route.replace(/[.*+?^$()|[\]\\]/g, "\\$&").replace(/\\\{[^}]+\\\}|\{[^}]+\}/g, "[^/]+")}$`);
 }
 
+// Warnings do not fail the run: things worth fixing before publishing that a
+// hand-written doc may leave out on purpose.
+const warnings = [];
+
 function checkEndpointDoc(content, relativePath, match, operationRef, requestJson, responseJson) {
   const errors = [];
   const add = (message) => errors.push(`${relativePath}: ${message}`);
+  const warn = (message) => warnings.push(`${relativePath}: ${message}`);
   const specName = path.basename(match.filePath);
   const spec = match.spec;
   const operation = match.operation;
@@ -652,6 +835,19 @@ function checkEndpointDoc(content, relativePath, match, operationRef, requestJso
   // Response example JSON.
   const success = Object.entries(operation.responses || {}).find(([code]) => code.startsWith("2"));
   const successSchema = jsonSchemaOf(successResponse(spec, operation)?.content);
+  // A Response Example whose JSON block lost its language would not be compared at all.
+  const responseBlocks = codeBlocks(sectionText(content, "Response Example"));
+  if (successSchema && responseBlocks.length > 0 && !responseBlocks.some((block) => block.lang === "json")) {
+    add(`the Response Example has no \`json\` code block (found ${responseBlocks.map((block) => block.lang || "no language").join(", ")}), so it could not be compared with ${specName}`);
+  }
+  // Tables are read by column position, so their headers must say what each column is.
+  for (const heading of ["Parameters", "Path Parameters", "Query Parameters", "Header Parameters", "Request Body"]) {
+    const header = sectionTableHeader(content, heading);
+    if (header && !(/name|field|parameter/i.test(header[0] || "") && /type/i.test(header[1] || "") && /required/i.test(header[2] || ""))) {
+      warn(`the ${heading} table header is '${header.join(" | ")}'; the checks read columns in the order Name, Type, Required, Description`);
+    }
+  }
+
   if (responseJson && typeof responseJson === "object") {
     const responseShapes = shapesOf(spec, successSchema);
     if (!Array.isArray(responseJson)) {
@@ -665,10 +861,15 @@ function checkEndpointDoc(content, relativePath, match, operationRef, requestJso
     for (const message of checkJsonValue(spec, responseJson, successSchema, "", "response")) {
       add(`${message} in ${specName}`);
     }
+    // Spec examples often leave out required response fields, so this is a warning.
+    for (const missing of missingRequiredFields(spec, responseJson, successSchema)) {
+      warn(`response example leaves out '${missing}', which ${specName} marks as required`);
+    }
   }
 
   // Error response body example.
-  const errorBody = content.match(/Error response body \(`([^`]+)`\):\s*```json\s*([\s\S]*?)```/);
+  const errorBodyMatch = content.match(/Error response body \(`([^`]+)`\):\s*\n(`{3,})json[^\n]*\n([\s\S]*?)\n\2`*[ \t]*$/m);
+  const errorBody = errorBodyMatch ? [errorBodyMatch[0], errorBodyMatch[1], errorBodyMatch[3]] : null;
   if (errorBody) {
     const errorResponse = resolveRef(spec, operation.responses?.[errorBody[1]]);
     if (!errorResponse) {
@@ -696,6 +897,28 @@ function checkEndpointDoc(content, relativePath, match, operationRef, requestJso
     }
     seenParameters.add(key);
     const defined = specParameters.find((parameter) => parameter.name === documented.name && (!documented.location || parameter.in === documented.location));
+    const deepRow = documented.name.match(/^([^[\]]+)\[([^[\]]+)\]$/);
+    if (!defined && deepRow) {
+      // A row for one key of a deepObject parameter, such as sort[by].
+      const base = specParameters.find((parameter) => parameter.name === deepRow[1] && parameter.in === "query");
+      const property = base ? resolveSchema(spec, base.schema)?.properties?.[deepRow[2]] : undefined;
+      if (!property) {
+        add(`parameter '${documented.name}' is not defined in ${specName}`);
+        continue;
+      }
+      const propertyType = basicType(spec, property);
+      const rowType = String(documented.type || "").replace(/<.*$/, "").trim();
+      if (propertyType && /^(string|integer|number|boolean|object|array)$/.test(rowType) && rowType !== propertyType) {
+        add(`parameter '${documented.name}' is documented as ${rowType}, but the spec says ${propertyType}`);
+      }
+      constraintNoteProblems(spec, property, documented.description || "", `parameter '${documented.name}'`).forEach(add);
+      const rowListed = listedAllowedValues(documented.description || "", resolveSchema(spec, property)?.description || "");
+      const rowEnum = resolveSchema(spec, property)?.enum;
+      if (rowListed && (!rowEnum || [...rowListed].sort().join("|") !== rowEnum.map(String).sort().join("|"))) {
+        add(`parameter '${documented.name}' lists allowed values (${rowListed.join(", ")}) that do not match the spec (${(rowEnum || []).join(", ") || "no enum"})`);
+      }
+      continue;
+    }
     if (!defined) {
       add(`parameter '${documented.name}' is not defined in ${specName}`);
       continue;
@@ -709,6 +932,13 @@ function checkEndpointDoc(content, relativePath, match, operationRef, requestJso
     if (specType && /^(string|integer|number|boolean|object|array)$/.test(docType) && docType !== specType) {
       add(`parameter '${documented.name}' is documented as ${docType}, but the spec says ${specType}`);
     }
+    const parameterChoices = choiceTypes(spec, defined.schema);
+    if (parameterChoices.length > 1 && /^(string|integer|number|boolean|object|array)$/.test(docType)) {
+      add(`parameter '${documented.name}' is documented as ${docType}, but the spec allows ${parameterChoices.join(", ")}`);
+    }
+    if ((defined.deprecated || resolveSchema(spec, defined.schema)?.deprecated) && !/deprecated/i.test(documented.description || "")) {
+      add(`parameter '${documented.name}' is deprecated in ${specName}, but the doc does not say so`);
+    }
     constraintNoteProblems(spec, defined.schema, documented.description || "", `parameter '${documented.name}'`).forEach(add);
     const parameterEnum = resolveSchema(spec, defined.schema)?.enum;
     const parameterListed = listedAllowedValues(documented.description || "", `${defined.description || ""} ${resolveSchema(spec, defined.schema)?.description || ""}`);
@@ -720,9 +950,14 @@ function checkEndpointDoc(content, relativePath, match, operationRef, requestJso
   if (hasParameterTables) {
     for (const parameter of specParameters.filter((candidate) => ["path", "query", "header"].includes(candidate.in))) {
       if (!documentedParameters.some((documented) => documented.name === parameter.name && (!documented.location || documented.location === parameter.in))) {
-        const omittedHeader = parameter.in === "header" && /^(authorization|content-type|accept)$/i.test(parameter.name);
+        // Headers that carry credentials are documented with the authentication, not the parameter tables.
+        const credentialHeaders = securityRequirementsOf(spec, operation).flatMap((requirement) => Object.keys(requirement || {}))
+          .map((name) => resolveRef(spec, spec.components?.securitySchemes?.[name]) || {})
+          .filter((scheme) => scheme.type === "apiKey" && scheme.in === "header").map((scheme) => String(scheme.name).toLowerCase());
+        const omittedHeader = parameter.in === "header" && (/^(authorization|content-type|accept)$/i.test(parameter.name) || credentialHeaders.includes(parameter.name.toLowerCase()));
         if (!omittedHeader) {
-          add(`${parameter.in} parameter '${parameter.name}' from ${specName} is missing from the parameter tables`);
+          // A required parameter must be documented; an optional one may be left out.
+          (parameter.required ? add : warn)(`${parameter.required ? "required" : "optional"} ${parameter.in} parameter '${parameter.name}' from ${specName} is missing from the parameter tables`);
         }
       }
     }
@@ -781,6 +1016,13 @@ function checkEndpointDoc(content, relativePath, match, operationRef, requestJso
         if (specType && /^(string|integer|number|boolean|object|array)$/.test(docType) && docType !== specType) {
           problems.push(`request field '${name}' is documented as ${docType}, but the spec says ${specType}`);
         }
+        const fieldChoices = choiceTypes(spec, candidate.schema);
+        if (fieldChoices.length > 1 && /^(string|integer|number|boolean|object|array)$/.test(docType)) {
+          problems.push(`request field '${name}' is documented as ${docType}, but the spec allows ${fieldChoices.join(", ")}`);
+        }
+        if (resolveSchema(spec, candidate.schema)?.deprecated && !/deprecated/i.test(description)) {
+          problems.push(`request field '${name}' is deprecated in ${specName}, but the doc does not say so`);
+        }
         const listed = listedAllowedValues(description, resolveSchema(spec, candidate.schema)?.description || "");
         const specEnum = resolveSchema(spec, candidate.schema)?.enum;
         problems.push(...constraintNoteProblems(spec, candidate.schema, description, `request field '${name}'`));
@@ -824,19 +1066,79 @@ function checkEndpointDoc(content, relativePath, match, operationRef, requestJso
   }
 
   // Credentials the request example sends, against the operation's security.
-  const curlText = (content.match(/```(?:bash|shell|sh|console)?\n(curl [\s\S]*?)```/) || [])[1] || "";
+  const curlText = requestCurl(content);
   if (curlText) {
     const schemes = spec.components?.securitySchemes || {};
     const requirements = securityRequirementsOf(spec, operation);
     const inUse = requirements.flatMap((requirement) => Object.keys(requirement || {}).map((name) => resolveRef(spec, schemes[name]) || {}));
     const subject = `${operationRef.method} ${operationRef.url}`;
-    const sendsBasic = /(?:^|\s)(?:-u|--user)\s/.test(curlText) || /Authorization:\s*Basic\b/i.test(curlText);
-    const sendsBearer = /Authorization:\s*Bearer\b/i.test(curlText);
-    if (sendsBasic && !inUse.some((scheme) => scheme.type === "http" && /basic/i.test(scheme.scheme))) {
+    const curl = parseCurl(curlText);
+    const sendsBasic = curl.basicAuth || /^basic\b/i.test(curl.headers.get("authorization") || "");
+    const sendsBearer = /^bearer\b/i.test(curl.headers.get("authorization") || "");
+    // An API key sent in an Authorization header may carry any prefix the spec describes.
+    const apiKeyInAuthorization = inUse.some((scheme) => scheme.type === "apiKey" && scheme.in === "header" && String(scheme.name).toLowerCase() === "authorization");
+    // When the spec's description says how to send that key ("Bearer <key>"), the example must match.
+    const authorizationScheme = inUse.find((scheme) => scheme.type === "apiKey" && scheme.in === "header" && String(scheme.name).toLowerCase() === "authorization");
+    const expectedPrefix = String(authorizationScheme?.description || "").match(/\b(Bearer|Token|Basic|ApiKey)\s+</i)?.[1];
+    const sentAuthorization = curl.headers.get("authorization") || "";
+    // A shell variable ($API_KEY) may hold the whole value, prefix included.
+    if (expectedPrefix && sentAuthorization && !sentAuthorization.startsWith("$") && !new RegExp(`^${expectedPrefix}\\s`, "i").test(sentAuthorization)) {
+      add(`the request example sends 'Authorization: ${sentAuthorization}', but the spec says to send '${expectedPrefix} <key>'`);
+    }
+    if (sendsBasic && !apiKeyInAuthorization && !inUse.some((scheme) => scheme.type === "http" && /basic/i.test(scheme.scheme))) {
       add(`the request example sends Basic credentials, but the spec's security for ${subject} does not use Basic authentication`);
     }
-    if (sendsBearer && !inUse.some((scheme) => (scheme.type === "http" && /bearer/i.test(scheme.scheme)) || scheme.type === "oauth2" || scheme.type === "openIdConnect")) {
+    if (sendsBearer && !apiKeyInAuthorization && !inUse.some((scheme) => (scheme.type === "http" && /bearer/i.test(scheme.scheme)) || scheme.type === "oauth2" || scheme.type === "openIdConnect")) {
       add(`the request example sends a Bearer token, but the spec's security for ${subject} does not use one`);
+    }
+
+    // Credentials for at least one of the operation's security requirements.
+    const authOptional = requirements.length === 0 || requirements.some((requirement) => !requirement || Object.keys(requirement).length === 0);
+    if (!authOptional) {
+      const curlUrl = extractCurlUrl(content);
+      const sends = (scheme) => {
+        if (scheme.type === "http" && /basic/i.test(scheme.scheme)) return sendsBasic;
+        if (scheme.type === "http" || scheme.type === "oauth2" || scheme.type === "openIdConnect") return curl.headers.has("authorization");
+        if (scheme.type === "apiKey" && scheme.in === "header") return curl.headers.has(String(scheme.name).toLowerCase());
+        if (scheme.type === "apiKey" && scheme.in === "query") return Boolean(curlUrl?.searchParams.has(scheme.name));
+        if (scheme.type === "apiKey" && scheme.in === "cookie") return curl.cookies.has(scheme.name);
+        return true;
+      };
+      const satisfied = requirements.some((requirement) => Object.keys(requirement).every((name) => sends(resolveRef(spec, schemes[name]) || {})));
+      if (!satisfied) {
+        const expected = requirements.map((requirement) => Object.keys(requirement).map((name) => credentialLabel(resolveRef(spec, schemes[name]) || {}, name)).join(" and ")).join(", or ");
+        add(`the request example sends no credentials for ${subject}; the spec requires ${expected}`);
+      }
+    }
+
+    // The HTTP method.
+    const sentMethod = curl.method || (curl.hasBody ? "POST" : "GET");
+    if (sentMethod !== operationRef.method) {
+      add(`the request example sends ${sentMethod}, but this doc describes ${operationRef.method} ${operationRef.url}`);
+    }
+
+    // Headers: every one the spec defines, and the required ones present.
+    const headerParameters = specParameters.filter((parameter) => parameter.in === "header");
+    const securityHeaders = new Set(inUse.filter((scheme) => scheme.type === "apiKey" && scheme.in === "header").map((scheme) => String(scheme.name).toLowerCase()));
+    if (inUse.some((scheme) => scheme.type === "http" || scheme.type === "oauth2" || scheme.type === "openIdConnect")) securityHeaders.add("authorization");
+    const standardHeaders = new Set(["content-type", "accept", "user-agent", "accept-encoding", "accept-language", "cookie"]);
+    for (const name of curl.headers.keys()) {
+      if (!standardHeaders.has(name) && !securityHeaders.has(name) && !headerParameters.some((parameter) => parameter.name.toLowerCase() === name)) {
+        add(`the request example sends header '${curl.headerNames.get(name)}', which ${specName} does not define for ${subject}`);
+      }
+    }
+    for (const parameter of headerParameters.filter((candidate) => candidate.required && !/^(authorization|content-type|accept)$/i.test(candidate.name))) {
+      if (!curl.headers.has(parameter.name.toLowerCase())) {
+        add(`the request example leaves out required header '${parameter.name}'`);
+      }
+    }
+
+    // A body needs its Content-Type; -F sets multipart itself.
+    if (requestBody?.content && curl.hasBody && !curl.multipart && !curl.headers.has("content-type")) {
+      add(`the request example sends a body without a Content-Type header; the spec's request body types are ${Object.keys(requestBody.content).join(", ")}`);
+    }
+    if (requestBody?.required === true && !curl.hasBody) {
+      add(`the request example sends no body, but the spec requires one`);
     }
   }
 
@@ -854,20 +1156,69 @@ function checkEndpointDoc(content, relativePath, match, operationRef, requestJso
         add(`request example path ${examplePath} does not match ${match.route}`);
       }
     }
+    const apiKeyQueryNames = new Set(securityRequirementsOf(spec, operation).flatMap((requirement) => Object.keys(requirement || {}))
+      .map((name) => resolveRef(spec, spec.components?.securitySchemes?.[name]) || {})
+      .filter((scheme) => scheme.type === "apiKey" && scheme.in === "query").map((scheme) => scheme.name));
+    const sentQueryNames = new Set();
     for (const [name, value] of exampleUrl.searchParams) {
-      const defined = specParameters.find((parameter) => parameter.in === "query" && parameter.name === name);
+      if (apiKeyQueryNames.has(name)) {
+        continue;
+      }
+      // deepObject parameters are sent as name[key]=value.
+      const deep = name.match(/^([^[\]]+)\[([^[\]]+)\]$/);
+      const baseName = deep ? deep[1] : name;
+      sentQueryNames.add(baseName);
+      let defined = specParameters.find((parameter) => parameter.in === "query" && parameter.name === name);
+      let schema = defined ? resolveSchema(spec, defined.schema) : null;
+      if (!defined && deep) {
+        defined = specParameters.find((parameter) => parameter.in === "query" && parameter.name === baseName);
+        const objectSchema = defined ? resolveSchema(spec, defined.schema) || {} : null;
+        if (defined && objectSchema.properties && !(deep[2] in objectSchema.properties) && !objectSchema.additionalProperties) {
+          add(`query parameter '${name}': '${deep[2]}' is not a key of '${baseName}' in ${specName}`);
+          continue;
+        }
+        schema = objectSchema?.properties?.[deep[2]] ? resolveSchema(spec, objectSchema.properties[deep[2]]) : null;
+      }
       if (!defined) {
         add(`request example uses query parameter '${name}', which is not defined in ${specName}`);
         continue;
       }
-      const allowedValues = resolveSchema(spec, defined.schema)?.enum;
-      if (Array.isArray(allowedValues) && !allowedValues.map(String).includes(value)) {
-        add(`query parameter '${name}' uses '${value}', which is not one of its allowed values (${allowedValues.join(", ")})`);
+      if (/^\{[^}]+\}$|^<[^>]+>$/.test(value) || !schema) {
+        continue; // a visible placeholder, or a key with no schema of its own
+      }
+      const itemSchema = schema.type === "array" ? resolveSchema(spec, schema.items) || {} : schema;
+      const values = schema.type === "array" ? value.split(",") : [value];
+      for (const single of values) {
+        const allowedValues = itemSchema.enum;
+        if (Array.isArray(allowedValues) && !allowedValues.map(String).includes(single)) {
+          add(`query parameter '${name}' uses '${single}', which is not one of its allowed values (${allowedValues.join(", ")})`);
+          continue;
+        }
+        const typed = itemSchema.type === "integer" ? (/^-?\d+$/.test(single) ? Number(single) : undefined)
+          : itemSchema.type === "number" ? (/^-?\d+(\.\d+)?$/.test(single) ? Number(single) : undefined)
+          : itemSchema.type === "boolean" ? (/^(true|false)$/.test(single) ? single === "true" : undefined)
+          : single;
+        if (typed === undefined) {
+          add(`query parameter '${name}' uses '${single}', which is not a valid ${itemSchema.type}`);
+          continue;
+        }
+        const constraint = valueConstraintError(typed, itemSchema);
+        if (constraint) {
+          add(`query parameter '${name}' ${constraint}`);
+        }
       }
     }
     for (const parameter of specParameters.filter((candidate) => candidate.in === "query" && candidate.required)) {
-      if (!exampleUrl.searchParams.has(parameter.name)) {
+      if (!exampleUrl.searchParams.has(parameter.name) && !sentQueryNames.has(parameter.name)) {
         add(`request example leaves out required query parameter '${parameter.name}'`);
+      }
+    }
+    // Placeholders left in the path must be the operation's own path parameters.
+    const pathParameterNames = new Set(specParameters.filter((parameter) => parameter.in === "path").map((parameter) => parameter.name));
+    for (const placeholder of decodeURIComponent(exampleUrl.pathname).match(/\{([^}]+)\}/g) || []) {
+      const name = placeholder.slice(1, -1);
+      if (!pathParameterNames.has(name)) {
+        add(`the request example URL has placeholder {${name}}, which is not a path parameter of ${operationRef.method} ${operationRef.url} (path parameters: ${[...pathParameterNames].join(", ") || "none"})`);
       }
     }
   }
@@ -898,7 +1249,7 @@ function checkEndpointDoc(content, relativePath, match, operationRef, requestJso
   if (errorSection !== null) {
     for (const code of Object.keys(operation.responses || {}).filter((candidate) => !candidate.startsWith("2"))) {
       if (!listedCodes.includes(code)) {
-        add(`error response '${code}' from ${specName} is missing from the Error Codes table`);
+        warn(`error response '${code}' from ${specName} is missing from the Error Codes table`);
       }
     }
   }
@@ -964,6 +1315,8 @@ async function main() {
   const errors = [];
   const markdownFiles = [];
   let comparedCount = 0;
+  const documentedOperations = new Map();
+  const documentedInFolder = new Map();
 
   for (const target of docTargets) {
     markdownFiles.push(...(await collectFromTarget(target, new Set([".md"]))));
@@ -995,7 +1348,9 @@ async function main() {
       operationRef.method,
       requestJson,
       responseJson,
-      documentedParameters
+      documentedParameters,
+      filePath,
+      extractCurlUrl(content)
     );
 
     if (!match) {
@@ -1013,13 +1368,43 @@ async function main() {
       continue;
     }
 
+    // Two docs in one folder for the same operation; separate example sets
+    // in separate folders may each document it.
+    const operationKey = `${match.filePath}#${operationRef.method} ${match.route}`;
+    const folderKey = `${path.dirname(relativePath)}|${operationKey}`;
+    if (documentedInFolder.has(folderKey)) {
+      errors.push(`${relativePath}: describes the same operation (${operationRef.method} ${match.route}) as ${documentedInFolder.get(folderKey)}`);
+    } else {
+      documentedInFolder.set(folderKey, relativePath);
+    }
+    documentedOperations.set(operationKey, relativePath);
     errors.push(...checkEndpointDoc(content, relativePath, match, operationRef, requestJson, responseJson));
   }
+
+  // Operations with no doc, in a spec these docs already document.
+  if (targets.userMode) {
+    const documentedSpecs = new Set([...documentedOperations.keys()].map((key) => key.split("#")[0]));
+    for (const { filePath, spec } of specs.filter((candidate) => documentedSpecs.has(candidate.filePath))) {
+      const missing = [];
+      for (const [route, pathItem] of Object.entries(spec.paths || {})) {
+        for (const method of ["get", "post", "put", "patch", "delete"]) {
+          if (pathItem?.[method] && !documentedOperations.has(`${filePath}#${method.toUpperCase()} ${route}`)) {
+            missing.push(`${method.toUpperCase()} ${route}`);
+          }
+        }
+      }
+      if (missing.length > 0) {
+        warnings.push(`${path.basename(filePath)}: ${missing.length} operation(s) have no doc: ${missing.slice(0, 10).join(", ")}${missing.length > 10 ? ", ..." : ""}`);
+      }
+    }
+  }
+
+  const warningReport = warnings.length > 0 ? `\nOpenAPI example warnings:\n\n${warnings.map((warning) => `- ${warning}`).join("\n")}\n` : "";
 
   if (errors.length > 0) {
     // One write, then let Node exit on its own, so no line is lost when the
     // output is a pipe.
-    process.stderr.write(`OpenAPI example validation failed:\n\n${errors.map((error) => `- ${error}`).join("\n")}\n`);
+    process.stderr.write(`OpenAPI example validation failed:\n\n${errors.map((error) => `- ${error}`).join("\n")}\n${warningReport}`);
     process.exitCode = 1;
     return;
   }
@@ -1031,8 +1416,12 @@ async function main() {
   }
   console.log(
     `Compared ${comparedCount} endpoint docs in ${checkedLabel} against the OpenAPI spec` +
-    (skippedCount === 1 ? " (1 Markdown file describes no endpoint and was not compared)." : skippedCount > 1 ? ` (${skippedCount} Markdown files describe no endpoint and were not compared).` : ".")
+    (skippedCount === 1 ? " (1 Markdown file describes no endpoint and was not compared)" : skippedCount > 1 ? ` (${skippedCount} Markdown files describe no endpoint and were not compared)` : "") +
+    (warnings.length > 0 ? `, with ${warnings.length} warning(s) to resolve before publishing.` : ".")
   );
+  if (warningReport) {
+    process.stderr.write(warningReport);
+  }
 }
 
 main().catch((error) => {
