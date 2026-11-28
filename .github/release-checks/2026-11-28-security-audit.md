@@ -27,23 +27,28 @@ Every fix was tested against a running server or a generated doc, and most have 
 | | Control plane `/health` | Public, and showed run details, user names, the data path and the Redis URL | Fixed: status, queue depth, auth on or off, uptime |
 | Check CORS | Control plane | No CORS headers, so browsers block cross-site reads; keys travel in headers, not cookies, so cross-site requests carry no credentials | Clean |
 | Security headers | Control plane | None | Fixed: CSP, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Cache-Control: no-store` and more |
-| | Docs website | GitHub Pages cannot set headers; the site has no third-party scripts or keys | Open: needs a host that sets headers |
+| | Docs website | GitHub Pages cannot set headers; the site has no third-party scripts or keys | Fixed in v1.2.4: a Content-Security-Policy and referrer policy in each page's `<meta>`, with per-page script hashes. 23 pages crawled in Chrome with no violations; injected scripts are blocked. Frame protection still needs a header |
 | Turn off debug mode | Control plane | No debug switch, but errors leaked details (see above) | Fixed with the error handling |
 | Secure database access | Redis in the compose stack | Published on host port 6379 with no password: anyone on the network could rewrite the user list | Fixed: password required, port not published, control plane on 127.0.0.1 only |
 | | Redis password in logs | The startup log printed the full Redis URL, password included | Fixed: masked |
 | | Redis resilience | A dropped Redis connection crashed the server; requests waited up to a second each behind the job worker's blocking read | Fixed: error listeners, separate worker connection (about 2,000 ms to 2 ms per request) |
-| Update dependencies | Root package | `npm audit --omit=dev`: 0. Four low advisories in KaTeX, pulled in by `markdownlint-cli` (dev only); the fix is a breaking major | Open, low |
+| Update dependencies | Root package | `npm audit --omit=dev`: 0. Four low advisories in KaTeX, pulled in by `markdownlint-cli` (dev only) | Fixed in v1.2.4: KaTeX override; `npm audit` reports 0 |
 | | Website | 49 advisories, 18 critical, in Docusaurus build tooling | Fixed: `npm audit fix` and overrides for packages Docusaurus pins; 0 left, site builds |
 | | Dependabot | Did not watch `website/` | Fixed |
-| | Majors behind | `@anthropic-ai/sdk` 0.32 (latest 1.14), `redis` 5 (latest 6), `js-yaml` 4 (5 breaks the import, pinned on purpose) | Open: upgrade separately |
+| | Majors behind | `@anthropic-ai/sdk` 0.32 (latest 1.14), `redis` 5 (latest 6), `js-yaml` 4 (5 breaks the import, pinned on purpose) | Fixed in v1.2.4: all three upgraded, js-yaml imports changed; the agent's default model updated from `claude-opus-4-6` to `claude-opus-5-5` |
 | Remove unused packages or files | Root dependencies | All four in use | Clean |
-| | `archive/` (46 files) and the 3.7 MB demo video | Not used by the CLI or site build | Your call; not removed |
+| | `archive/` (46 files) and the 3.7 MB demo video | `archive/` was used by nothing, and held the old site's `replace-me` instructions and internal pricing and planning notes. The video is used by the site's demo page | Fixed in v1.2.4: `archive/` removed (Git history keeps it); video kept |
 | Containers | Dockerfile | Ran as root | Fixed: `node` user |
 | CI/CD (not on the checklist) | Workflows | Four of six had no `permissions:` block, so the token could have repository write access; one interpolated `workflow_dispatch` inputs straight into a shell script | Fixed: read-only tokens everywhere; inputs via environment variables |
-| | Action pins | Pinned to major tags, not commit SHAs | Open: Dependabot keeps them current |
+| | Action pins | Pinned to major tags, not commit SHAs | Fixed in v1.2.4: every action pinned to a commit SHA, here and in the workflow `init` writes, which also got a read-only token |
+
+## Closed in v1.2.4
+
+- Control plane operators saw every run's output and every artifact. They now see only their own runs and the artifacts of jobs their scope allows.
+- Rate limits were kept per process. They now live in Redis and are shared by every instance; `REPODOCS_TRUST_PROXY=1` applies them per client behind a proxy, and forwarded requests are never treated as local.
+- Found while fixing: a job taken off the queue while a server shut down was lost. It is now put back. The dashboard failed for operators because it always asked for the admin-only user list.
 
 ## Still open
 
-- Control plane operators can read every run's output and every artifact. Per-user isolation is a roadmap item, like external identity and audit logging.
-- Rate limits are kept per process. A multi-instance deployment should also rate-limit at the load balancer.
-- Adopters' CI installs `github:SulagnaSasmal/repodocs-ai#v1.2.3`. Git tags can be moved; teams that need a fixed version should pin the commit SHA.
+- Git tags can be moved. Turning on immutable releases in the repository settings fixes this for every adopter; until then, teams that need certainty can pin a commit SHA, as the README describes.
+- The docs website cannot forbid framing without a response header, which GitHub Pages does not allow.

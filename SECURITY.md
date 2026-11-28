@@ -72,8 +72,16 @@ If you deploy the RepoDocs AI hosted control plane:
 3. Give operators a `service_scope`: a comma-separated list of the job names they may run, matched exactly.
 4. Rotate API keys with the `/users/:id/keys` endpoint, and revoke keys you no longer use. The last active admin cannot be demoted or disabled.
 5. Protect Redis with a password and keep it off public networks. The compose stack requires `REDIS_PASSWORD` and does not publish the Redis port.
-6. Put the control plane behind HTTPS. It sends security headers and a strict Content-Security-Policy, limits request bodies to 64 KB, and limits each address to 120 requests and 10 failed key attempts a minute. Those limits are kept per process, so a multi-instance deployment should also rate-limit at the load balancer.
-7. Review `docs/hosted-control-plane.md` before deploying to production.
+6. Put the control plane behind HTTPS. It sends security headers and a strict Content-Security-Policy, limits request bodies to 64 KB, and limits each client to 120 requests and 10 failed key attempts a minute. The counts live in Redis, so every instance shares them. Behind a load balancer or reverse proxy, set `REPODOCS_TRUST_PROXY=1` so limits apply per client rather than per proxy; requests that arrive through a proxy are never treated as local.
+7. Operators see only the runs they started and the artifacts of jobs their scope allows. Admins see everything.
+8. Review `docs/hosted-control-plane.md` before deploying to production.
+
+## Supply Chain
+
+- Every GitHub Action in this repository, and in the workflow `init` writes for adopters, is pinned to a full commit SHA, with the version in a comment. Dependabot updates both.
+- Workflow tokens are read-only.
+- Dependabot watches the root package, the website and the actions. `npm audit` reports no advisories in either package.
+- Releases are installed from Git tags (`#v1.2.4`). To make a release's tag impossible to move, the maintainer enables immutable releases in the repository settings. Teams that want certainty regardless can pin a commit SHA instead of a tag.
 
 ## Generated Documentation
 
