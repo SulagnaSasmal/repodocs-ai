@@ -10,13 +10,13 @@
   "dependencies": {
     "@docusaurus/core": "^3.8.1",
     "@docusaurus/preset-classic": "^3.8.1",
-    "@easyops-cn/docusaurus-search-local": "^0.55.1",
+    "@easyops-cn/docusaurus-search-local": "^0.55.3",
     "@mdx-js/react": "^3.0.1",
     "clsx": "^2.1.1",
-    "globby": "^14.1.0",
-    "graceful-fs": "^4.2.11",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "globby": "^16.2.4",
+    "graceful-fs": "^4.2.12",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "overrides": {
     "serialize-javascript": "^7.1.4",
