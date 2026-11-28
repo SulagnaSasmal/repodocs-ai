@@ -15,6 +15,10 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# The token can read the repository and nothing else.
+permissions:
+  contents: read
+
 jobs:
   generate:
     runs-on: ubuntu-latest
@@ -33,7 +37,12 @@ jobs:
         run: npm ci
 
       - name: Generate API docs from OpenAPI
-        run: node scripts/generate-openapi-docs.mjs "${{ inputs.spec_path }}" "${{ inputs.output_directory }}"
+        # Inputs pass through the environment, never into the script text, so a
+        # crafted value cannot run shell commands.
+        env:
+          SPEC_PATH: ${{ inputs.spec_path }}
+          OUTPUT_DIRECTORY: ${{ inputs.output_directory }}
+        run: node scripts/generate-openapi-docs.mjs "$SPEC_PATH" "$OUTPUT_DIRECTORY"
 
       - name: Upload generated docs artifact
         uses: actions/upload-artifact@v7
