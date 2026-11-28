@@ -4,6 +4,52 @@ This changelog tracks product-facing changes to RepoDocs AI.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] — 2026-11-28
+
+Fixes from the v1.2.2 fresh-agent release check, which used the Adyen Checkout API and 101 deliberate breaks. v1.2.2 failed the run on 59 of them; v1.2.3 fails it on 96. See `.github/release-checks/2026-11-28-v1.2.2.md`.
+
+### Added
+
+- The OpenAPI check compares the JSON type of every example value with the schema, in request, response and error examples.
+- `Default:`, `Format:`, `Minimum:` and `Maximum:` notes in Request Body rows and parameter tables are compared with the schema, as are plain allowed-value lists written by hand.
+- The request example's credentials (`-u`, `Authorization: Bearer`) and `Content-Type` header are compared with the spec, and so is a Request Body that says the body is required or optional.
+- `TODO`, `TBD`, `FIXME`, `<insert …>`, `{{…}}` and lorem ipsum fail the quality check.
+- `last_reviewed` must be a date that exists on the calendar and is not in the future.
+- A warning when a hand-written doc that follows a template drops some of its sections, and when the request URL still has a `{name}` placeholder.
+- The validate summary gives the reason for each skipped check.
+- The Adyen Checkout API as a third-party fixture, with probe tests for every new check.
+
+### Changed
+
+- The "POST returning 200" heuristic applies to hand-written docs only.
+- Path and query parameters with no example appear as `{name}` in the curl URL instead of `value`.
+- The generator writes allowed values in backticks, so prose in a spec's description is never read as an enum.
+- When a spec's own example gives a number as a string, the generator shows the number and says so.
+- The OpenAPI and version checks in `npm run validate` cover every example folder that `init --with-examples` copies.
+
+### Security
+
+From a security audit on 2026-11-28. See `.github/release-checks/2026-11-28-security-audit.md`.
+
+- Generated docs escape HTML from the spec outside code and drop `javascript:` links, so a spec cannot put script on a docs site. The quality check fails hand-written docs with `<script>`, `<iframe>`, inline event handlers or script links. This also makes types such as `array<string>` show on the page.
+- Control plane: with no key configured, only requests from the same machine are accepted, where anyone on the network could previously create an admin. Bootstrap keys under 24 characters and placeholders such as `replace-me` stop the server from starting.
+- Control plane: dashboard output is escaped and runs under a nonce-based Content-Security-Policy; the API key is kept for the browser tab only. Security headers and `Cache-Control: no-store` on every response.
+- Control plane: request bodies are limited to 64 KB; requests are limited per address, with a one-minute lockout after 10 wrong keys; malformed JSON gets 400 and server errors no longer return internal details.
+- Control plane: `service_scope` matches job names exactly, where `a` used to allow `analytics`, `agent` and `automation`. The last active admin cannot be demoted or disabled. Keys are compared in constant time. `/health` no longer shows run details, user names, paths or the Redis URL, and the Redis password no longer appears in the log.
+- Control plane: the job worker has its own Redis connection, so requests no longer wait up to a second behind it each, and a Redis outage is logged instead of crashing the server.
+- Docker: the container runs as the `node` user; the compose stack requires `REDIS_PASSWORD` and a bootstrap key, keeps Redis off the host, and publishes the control plane on 127.0.0.1 only.
+- `.env` files, keys and `.npmrc` are ignored by Git and Docker.
+- Every workflow's token is read-only, and workflow inputs reach scripts through the environment instead of the script text.
+- Website: 49 dependency advisories (18 critical) resolved with `npm audit fix` and overrides for packages Docusaurus pins; Dependabot now watches the website.
+
+### Fixed
+
+- The bundled examples failed the OpenAPI check after `init --with-examples`, and their owners were missing from the owners registry.
+- Parameter names written in backticks in hand-written tables were not recognised.
+- A `##### Authentication` heading copied from a spec description hid the overview's Authentication section from the check; the generator now demotes such headings.
+- Newlines and pipes in spec descriptions broke table rows; keywords next to `$ref` were ignored; deprecated parameters and fields were not marked; `last_reviewed` used the UTC date rather than the local one.
+- Validators write their report in one call and set the exit code, so no lines are lost when output goes to a pipe.
+
 ## [1.2.2] — 2026-11-28
 
 Fixes from the v1.2.1 fresh-agent release check, which used the Vonage Conversation API and 37 deliberate breaks. See `.github/release-checks/2026-11-28-v1.2.1.md`.

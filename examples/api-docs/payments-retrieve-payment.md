@@ -61,6 +61,7 @@ curl -X GET "https://api.example.com/payments/v1/payments/pay_123" \
 
 | Code | Description |
 | --- | --- |
+| 401 | Unauthorized |
 | 404 | Payment not found |
 
 ## Performance Notes

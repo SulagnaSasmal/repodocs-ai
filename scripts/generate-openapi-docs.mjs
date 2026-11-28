@@ -15,6 +15,34 @@ function normalizeText(value, fallback = "") {
   return value.trim();
 }
 
+// Text from a spec is not trusted: a description can carry <script>, event
+// handlers or javascript: links, and a docs site that renders raw HTML
+// (MkDocs, Jekyll, Hugo with unsafe HTML on) would run them. Outside code
+// blocks and code spans, every "<" is written as "&lt;" (which also keeps
+// types such as array<string> visible) and links to script URLs are dropped.
+// The frontmatter is left alone: its values are already quoted strings.
+function escapeUntrustedHtml(markdown) {
+  const frontmatter = markdown.match(/^---\n[\s\S]*?\n---\n/)?.[0] || "";
+  const body = markdown.slice(frontmatter.length);
+  const segments = body.split(/(^```[^\n]*\n[\s\S]*?^```[ \t]*$)/m);
+  const escaped = segments.map((segment, index) => {
+    if (index % 2 === 1) {
+      return segment; // fenced code block
+    }
+    return segment
+      .split(/(`+[^`\n]*?`+)/)
+      .map((part, partIndex) =>
+        partIndex % 2 === 1
+          ? part // inline code span
+          : part
+              .replace(/</g, "&lt;")
+              .replace(/\]\(\s*(?:javascript|vbscript|data):(?:[^()]|\([^()]*\))*\)/gi, "](#unsafe-link-removed)")
+      )
+      .join("");
+  });
+  return frontmatter + escaped.join("");
+}
+
 function toSlug(value) {
   return value
     .toLowerCase()
@@ -68,8 +96,8 @@ function formatOverviewValue(value, fallback = "Needs SME input") {
   return text || fallback;
 }
 
-function resolveReference(spec, value) {
-  if (!value || typeof value !== "object" || !value.$ref || !value.$ref.startsWith("#/")) {
+function resolveReference(spec, value, depth = 0) {
+  if (!value || typeof value !== "object" || !value.$ref || !value.$ref.startsWith("#/") || depth > 20) {
     return value;
   }
 
@@ -78,8 +106,32 @@ function resolveReference(spec, value) {
   for (const segment of segments) {
     current = current?.[segment];
   }
+  if (!current) {
+    return value;
+  }
 
-  return current || value;
+  // OpenAPI 3.1 allows keywords such as description next to $ref; they apply
+  // on top of the referenced object.
+  const { $ref, ...siblings } = value;
+  const target = resolveReference(spec, current, depth + 1);
+  return Object.keys(siblings).length > 0 ? { ...target, ...siblings } : target;
+}
+
+// Table cells must stay on one line and must not contain an unescaped pipe.
+function tableCell(text) {
+  return String(text).replace(/\r?\n+/g, " ").replace(/(?<!\\)\|/g, "\\|").replace(/\s{2,}/g, " ").trim();
+}
+
+// The local calendar date, so last_reviewed matches the day the docs were generated.
+function localDate() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+// Spec descriptions can contain their own Markdown headings; demote them so
+// they cannot add a second "## Authentication" to a generated doc.
+function demoteHeadings(text) {
+  return String(text).replace(/^(#{1,3})\s+/gm, (match, hashes) => `${"#".repeat(Math.min(hashes.length + 3, 6))} `);
 }
 
 function resolveSchema(spec, schema, depth = 0) {
@@ -112,6 +164,25 @@ function resolveSchema(spec, schema, depth = 0) {
 // Removes fields a schema does not define from an example, at every depth,
 // and returns their paths. Objects with no listed properties, or that allow
 // extra properties, are left alone.
+// A numeric string where the schema says integer or number becomes that
+// number, and its path is recorded in removed.converted.
+function coerceNumber(spec, container, key, schema, path, removed) {
+  const resolved = resolveSchema(spec, schema);
+  const types = [].concat(resolved?.type || []);
+  const raw = container[key];
+  if (typeof raw !== "string" || types.includes("string")) {
+    return;
+  }
+  const pattern = types.includes("number") ? /^-?\d+(?:\.\d+)?$/ : types.includes("integer") ? /^-?\d+$/ : null;
+  if (pattern && pattern.test(raw) && Number.isSafeInteger(Math.trunc(Number(raw)))) {
+    container[key] = Number(raw);
+    removed.converted ||= [];
+    if (!removed.converted.some((entry) => entry.path === path)) {
+      removed.converted.push({ path, type: types.includes("number") ? "number" : "integer" });
+    }
+  }
+}
+
 function pruneToSchema(spec, value, schema, prefix = "", removed = [], depth = 0) {
   const resolved = resolveSchema(spec, schema);
   if (!resolved || depth > 8 || value === null || typeof value !== "object") {
@@ -126,7 +197,10 @@ function pruneToSchema(spec, value, schema, prefix = "", removed = [], depth = 0
     return best ? pruneToSchema(spec, value, best, prefix, removed, depth + 1) : removed;
   }
   if (Array.isArray(value)) {
-    value.forEach((item) => pruneToSchema(spec, item, resolved.items, `${prefix}[]`, removed, depth + 1));
+    value.forEach((item, index) => {
+      coerceNumber(spec, value, index, resolved.items, `${prefix}[]`, removed);
+      pruneToSchema(spec, item, resolved.items, `${prefix}[]`, removed, depth + 1);
+    });
     return removed;
   }
   const properties = resolved.properties || {};
@@ -141,6 +215,7 @@ function pruneToSchema(spec, value, schema, prefix = "", removed = [], depth = 0
         removed.push(childPath);
       }
     } else {
+      coerceNumber(spec, value, key, properties[key], childPath, removed);
       pruneToSchema(spec, value[key], properties[key], childPath, removed, depth + 1);
     }
   }
@@ -319,7 +394,7 @@ function buildConstraintNotes(spec, schema) {
 
   const notes = [];
   if (Array.isArray(resolved.enum) && resolved.enum.length > 0) {
-    notes.push(`Allowed values: ${resolved.enum.join(", ")}`);
+    notes.push(`Allowed values: ${resolved.enum.map((value) => `\u0000${value}\u0000`).join(", ")}`);
   }
   if (resolved.default !== undefined) {
     notes.push(`Default: ${typeof resolved.default === "object" ? JSON.stringify(resolved.default) : resolved.default}`);
@@ -373,8 +448,11 @@ function buildSchemaDescription(spec, schema) {
   const resolved = resolveSchema(spec, schema);
   const explicitDescription = normalizeText(resolved?.description);
   const notes = buildConstraintNotes(spec, resolved);
+  if (resolved?.deprecated) {
+    notes.unshift("Deprecated");
+  }
   if (explicitDescription) {
-    return joinSentenceParts([explicitDescription, ...notes]).replace(/\|/g, "\\|").replace(/\n+/g, " ");
+    return tableCell(joinSentenceParts([explicitDescription, ...notes]));
   }
 
   if (resolved?.example !== undefined) {
@@ -382,7 +460,7 @@ function buildSchemaDescription(spec, schema) {
   }
 
   return notes.length > 0
-    ? joinSentenceParts(["Needs SME input for field semantics", ...notes])
+    ? tableCell(joinSentenceParts(["Needs SME input for field semantics", ...notes]))
     : "Needs SME input";
 }
 
@@ -528,10 +606,11 @@ function buildParameterRows(spec, parameters) {
     .map((parameter) => {
       const type = schemaTypeLabel(spec, parameter.schema);
       const required = parameter.required ? "yes" : "no";
-      const description = joinSentenceParts([
+      const description = tableCell(joinSentenceParts([
         normalizeText(parameter.description, `Parameter in ${parameter.in}`),
+        ...(parameter.deprecated ? ["Deprecated"] : []),
         ...buildConstraintNotes(spec, parameter.schema)
-      ]);
+      ]));
       return `| ${parameter.name} | ${type} | ${required} | ${description} |`;
     })
     .join("\n");
@@ -741,12 +820,16 @@ function buildResponseExample(spec, operation) {
 }
 
 function undefinedFieldsNote(fields) {
+  const converted = fields?.converted || [];
+  const convertedNote = converted.length === 0
+    ? ""
+    : `The spec's own example gives ${converted.slice(0, 8).map((entry) => `\u0000${entry.path}\u0000`).join(", ")}${converted.length > 8 ? ` and ${converted.length - 8} more` : ""} as ${converted.length === 1 ? "a string" : "strings"}, but ${converted.length === 1 ? "its schema says" : "their schemas say"} ${[...new Set(converted.map((entry) => entry.type))].join(" or ")}, so ${converted.length === 1 ? "it is" : "they are"} shown as ${converted.length === 1 ? "a number" : "numbers"} here.\n\n`;
   if (!fields?.length) {
-    return "";
+    return convertedNote;
   }
   const shown = fields.slice(0, 8).map((field) => `\u0000${field}\u0000`).join(", ");
   const more = fields.length > 8 ? ` and ${fields.length - 8} more` : "";
-  return `The spec's own example also shows ${fields.length === 1 ? "a field" : "fields"} its schema does not define (${shown}${more}). ${fields.length === 1 ? "It is" : "They are"} left out here.\n\n`;
+  return `The spec's own example also shows ${fields.length === 1 ? "a field" : "fields"} its schema does not define (${shown}${more}). ${fields.length === 1 ? "It is" : "They are"} left out here.\n\n${convertedNote}`;
 }
 
 function findNamedPropertyExample(spec, schema, propertyName) {
@@ -833,6 +916,16 @@ function buildErrorSection(spec, operation) {
   return `${table}\n\nError response body (\u0000${withBody[0]}\u0000):\n\n\u0000\u0000\u0000json\n${JSON.stringify(example, null, 2)}\n\u0000\u0000\u0000`;
 }
 
+// True when the generator fell back to the word "value" because the spec
+// gives no example, default or enum for this parameter.
+function isPlaceholderValue(spec, parameter, value) {
+  if (value !== "value") {
+    return false;
+  }
+  const schema = resolveSchema(spec, parameter.schema) || {};
+  return parameter.example !== "value" && schema.example !== "value" && schema.default !== "value" && !(schema.enum || []).includes("value");
+}
+
 function buildExampleUrl(spec, route, operation, pathItem) {
   const baseUrl = serverUrl(spec, "https://api.example.com").replace(/\/$/, "");
   const parameters = extractParameters(spec, operation, pathItem);
@@ -842,10 +935,11 @@ function buildExampleUrl(spec, route, operation, pathItem) {
   for (const parameter of parameters) {
     const exampleValue = buildParameterExampleValue(spec, operation, parameter);
     if (parameter.in === "path") {
-      examplePath = examplePath.replace(`{${parameter.name}}`, encodeURIComponent(String(exampleValue)));
+      // With no example in the spec, keep a visible {name} placeholder rather than the word "value".
+      examplePath = examplePath.replace(`{${parameter.name}}`, isPlaceholderValue(spec, parameter, exampleValue) ? `{${parameter.name}}` : encodeURIComponent(String(exampleValue)));
     }
     if (parameter.in === "query") {
-      queryParams.push(`${encodeURIComponent(parameter.name)}=${encodeURIComponent(String(exampleValue))}`);
+      queryParams.push(`${encodeURIComponent(parameter.name)}=${isPlaceholderValue(spec, parameter, exampleValue) ? `{${parameter.name}}` : encodeURIComponent(String(exampleValue))}`);
     }
   }
 
@@ -867,7 +961,7 @@ function buildApiOverview(spec, serviceName, owner) {
     api_version: version,
     status: "draft",
     dependencies: [],
-    last_reviewed: new Date().toISOString().slice(0, 10),
+    last_reviewed: localDate(),
     security_impact: securityImpact
   });
 
@@ -875,7 +969,7 @@ function buildApiOverview(spec, serviceName, owner) {
 
 ## Purpose
 
-${description}
+${demoteHeadings(description)}
 
 ## Intended Consumers
 
@@ -930,7 +1024,7 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
     api_version: apiVersion,
     status: isDeprecated ? "deprecated" : "draft",
     dependencies: [],
-    last_reviewed: new Date().toISOString().slice(0, 10),
+    last_reviewed: localDate(),
     security_impact: securityImpact,
     ...(isDeprecated
       ? {
@@ -1102,7 +1196,7 @@ async function main() {
   await ensureDirectory(endpointsDirectory);
 
   const apiOverview = buildApiOverview(spec, serviceName, owner);
-  await fs.writeFile(path.join(outputDirectory, "api-overview.md"), apiOverview, "utf8");
+  await fs.writeFile(path.join(outputDirectory, "api-overview.md"), escapeUntrustedHtml(apiOverview), "utf8");
 
   const supportedMethods = ["get", "post", "put", "patch", "delete"];
   for (const [route, pathItem] of Object.entries(spec.paths || {})) {
@@ -1122,7 +1216,7 @@ async function main() {
         pathItem
       );
 
-      await fs.writeFile(path.join(endpointsDirectory, `${endpointSlug}.md`), content, "utf8");
+      await fs.writeFile(path.join(endpointsDirectory, `${endpointSlug}.md`), escapeUntrustedHtml(content), "utf8");
     }
   }
 

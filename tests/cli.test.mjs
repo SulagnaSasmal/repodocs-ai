@@ -41,7 +41,7 @@ describe("repodocs-ai CLI", () => {
     await expect(fs.access(path.join(workDirectory, "company-docs", "generated", "endpoints", "post-pets.md"))).resolves.toBeUndefined();
 
     const validated = await runIn(path.join(workDirectory, "company-docs"), ["validate", "generated", "--specs", "openapi"]);
-    expect(validated.stdout).toMatch(/4 of 4 checks passed/);
+    expect(validated.stdout).toMatch(/^4 checks: (?!.*(?:skipped|failed)).*passed.*\.$/m);
   });
 
   it("returns a failing exit code when validation fails", async () => {
@@ -67,7 +67,7 @@ describe("published package", () => {
     await execFileAsync(bin, ["init", "docs-repo", "--with-examples"], { cwd: project });
     await execFileAsync(bin, ["generate", "docs-repo/examples/payments-api/payments-openapi.yaml", "docs-repo/generated"], { cwd: project });
     const validated = await execFileAsync(bin, ["validate", "docs-repo/generated", "--specs", "docs-repo/examples/payments-api"], { cwd: project });
-    expect(validated.stdout).toMatch(/4 of 4 checks passed/);
+    expect(validated.stdout).toMatch(/^4 checks: (?!.*(?:skipped|failed)).*passed.*\.$/m);
 
     const installed = JSON.parse(await fs.readFile(path.join(project, "package-lock.json"), "utf8"));
     expect(Object.keys(installed.packages)).not.toContain("node_modules/redis");

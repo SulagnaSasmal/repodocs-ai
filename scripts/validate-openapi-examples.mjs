@@ -8,7 +8,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 
-const scanDirectories = ["examples/api-docs", "generated"];
+// Every example folder that `repodocs-ai init --with-examples` copies to an
+// adopter, so a shipped example never fails their first run.
+const scanDirectories = ["examples/api-docs", "examples/payments-api", "examples/complete-system", "generated"];
 const supportedSpecExtensions = new Set([".yaml", ".yml", ".json"]);
 const supportedMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 
@@ -75,13 +77,13 @@ function normalizeRoute(route) {
 }
 
 function extractOperation(content) {
-  const methodMatch = content.match(/- Method: `([A-Z]+)`/);
-  const urlMatch = content.match(/- URL: `([^`]+)`/);
+  const methodMatch = content.match(/- Method:\s*`?([A-Za-z]+)`?/);
+  const urlMatch = content.match(/- URL:\s*`?([^`\s]+)`?/);
   if (!methodMatch || !urlMatch) {
     return null;
   }
 
-  const method = methodMatch[1];
+  const method = methodMatch[1].toUpperCase();
   const url = urlMatch[1];
   if (!supportedMethods.has(method)) {
     return null;
@@ -110,13 +112,13 @@ function extractRequestJson(content) {
   }
 
   const curlBlock = requestMatch[1];
-  const bodyMatch = curlBlock.match(/(?:-d|--data|--data-raw)\s+'([^']+)'/);
+  const bodyMatch = curlBlock.match(/(?:-d|--data|--data-raw)\s+'((?:[^']|'\\'')*)'\s*$/m);
   if (!bodyMatch) {
     return null;
   }
 
   try {
-    return JSON.parse(bodyMatch[1]);
+    return JSON.parse(bodyMatch[1].replace(/'\\''/g, "'"));
   } catch {
     return { __parseError: true };
   }
@@ -132,7 +134,7 @@ const parameterSections = [
 // Documented parameters from every parameter table: name, location, Required cell.
 function extractDocumentedParameters(content) {
   return parameterSections.flatMap(([heading, location]) =>
-    tableRows(content, heading).map((cells) => ({ name: cells[0], location, required: cells[2]?.toLowerCase() }))
+    tableRows(content, heading).map((cells) => ({ name: cells[0], type: cells[1], location, required: cells[2]?.toLowerCase(), description: cells[3] }))
   );
 }
 
@@ -176,7 +178,10 @@ function findSpecOperations(specs, route, method) {
 function resolveSchema(spec, schema, depth = 0) {
   let resolved = schema;
   while (resolved && typeof resolved === "object" && typeof resolved.$ref === "string" && resolved.$ref.startsWith("#/") && depth < 20) {
-    resolved = resolved.$ref.slice(2).split("/").reduce((current, segment) => current?.[segment], spec);
+    // OpenAPI 3.1 allows keywords next to $ref; they apply on top of the target.
+    const { $ref, ...siblings } = resolved;
+    const target = $ref.slice(2).split("/").reduce((current, segment) => current?.[segment], spec);
+    resolved = target && Object.keys(siblings).length > 0 ? { ...target, ...siblings } : target;
     depth += 1;
   }
   if (!resolved || typeof resolved !== "object" || !Array.isArray(resolved.allOf) || depth > 20) {
@@ -259,12 +264,25 @@ function collectDefinedParameterNames(pathItem, operation, spec) {
   return new Set(definedParameters(spec, pathItem, operation).map((parameter) => parameter.name));
 }
 
+// Cells of one table row. Hand-written tables often wrap the name, type and
+// Required cells in backticks (`status`); those are read without them.
+function splitRow(line) {
+  return line
+    .split(/(?<!\\)\|/)
+    .slice(1, -1)
+    .map((cell) => cell.trim())
+    .map((cell, index) => (index < 3 ? cell.replace(/^`([^`]*)`$/, "$1") : cell))
+    // Generated docs escape "<" outside code (array&lt;string&gt;); compare the text.
+    .map((cell) => cell.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&"));
+}
+
 // Rows of a Markdown table under a "## <heading>" section: [first cell, third cell].
 function tableRows(content, heading, minCells = 3) {
-  const start = content.indexOf(`## ${heading}\n`);
-  if (start === -1) {
+  const found = new RegExp(`(^|\\n)## ${heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\r?\\n`).exec(content);
+  if (!found) {
     return [];
   }
+  const start = found.index + found[1].length;
   const next = content.indexOf("\n## ", start + 3);
   const body = content.slice(start, next === -1 ? undefined : next);
   // Header rows are the ones directly above a | --- | separator line.
@@ -272,7 +290,7 @@ function tableRows(content, heading, minCells = 3) {
   const isSeparator = (line) => /^\|\s*:?-{3}/.test(line);
   return lines
     .filter((line, index) => line.startsWith("|") && !isSeparator(line) && !isSeparator(lines[index + 1] || ""))
-    .map((line) => line.split(/(?<!\\)\|/).slice(1, -1).map((cell) => cell.trim()))
+    .map((line) => splitRow(line))
     .filter((cells) => cells.length >= minCells && cells[0] && cells[0] !== "None");
 }
 
@@ -289,79 +307,196 @@ function expandShapes(spec, schema, depth = 0) {
   return [resolved];
 }
 
-// Checks a JSON example against the schema, at every depth: unknown fields
-// and values outside an enum. Returns error messages.
+// Checks a JSON example against the schema at every depth: unknown fields
+// and values outside an enum. For oneOf/anyOf, the example must fit one
+// shape on its own, so fields from different options cannot be mixed.
 function checkJsonValue(spec, value, schema, label, kind, depth = 0) {
+  return jsonErrors(spec, value, [schema], label, kind, depth);
+}
+
+function jsonErrors(spec, value, schemas, label, kind, depth) {
   if (depth > 8 || value === null || value === undefined) {
     return [];
   }
-  const shapes = expandShapes(spec, schema);
+  const shapes = schemas.flatMap((schema) => expandShapes(spec, schema));
   if (shapes.length === 0) {
     return [];
   }
-  const errors = [];
-  const enumShapes = shapes.filter((shape) => Array.isArray(shape.enum));
-  if (enumShapes.length > 0 && enumShapes.length === shapes.length && typeof value !== "object") {
-    const allowed = enumShapes.flatMap((shape) => shape.enum);
-    if (!allowed.map(String).includes(String(value))) {
-      errors.push(`${kind} example field '${label}' uses '${value}', which is not one of its allowed values (${allowed.join(", ")})`);
+  let best = null;
+  for (const shape of shapes) {
+    const errors = shapeErrors(spec, value, shape, label, kind, depth);
+    if (errors.length === 0) {
+      return [];
     }
-    return errors;
-  }
-  if (Array.isArray(value)) {
-    const itemSchemas = shapes.filter((shape) => shape.items).map((shape) => shape.items);
-    for (const item of value.slice(0, 5)) {
-      for (const itemSchema of itemSchemas.slice(0, 1)) {
-        errors.push(...checkJsonValue(spec, item, itemSchema, `${label}[]`, kind, depth + 1));
-      }
-    }
-    return errors;
-  }
-  if (typeof value === "object") {
-    // Shapes with no listed properties, or that allow extra ones, are open.
-    const objectShapes = shapes.filter((shape) => shape.properties && Object.keys(shape.properties).length > 0);
-    if (objectShapes.length === 0 || objectShapes.length < shapes.length || shapes.some((shape) => shape.additionalProperties)) {
-      return errors;
-    }
-    for (const [key, child] of Object.entries(value)) {
-      const owners = objectShapes.filter((shape) => key in shape.properties);
-      const childLabel = label ? `${label}.${key}` : key;
-      if (owners.length === 0) {
-        if (depth > 0) {
-          errors.push(`${kind} example field '${childLabel}' is not defined`);
-        }
-        continue;
-      }
-      errors.push(...checkJsonValue(spec, child, owners[0].properties[key], childLabel, kind, depth + 1));
+    if (!best || errors.length < best.length) {
+      best = errors;
     }
   }
-  return errors;
+  return best;
 }
 
-// The property schema a table row name points at, such as "channel.from.type"
-// or "items[].id". Property names may themselves contain dots.
-function schemaForField(spec, shapes, name) {
-  if (!name) {
-    return shapes[0] || null;
+// The JSON type of a value, in schema terms.
+function jsonType(value) {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "number") return Number.isInteger(value) ? "integer" : "number";
+  return typeof value;
+}
+
+function shapeErrors(spec, value, shape, label, kind, depth) {
+  const allowedTypes = [].concat(shape.type || []);
+  if (allowedTypes.length > 0) {
+    const actual = jsonType(value);
+    const fits =
+      allowedTypes.includes(actual) ||
+      (actual === "integer" && allowedTypes.includes("number")) ||
+      (actual === "null" && shape.nullable === true);
+    if (!fits) {
+      const where = label ? `${kind} example field '${label}'` : `the ${kind} example`;
+      return [`${where} is ${/^[aeiou]/.test(actual) ? "an" : "a"} ${actual}, but the spec says ${allowedTypes.join(" or ")}`];
+    }
+  }
+  if (Array.isArray(shape.enum) && (value === null || typeof value !== "object")) {
+    return shape.enum.map(String).includes(String(value))
+      ? []
+      : [`${kind} example field '${label}' uses '${value}', which is not one of its allowed values (${shape.enum.join(", ")})`];
+  }
+  if (Array.isArray(value)) {
+    if (!shape.items) {
+      return [];
+    }
+    return value.slice(0, 5).flatMap((item) => jsonErrors(spec, item, [shape.items], `${label}[]`, kind, depth + 1));
+  }
+  if (value && typeof value === "object") {
+    const properties = shape.properties || {};
+    if (Object.keys(properties).length === 0 || shape.additionalProperties) {
+      return [];
+    }
+    const errors = [];
+    for (const [key, child] of Object.entries(value)) {
+      const childLabel = label ? `${label}.${key}` : key;
+      if (!(key in properties)) {
+        errors.push(`${kind} example field '${childLabel}' is not defined`);
+        continue;
+      }
+      errors.push(...jsonErrors(spec, child, [properties[key]], childLabel, kind, depth + 1));
+    }
+    return errors;
+  }
+  return [];
+}
+
+// Every property schema a table row name can point at, such as
+// "channel.from.type" or "items[].id", across all oneOf/anyOf options, with
+// whether its parent marks it required. Property names may contain dots.
+function fieldCandidates(spec, shapes, name, depth = 0) {
+  const candidates = [];
+  if (depth > 6) {
+    return candidates;
   }
   for (const shape of shapes.flatMap((candidate) => expandShapes(spec, candidate))) {
+    const required = new Set(shape.required || []);
     for (const [property, propertySchema] of Object.entries(shape.properties || {})) {
       for (const suffix of ["", "[]"]) {
         const head = property + suffix;
-        if (name === head) {
-          return suffix ? resolveSchema(spec, propertySchema)?.items || propertySchema : propertySchema;
+        const next = suffix ? resolveSchema(spec, propertySchema)?.items : propertySchema;
+        if (!next) {
+          continue;
         }
-        if (name.startsWith(`${head}.`)) {
-          const next = suffix ? resolveSchema(spec, propertySchema)?.items : propertySchema;
-          const found = schemaForField(spec, [next], name.slice(head.length + 1));
-          if (found) {
-            return found;
-          }
+        if (name === head) {
+          candidates.push({ schema: next, required: required.has(property), readOnly: Boolean(resolveSchema(spec, propertySchema)?.readOnly) });
+        } else if (name.startsWith(`${head}.`)) {
+          candidates.push(...fieldCandidates(spec, [next], name.slice(head.length + 1), depth + 1));
         }
       }
     }
   }
-  return null;
+  return candidates;
+}
+
+function schemaForField(spec, shapes, name) {
+  return fieldCandidates(spec, shapes, name)[0]?.schema || null;
+}
+
+// The values listed after the last "Allowed values:" in a table cell. The
+// generator appends this note after the spec's own description, which may
+// contain the same words.
+function listedAllowedValues(description, specDescription = "") {
+  // The generator writes: Allowed values: `a`, `b`, `c`
+  const matches = [...description.matchAll(/Allowed values: ((?:`[^`]*`(?:, )?)+)/g)];
+  if (matches.length > 0) {
+    return [...matches[matches.length - 1][1].matchAll(/`([^`]*)`/g)].map((match) => match[1]);
+  }
+  // A hand-written plain list at the end of the cell: Allowed values: a, b.
+  // Skipped when the spec's own description says "Allowed values", since
+  // that text was copied from the spec, not written as a list.
+  if (/Allowed values/i.test(specDescription)) {
+    return null;
+  }
+  const plain = description.match(/Allowed values: ([A-Za-z0-9_.:-]+(?:, [A-Za-z0-9_.:-]+)*)\.?\s*$/);
+  return plain ? plain[1].split(", ") : null;
+}
+
+// The Default, Format, Minimum and Maximum notes in a table cell, each
+// compared with the schema. A note the spec's own description also contains
+// is skipped: the doc may just repeat the spec's prose.
+function constraintNoteProblems(spec, schema, description, label) {
+  const resolved = resolveSchema(spec, schema) || {};
+  const specDescription = String(resolved.description || "");
+  const problems = [];
+  const specValues = {
+    Default: resolved.default === undefined ? undefined : typeof resolved.default === "object" ? JSON.stringify(resolved.default) : String(resolved.default),
+    Format: resolved.format,
+    Minimum: resolved.minimum === undefined ? undefined : String(resolved.minimum),
+    Maximum: resolved.maximum === undefined ? undefined : String(resolved.maximum)
+  };
+  for (const [note, specValue] of Object.entries(specValues)) {
+    if (new RegExp(`${note}:`).test(specDescription)) {
+      continue;
+    }
+    let documented = listedNote(description, note);
+    if (documented !== undefined && note === "Format" && !/^[A-Za-z0-9-]+$/.test(documented)) {
+      documented = undefined; // a pattern such as `YYYY-MM-DD`, not a format name
+    }
+    if (documented !== undefined && (note === "Minimum" || note === "Maximum")) {
+      documented = documented.match(/^-?\d+(?:\.\d+)?/)?.[0]; // "1, maximum: 100" reads as 1
+    }
+    if (documented !== undefined && documented !== specValue) {
+      problems.push(`${label} says ${note}: ${documented}, but the spec says ${specValue === undefined ? `no ${note.toLowerCase()}` : specValue}`);
+    }
+  }
+  return problems;
+}
+
+// Request Body table rows with the option each belongs to: from a
+// "### Option N" heading, or an "Option N of M" label in the description.
+function requestBodyRowsWithOption(content) {
+  const section = sectionText(content, "Request Body") || "";
+  const rows = [];
+  let headingOption = "";
+  const lines = section.split(/\r?\n/).map((line) => line.trim());
+  const isSeparator = (line) => /^\|\s*:?-{3}/.test(line);
+  lines.forEach((line, index) => {
+    const heading = line.match(/^### Option (\d+)/);
+    if (heading) {
+      headingOption = heading[1];
+      return;
+    }
+    if (!line.startsWith("|") || isSeparator(line) || isSeparator(lines[index + 1] || "")) {
+      return;
+    }
+    const cells = splitRow(line);
+    if (cells.length < 3 || !cells[0] || cells[0] === "None") {
+      return;
+    }
+    const label = (cells[3] || "").match(/^Option (\d+) of \d+/)?.[1] || "";
+    rows.push({ cells, option: `${headingOption}/${label}` });
+  });
+  return rows;
+}
+
+function listedNote(description, label) {
+  return description.match(new RegExp(`(?:^|\\. )${label}: ([^|]+?)(?:\\. [A-Z][a-z]+:|\\.\\s*$|$)`))?.[1]?.trim();
 }
 
 function basicType(spec, schema) {
@@ -429,6 +564,371 @@ function findBestSpecOperation(specs, route, method, requestJson, responseJson, 
     .sort((left, right) => right.score - left.score)[0].candidate;
 }
 
+function sectionText(content, heading) {
+  // "## Heading" at the start of a line, so a "##### Heading" inside copied
+  // spec prose is not taken for the section.
+  const found = new RegExp(`(^|\\n)## ${heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`).exec(content);
+  if (!found) {
+    return null;
+  }
+  const start = found.index + found[1].length;
+  const next = content.indexOf("\n## ", start + 3);
+  return content.slice(start, next === -1 ? undefined : next);
+}
+
+function securityRequirementsOf(spec, operation) {
+  return operation ? (operation.security ?? spec.security ?? []) : (spec.security ?? []);
+}
+
+// Checks an Authentication section's wording against the security schemes in use.
+function authenticationErrors(spec, authText, requirements, subject) {
+  const errors = [];
+  const schemes = spec.components?.securitySchemes || {};
+  const inUse = requirements.flatMap((requirement) => Object.keys(requirement || {}).map((name) => resolveRef(spec, schemes[name]) || {}));
+  const requiresAuth = inUse.length > 0;
+  const saysNone = /no authentication/i.test(authText);
+  if (requiresAuth && saysNone) {
+    errors.push(`Authentication says none is required, but the spec requires it for ${subject}`);
+  }
+  if (!requiresAuth && !saysNone && /authentication is required|bearer|api key|oauth|basic/i.test(authText)) {
+    errors.push(`Authentication says it is required, but the spec defines no security for ${subject}`);
+  }
+  if (requiresAuth) {
+    const has = (test) => inUse.some(test);
+    const checks = [
+      [/bearer/i, (scheme) => (scheme.type === "http" && /bearer/i.test(scheme.scheme)) || scheme.type === "oauth2" || scheme.type === "openIdConnect", "a Bearer token"],
+      [/oauth/i, (scheme) => scheme.type === "oauth2" || scheme.type === "openIdConnect", "OAuth"],
+      [/\bbasic\b/i, (scheme) => scheme.type === "http" && /basic/i.test(scheme.scheme), "Basic authentication"],
+      [/API key in (header|query|cookie)/, (scheme) => scheme.type === "apiKey", "an API key"]
+    ];
+    const descriptions = inUse.map((scheme) => String(scheme.description || "")).join(" ");
+    for (const [pattern, test, label] of checks) {
+      if (pattern.test(authText) && !has(test) && !pattern.test(descriptions)) {
+        errors.push(`Authentication mentions ${label}, but the spec's security for ${subject} does not use it`);
+      }
+    }
+  }
+  return errors;
+}
+
+function routePattern(route) {
+  return new RegExp(`^${route.replace(/[.*+?^$()|[\]\\]/g, "\\$&").replace(/\\\{[^}]+\\\}|\{[^}]+\}/g, "[^/]+")}$`);
+}
+
+function checkEndpointDoc(content, relativePath, match, operationRef, requestJson, responseJson) {
+  const errors = [];
+  const add = (message) => errors.push(`${relativePath}: ${message}`);
+  const specName = path.basename(match.filePath);
+  const spec = match.spec;
+  const operation = match.operation;
+  const requestBody = resolveRef(spec, operation.requestBody);
+  const requestSchemaJson = extractRequestSchema(spec, operation);
+  const requestShapes = shapesOf(spec, requestSchemaJson);
+
+  // Request example JSON.
+  if (requestShapes.length > 0) {
+    if (!requestJson) {
+      add("request body schema exists but no JSON request example was found");
+    } else if (typeof requestJson === "object" && !Array.isArray(requestJson)) {
+      const allowed = allowedProperties(requestShapes);
+      for (const key of Object.keys(requestJson)) {
+        if (key in allowed && resolveSchema(spec, allowed[key])?.readOnly) {
+          add(`request example sends '${key}', which is readOnly in ${specName}`);
+        }
+      }
+      for (const message of checkJsonValue(spec, requestJson, requestSchemaJson, "", "request")) {
+        add(`${message} in ${specName}`);
+      }
+      const missingByShape = requestShapes.map((shape) => (shape.required || []).filter((key) => !(key in requestJson)));
+      if (!missingByShape.some((missing) => missing.length === 0)) {
+        const fewest = missingByShape.reduce((best, missing) => (missing.length < best.length ? missing : best));
+        for (const key of fewest) {
+          add(`request example is missing required field '${key}' from ${specName}`);
+        }
+      }
+    }
+  }
+
+  // Response example JSON.
+  const success = Object.entries(operation.responses || {}).find(([code]) => code.startsWith("2"));
+  const successSchema = jsonSchemaOf(successResponse(spec, operation)?.content);
+  if (responseJson && typeof responseJson === "object") {
+    const responseShapes = shapesOf(spec, successSchema);
+    if (!Array.isArray(responseJson)) {
+      const allowed = allowedProperties(responseShapes);
+      for (const key of Object.keys(responseJson)) {
+        if (key in allowed && resolveSchema(spec, allowed[key])?.writeOnly) {
+          add(`response example shows '${key}', which is writeOnly in ${specName}`);
+        }
+      }
+    }
+    for (const message of checkJsonValue(spec, responseJson, successSchema, "", "response")) {
+      add(`${message} in ${specName}`);
+    }
+  }
+
+  // Error response body example.
+  const errorBody = content.match(/Error response body \(`([^`]+)`\):\s*```json\s*([\s\S]*?)```/);
+  if (errorBody) {
+    const errorResponse = resolveRef(spec, operation.responses?.[errorBody[1]]);
+    if (!errorResponse) {
+      add(`error response body is shown for '${errorBody[1]}', which is not a response of ${operationRef.method} ${operationRef.url}`);
+    } else {
+      try {
+        const parsed = JSON.parse(errorBody[2]);
+        for (const message of checkJsonValue(spec, parsed, jsonSchemaOf(errorResponse.content), "", "error response")) {
+          add(`${message} in ${specName}`);
+        }
+      } catch {
+        add("error response body example is not valid JSON");
+      }
+    }
+  }
+
+  // Parameter tables against the spec: existence, Required, type, default; every spec parameter documented.
+  const specParameters = definedParameters(spec, match.pathItem, operation);
+  const documentedParameters = extractDocumentedParameters(content);
+  const seenParameters = new Set();
+  for (const documented of documentedParameters) {
+    const key = `${documented.location}:${documented.name}`;
+    if (seenParameters.has(key)) {
+      add(`parameter '${documented.name}' is listed more than once`);
+    }
+    seenParameters.add(key);
+    const defined = specParameters.find((parameter) => parameter.name === documented.name && (!documented.location || parameter.in === documented.location));
+    if (!defined) {
+      add(`parameter '${documented.name}' is not defined in ${specName}`);
+      continue;
+    }
+    const specRequired = defined.required ? "yes" : "no";
+    if ((documented.required === "yes" || documented.required === "no") && documented.required !== specRequired) {
+      add(`parameter '${documented.name}' is marked Required: ${documented.required}, but the spec says ${specRequired}`);
+    }
+    const specType = basicType(spec, defined.schema);
+    const docType = String(documented.type || "").replace(/<.*$/, "").trim();
+    if (specType && /^(string|integer|number|boolean|object|array)$/.test(docType) && docType !== specType) {
+      add(`parameter '${documented.name}' is documented as ${docType}, but the spec says ${specType}`);
+    }
+    constraintNoteProblems(spec, defined.schema, documented.description || "", `parameter '${documented.name}'`).forEach(add);
+    const parameterEnum = resolveSchema(spec, defined.schema)?.enum;
+    const parameterListed = listedAllowedValues(documented.description || "", `${defined.description || ""} ${resolveSchema(spec, defined.schema)?.description || ""}`);
+    if (parameterListed && (!parameterEnum || [...parameterListed].sort().join("|") !== parameterEnum.map(String).sort().join("|"))) {
+      add(`parameter '${documented.name}' lists allowed values (${parameterListed.join(", ")}) that do not match the spec (${(parameterEnum || []).join(", ") || "no enum"})`);
+    }
+  }
+  const hasParameterTables = parameterSections.some(([heading]) => sectionText(content, heading) !== null);
+  if (hasParameterTables) {
+    for (const parameter of specParameters.filter((candidate) => ["path", "query", "header"].includes(candidate.in))) {
+      if (!documentedParameters.some((documented) => documented.name === parameter.name && (!documented.location || documented.location === parameter.in))) {
+        const omittedHeader = parameter.in === "header" && /^(authorization|content-type|accept)$/i.test(parameter.name);
+        if (!omittedHeader) {
+          add(`${parameter.in} parameter '${parameter.name}' from ${specName} is missing from the parameter tables`);
+        }
+      }
+    }
+  }
+
+  // Request Body section and table.
+  const bodySection = sectionText(content, "Request Body");
+  const bodyRows = tableRows(content, "Request Body");
+  if (requestBody?.content && bodySection !== null && /Not applicable\./.test(bodySection)) {
+    add(`the spec defines a request body, but the Request Body section says "Not applicable."`);
+  }
+  if (requestBody?.content && bodySection === null && /## Request Example/.test(content)) {
+    add("the spec defines a request body, but the doc has no Request Body section");
+  }
+  if (!requestBody?.content && bodyRows.length > 0) {
+    add(`the Request Body table lists fields, but the spec defines no request body for ${operationRef.method} ${operationRef.url}`);
+  }
+  const bodyMedia = requestBody?.content ? Object.keys(requestBody.content) : [];
+  if (bodySection && requestBody?.content) {
+    if (/Request body is optional/i.test(bodySection) && requestBody.required === true) {
+      add(`the Request Body says the body is optional, but the spec says it is required`);
+    }
+    if (/Request body is required/i.test(bodySection) && requestBody.required !== true) {
+      add(`the Request Body says the body is required, but the spec says it is optional`);
+    }
+  }
+  const curlContentType = content.match(/curl [\s\S]*?-H "Content-Type: ([^";]+)/i)?.[1]?.trim();
+  if (curlContentType && bodyMedia.length > 0 && !bodyMedia.some((media) => media.split(";")[0].trim().toLowerCase() === curlContentType.toLowerCase())) {
+    add(`the request example sends Content-Type ${curlContentType}, but the spec's request body types are ${bodyMedia.join(", ")}`);
+  }
+  const contentTypeNote = bodySection?.match(/Content type: `([^`]+)`/)?.[1];
+  if (contentTypeNote && !bodyMedia.includes(contentTypeNote)) {
+    add(`the Request Body says Content type: ${contentTypeNote}, but the spec's request body types are ${bodyMedia.join(", ") || "none"}`);
+  }
+  const tableSchema = requestSchemaJson || resolveSchema(spec, Object.values(requestBody?.content || {})[0]?.schema);
+  const tableShapes = expandShapes(spec, tableSchema);
+  if (tableShapes.length > 0 && bodyRows.length > 0) {
+    const bodyIsRequired = requestBody?.required === true;
+    const seenRows = new Set();
+    for (const { cells: [name, type, flag, description = ""], option } of requestBodyRowsWithOption(content)) {
+      const rowKey = `${option}|${name}`;
+      if (seenRows.has(rowKey)) {
+        add(`request field '${name}' is listed more than once in the Request Body table`);
+      }
+      seenRows.add(rowKey);
+      const candidates = fieldCandidates(spec, tableShapes, name);
+      if (candidates.length === 0) {
+        add(`request field '${name}' in the Request Body table is not defined in ${specName}`);
+        continue;
+      }
+      const isTopLevel = !/[.[\]]/.test(name);
+      const problemsFor = (candidate) => {
+        const problems = [];
+        const specType = basicType(spec, candidate.schema);
+        const docType = type.replace(/<.*$/, "").trim();
+        if (specType && /^(string|integer|number|boolean|object|array)$/.test(docType) && docType !== specType) {
+          problems.push(`request field '${name}' is documented as ${docType}, but the spec says ${specType}`);
+        }
+        const listed = listedAllowedValues(description, resolveSchema(spec, candidate.schema)?.description || "");
+        const specEnum = resolveSchema(spec, candidate.schema)?.enum;
+        problems.push(...constraintNoteProblems(spec, candidate.schema, description, `request field '${name}'`));
+        if (listed) {
+          const documentedValues = [...listed].sort();
+          const specValues = (specEnum || []).map(String).sort();
+          if (!specEnum || documentedValues.join("|") !== specValues.join("|")) {
+            problems.push(`request field '${name}' lists allowed values (${documentedValues.join(", ")}) that do not match the spec (${specValues.join(", ") || "no enum"})`);
+          }
+        }
+        if ((flag === "yes" || flag === "no") && !(isTopLevel && bodyIsRequired === false && flag === "no" && !candidate.required)) {
+          if ((flag === "yes") !== candidate.required) {
+            problems.push(`request field '${name}' is marked Required: ${flag}, but the spec says ${candidate.required ? "yes" : "no"}`);
+          }
+        }
+        if (candidate.readOnly) {
+          problems.push(`request field '${name}' is readOnly in ${specName} and should not be listed as a request field`);
+        }
+        return problems;
+      };
+      const results = candidates.map(problemsFor);
+      if (!results.some((problems) => problems.length === 0)) {
+        results.reduce((best, problems) => (problems.length < best.length ? problems : best)).forEach(add);
+      }
+    }
+    // Every top-level field of a single-shape body is documented.
+    if (tableShapes.length === 1 && !content.includes("### Option 1")) {
+      const documentedNames = new Set(bodyRows.map(([name]) => name));
+      for (const [property, propertySchema] of Object.entries(tableShapes[0].properties || {})) {
+        if (!documentedNames.has(property) && !resolveSchema(spec, propertySchema)?.readOnly) {
+          add(`request field '${property}' from ${specName} is missing from the Request Body table`);
+        }
+      }
+    }
+  }
+
+  // Authentication section.
+  const authText = sectionText(content, "Authentication");
+  if (authText) {
+    authenticationErrors(spec, authText, securityRequirementsOf(spec, operation), `${operationRef.method} ${operationRef.url}`).forEach(add);
+  }
+
+  // Credentials the request example sends, against the operation's security.
+  const curlText = (content.match(/```(?:bash|shell|sh|console)?\n(curl [\s\S]*?)```/) || [])[1] || "";
+  if (curlText) {
+    const schemes = spec.components?.securitySchemes || {};
+    const requirements = securityRequirementsOf(spec, operation);
+    const inUse = requirements.flatMap((requirement) => Object.keys(requirement || {}).map((name) => resolveRef(spec, schemes[name]) || {}));
+    const subject = `${operationRef.method} ${operationRef.url}`;
+    const sendsBasic = /(?:^|\s)(?:-u|--user)\s/.test(curlText) || /Authorization:\s*Basic\b/i.test(curlText);
+    const sendsBearer = /Authorization:\s*Bearer\b/i.test(curlText);
+    if (sendsBasic && !inUse.some((scheme) => scheme.type === "http" && /basic/i.test(scheme.scheme))) {
+      add(`the request example sends Basic credentials, but the spec's security for ${subject} does not use Basic authentication`);
+    }
+    if (sendsBearer && !inUse.some((scheme) => (scheme.type === "http" && /bearer/i.test(scheme.scheme)) || scheme.type === "oauth2" || scheme.type === "openIdConnect")) {
+      add(`the request example sends a Bearer token, but the spec's security for ${subject} does not use one`);
+    }
+  }
+
+  // Request example URL: server, path, query parameters.
+  const bases = serverBases(spec).filter((base) => /^https?:\/\//.test(base));
+  const exampleUrl = extractCurlUrl(content);
+  if (exampleUrl) {
+    const base = bases.find((candidate) => exampleUrl.href.startsWith(candidate));
+    if (bases.length > 0 && !base) {
+      add(`request example calls ${exampleUrl.origin}${exampleUrl.pathname}, which is not under any server in ${specName} (${bases.join(", ")})`);
+    } else {
+      const basePath = base ? new URL(base).pathname.replace(/\/$/, "") : "";
+      const examplePath = decodeURIComponent(exampleUrl.pathname).slice(basePath.length) || "/";
+      if (!routePattern(match.route).test(examplePath)) {
+        add(`request example path ${examplePath} does not match ${match.route}`);
+      }
+    }
+    for (const [name, value] of exampleUrl.searchParams) {
+      const defined = specParameters.find((parameter) => parameter.in === "query" && parameter.name === name);
+      if (!defined) {
+        add(`request example uses query parameter '${name}', which is not defined in ${specName}`);
+        continue;
+      }
+      const allowedValues = resolveSchema(spec, defined.schema)?.enum;
+      if (Array.isArray(allowedValues) && !allowedValues.map(String).includes(value)) {
+        add(`query parameter '${name}' uses '${value}', which is not one of its allowed values (${allowedValues.join(", ")})`);
+      }
+    }
+    for (const parameter of specParameters.filter((candidate) => candidate.in === "query" && candidate.required)) {
+      if (!exampleUrl.searchParams.has(parameter.name)) {
+        add(`request example leaves out required query parameter '${parameter.name}'`);
+      }
+    }
+  }
+
+  // Success status, and a response without a body.
+  const statusShown = content.match(/## Response Example\s+Status: `([^`]+)`/)?.[1];
+  if (statusShown && !statusCodeAllowed(statusShown, operation.responses)) {
+    add(`response status '${statusShown}' is not defined for ${operationRef.method} ${operationRef.url} in ${specName}`);
+  }
+  const noBodyCode = content.match(/This operation returns `([^`]+)` with no response body\./)?.[1];
+  if (noBodyCode) {
+    const noBodyResponse = resolveRef(spec, operation.responses?.[noBodyCode] || operation.responses?.[`${noBodyCode[0]}XX`]);
+    if (!noBodyResponse) {
+      add(`response status '${noBodyCode}' is not defined for ${operationRef.method} ${operationRef.url} in ${specName}`);
+    } else if (noBodyResponse.content) {
+      add(`the doc says '${noBodyCode}' has no response body, but the spec defines one`);
+    }
+  }
+
+  // Error Codes: every listed code exists, and every spec error response is listed.
+  const errorSection = sectionText(content, "Error Codes");
+  const listedCodes = tableRows(content, "Error Codes", 2).map(([code]) => code.replace(/`/g, ""));
+  for (const code of listedCodes) {
+    if (code === "default" ? !("default" in (operation.responses || {})) : !statusCodeAllowed(code, operation.responses)) {
+      add(`status code '${code}' is not defined for ${operationRef.method} ${operationRef.url} in ${specName}`);
+    }
+  }
+  if (errorSection !== null) {
+    for (const code of Object.keys(operation.responses || {}).filter((candidate) => !candidate.startsWith("2"))) {
+      if (!listedCodes.includes(code)) {
+        add(`error response '${code}' from ${specName} is missing from the Error Codes table`);
+      }
+    }
+  }
+
+  return errors;
+}
+
+// Checks an API overview doc: base URL and authentication against the spec.
+function checkOverviewDoc(content, relativePath, specs) {
+  const errors = [];
+  const title = content.match(/^title:\s*"?(.+?)"?\s*$/m)?.[1] || "";
+  const spec = specs.find(({ spec: candidate }) => title.startsWith(String(candidate.info?.title || "").replace(/\s+API$/i, "")))?.spec || (specs.length === 1 ? specs[0].spec : null);
+  if (!spec) {
+    return errors;
+  }
+  const baseSection = sectionText(content, "Base URL");
+  const baseUrl = baseSection?.match(/`([^`]+)`/)?.[1];
+  const bases = serverBases(spec);
+  if (baseUrl && bases.length > 0 && !bases.includes(baseUrl.replace(/\/$/, ""))) {
+    errors.push(`${relativePath}: Base URL ${baseUrl} is not a server in the spec (${bases.join(", ")})`);
+  }
+  const authText = sectionText(content, "Authentication");
+  if (authText) {
+    const schemes = Object.keys(spec.components?.securitySchemes || {});
+    const requirements = (spec.security && spec.security.length > 0) ? spec.security : schemes.map((name) => ({ [name]: [] }));
+    authenticationErrors(spec, authText, requirements, "the API").forEach((message) => errors.push(`${relativePath}: ${message}`));
+  }
+  return errors;
+}
+
 async function main() {
   let targets;
   try {
@@ -457,7 +957,8 @@ async function main() {
   const specs = await loadSpecs(specTargets);
   if (targets.userMode && specs.length === 0) {
     console.error(`No OpenAPI 3.x specs found in ${specTargets.map((target) => displayPath(target, displayRoot)).join(", ")}.`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const errors = [];
@@ -474,6 +975,11 @@ async function main() {
     const operationRef = extractOperation(content);
 
     if (!operationRef) {
+      if (/^# API Overview/m.test(content)) {
+        errors.push(...checkOverviewDoc(content, relativePath, specs));
+      } else if (targets.userMode && (/^component:\s*"?endpoint"?\s*$/m.test(content) || /^# Endpoint:/m.test(content) || /## Request Example/.test(content))) {
+        errors.push(`${relativePath}: looks like an endpoint doc, but its Endpoint section (Method and URL) is missing or unreadable, so it could not be compared with the spec`);
+      }
       continue;
     }
 
@@ -507,173 +1013,15 @@ async function main() {
       continue;
     }
 
-    const specName = path.basename(match.filePath);
-    const spec = match.spec;
-
-    const requestShapes = shapesOf(spec, extractRequestSchema(spec, match.operation));
-    if (requestShapes.length > 0) {
-      if (!requestJson) {
-        errors.push(`${relativePath}: request body schema exists but no JSON request example was found`);
-      } else if (typeof requestJson === "object" && !Array.isArray(requestJson)) {
-        const allowed = allowedProperties(requestShapes);
-        const keys = Object.keys(requestJson);
-        for (const key of keys) {
-          if (!(key in allowed)) {
-            errors.push(`${relativePath}: request example field '${key}' is not defined in ${specName}`);
-          } else if (resolveSchema(spec, allowed[key])?.readOnly) {
-            errors.push(`${relativePath}: request example sends '${key}', which is readOnly in ${specName}`);
-          }
-        }
-        for (const message of checkJsonValue(spec, requestJson, extractRequestSchema(spec, match.operation), "", "request")) {
-          errors.push(`${relativePath}: ${message} in ${specName}`);
-        }
-        // The example must satisfy the required fields of at least one allowed shape.
-        const missingByShape = requestShapes.map((shape) => (shape.required || []).filter((key) => !(key in requestJson)));
-        if (!missingByShape.some((missing) => missing.length === 0)) {
-          const fewest = missingByShape.reduce((best, missing) => (missing.length < best.length ? missing : best));
-          for (const key of fewest) {
-            errors.push(`${relativePath}: request example is missing required field '${key}' from ${specName}`);
-          }
-        }
-      }
-    }
-
-    const responseShapes = shapesOf(spec, jsonSchemaOf(successResponse(spec, match.operation)?.content));
-    if (responseJson && typeof responseJson === "object" && !Array.isArray(responseJson) && responseShapes.some((shape) => shape.properties)) {
-      const allowed = allowedProperties(responseShapes);
-      for (const key of Object.keys(responseJson)) {
-        if (!(key in allowed)) {
-          errors.push(`${relativePath}: response example field '${key}' is not defined in ${specName}`);
-        } else if (resolveSchema(spec, allowed[key])?.writeOnly) {
-          errors.push(`${relativePath}: response example shows '${key}', which is writeOnly in ${specName}`);
-        }
-      }
-      for (const message of checkJsonValue(spec, responseJson, jsonSchemaOf(successResponse(spec, match.operation)?.content), "", "response")) {
-        errors.push(`${relativePath}: ${message} in ${specName}`);
-      }
-    }
-
-    // Parameter tables: every parameter exists in the spec with the same Required flag.
-    const specParameters = definedParameters(spec, match.pathItem, match.operation);
-    for (const documented of extractDocumentedParameters(content)) {
-      const defined = specParameters.find((parameter) => parameter.name === documented.name && (!documented.location || parameter.in === documented.location));
-      if (!defined) {
-        errors.push(`${relativePath}: parameter '${documented.name}' is not defined in ${specName}`);
-        continue;
-      }
-      const specRequired = defined.required ? "yes" : "no";
-      if ((documented.required === "yes" || documented.required === "no") && documented.required !== specRequired) {
-        errors.push(`${relativePath}: parameter '${documented.name}' is marked Required: ${documented.required}, but the spec says ${specRequired}`);
-      }
-    }
-
-    // Request body table: top-level Required flags match the spec. Skipped
-    // when the body has several shapes, which are documented per option.
-    if (requestShapes.length === 1 && !content.includes("### Option 1")) {
-      const required = new Set(requestShapes[0].required || []);
-      for (const cells of tableRows(content, "Request Body")) {
-        const [name, , flag] = cells;
-        if (/[.[\]]/.test(name) || !(name in (requestShapes[0].properties || {}))) {
-          continue;
-        }
-        if ((flag === "yes" || flag === "no") && (flag === "yes") !== required.has(name)) {
-          errors.push(`${relativePath}: request field '${name}' is marked Required: ${flag}, but the spec says ${required.has(name) ? "yes" : "no"}`);
-        }
-      }
-    }
-
-    // Request body table rows: every field exists, with the spec's type and allowed values.
-    const tableShapes = expandShapes(spec, extractRequestSchema(spec, match.operation) || resolveSchema(spec, Object.values(resolveRef(spec, match.operation.requestBody)?.content || {})[0]?.schema));
-    if (tableShapes.length > 0) {
-      for (const [name, type, , description = ""] of tableRows(content, "Request Body")) {
-        const fieldSchema = schemaForField(spec, tableShapes, name);
-        if (!fieldSchema) {
-          errors.push(`${relativePath}: request field '${name}' in the Request Body table is not defined in ${specName}`);
-          continue;
-        }
-        const specType = basicType(spec, fieldSchema);
-        const docType = type.replace(/<.*$/, "").trim();
-        if (specType && /^(string|integer|number|boolean|object|array)$/.test(docType) && docType !== specType) {
-          errors.push(`${relativePath}: request field '${name}' is documented as ${docType}, but the spec says ${specType}`);
-        }
-        const listed = description.match(/Allowed values: ([^.|]+?)(?:\.\s|\.$|$)/)?.[1];
-        const specEnum = resolveSchema(spec, fieldSchema)?.enum;
-        if (listed) {
-          const documentedValues = listed.split(",").map((value) => value.trim()).filter(Boolean).sort();
-          const specValues = (specEnum || []).map(String).sort();
-          if (!specEnum || documentedValues.join("|") !== specValues.join("|")) {
-            errors.push(`${relativePath}: request field '${name}' lists allowed values (${documentedValues.join(", ")}) that do not match the spec (${specValues.join(", ") || "no enum"})`);
-          }
-        }
-      }
-    }
-
-    // Authentication section agrees with the spec's security requirements.
-    const security = match.operation.security ?? spec.security ?? [];
-    const requiresAuth = security.some((requirement) => requirement && Object.keys(requirement).length > 0);
-    const authStart = content.search(/## Authentication/);
-    const authText = authStart === -1 ? "" : content.slice(authStart, content.indexOf("\n## ", authStart + 3) === -1 ? undefined : content.indexOf("\n## ", authStart + 3));
-    if (authText) {
-      const saysNone = /no authentication/i.test(authText);
-      if (requiresAuth && saysNone) {
-        errors.push(`${relativePath}: Authentication says none is required, but the spec requires it`);
-      }
-      if (!requiresAuth && !saysNone && /authentication is required|bearer|api key|oauth|basic/i.test(authText)) {
-        errors.push(`${relativePath}: Authentication says it is required, but the spec defines no security for this operation`);
-      }
-      if (requiresAuth && /API key in (header|query|cookie)/.test(authText)) {
-        const schemes = spec.components?.securitySchemes || {};
-        const hasApiKey = security.some((requirement) => Object.keys(requirement || {}).some((name) => resolveRef(spec, schemes[name])?.type === "apiKey"));
-        if (!hasApiKey) {
-          errors.push(`${relativePath}: Authentication mentions an API key, but the spec's security for this operation uses no API key`);
-        }
-      }
-    }
-
-    // The request example calls one of the spec's servers.
-    const bases = serverBases(spec).filter((base) => /^https?:\/\//.test(base));
-    const exampleUrl = extractCurlUrl(content);
-    if (exampleUrl && bases.length > 0 && !bases.some((base) => exampleUrl.href.startsWith(base))) {
-      errors.push(`${relativePath}: request example calls ${exampleUrl.origin}${exampleUrl.pathname}, which is not under any server in ${specName} (${bases.join(", ")})`);
-    }
-
-    // The success status shown with the response example exists in the spec.
-    const statusShown = content.match(/## Response Example\s+Status: `([^`]+)`/)?.[1];
-    if (statusShown && !statusCodeAllowed(statusShown, match.operation.responses)) {
-      errors.push(`${relativePath}: response status '${statusShown}' is not defined for ${operationRef.method} ${operationRef.url} in ${specName}`);
-    }
-
-    // Query string in the request example: known parameters and allowed values.
-    const curlUrl = extractCurlUrl(content);
-    if (curlUrl) {
-      for (const [name, value] of curlUrl.searchParams) {
-        const defined = specParameters.find((parameter) => parameter.in === "query" && parameter.name === name);
-        if (!defined) {
-          errors.push(`${relativePath}: request example uses query parameter '${name}', which is not defined in ${specName}`);
-          continue;
-        }
-        const allowedValues = resolveSchema(spec, defined.schema)?.enum;
-        if (Array.isArray(allowedValues) && !allowedValues.map(String).includes(value)) {
-          errors.push(`${relativePath}: query parameter '${name}' uses '${value}', which is not one of its allowed values (${allowedValues.join(", ")})`);
-        }
-      }
-    }
-
-    // Status codes in the Error Codes table exist in the spec.
-    for (const [code] of tableRows(content, "Error Codes", 2)) {
-      const normalized = code.replace(/`/g, "");
-      if (normalized === "default" ? !("default" in (match.operation.responses || {})) : !statusCodeAllowed(normalized, match.operation.responses)) {
-        errors.push(`${relativePath}: status code '${normalized}' is not defined for ${operationRef.method} ${operationRef.url} in ${specName}`);
-      }
-    }
+    errors.push(...checkEndpointDoc(content, relativePath, match, operationRef, requestJson, responseJson));
   }
 
   if (errors.length > 0) {
-    console.error("OpenAPI example validation failed:\n");
-    for (const error of errors) {
-      console.error(`- ${error}`);
-    }
-    process.exit(1);
+    // One write, then let Node exit on its own, so no line is lost when the
+    // output is a pipe.
+    process.stderr.write(`OpenAPI example validation failed:\n\n${errors.map((error) => `- ${error}`).join("\n")}\n`);
+    process.exitCode = 1;
+    return;
   }
 
   const skippedCount = markdownFiles.length - comparedCount;
@@ -689,5 +1037,5 @@ async function main() {
 
 main().catch((error) => {
   console.error(error);
-  process.exit(1);
+  process.exitCode = 1;
 });

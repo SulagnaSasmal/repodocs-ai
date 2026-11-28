@@ -48,7 +48,7 @@ describe("generate-openapi-docs", () => {
   });
 
   it("includes query parameter constraints from the OpenAPI schema", () => {
-    expect(getPayments).toContain("Allowed values: pending, completed, failed, refunded");
+    expect(getPayments).toContain("Allowed values: `pending`, `completed`, `failed`, `refunded`");
     expect(getPayments).toContain("Format: date");
     expect(getPayments).toContain("Minimum: 1");
     expect(getPayments).toContain("Maximum: 100");
@@ -171,5 +171,68 @@ describe("validate-doc-quality target paths", () => {
         path.join(os.tmpdir(), "repodocs-missing-folder")
       ], { cwd: repoRoot })
     ).rejects.toMatchObject({ stderr: expect.stringContaining("Docs path not found") });
+  });
+});
+
+describe("generate-openapi-docs with a hostile spec", () => {
+  let overview;
+  let endpoint;
+  let outputDirectory;
+
+  beforeAll(async () => {
+    outputDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "repodocs-hostile-"));
+    await execFileAsync(process.execPath, [
+      path.join(repoRoot, "scripts", "generate-openapi-docs.mjs"),
+      path.join(repoRoot, "tests", "fixtures", "hostile", "html-in-spec.yaml"),
+      outputDirectory
+    ], { cwd: repoRoot });
+    overview = await fs.readFile(path.join(outputDirectory, "api-overview.md"), "utf8");
+    endpoint = await fs.readFile(path.join(outputDirectory, "endpoints", "get-items-id.md"), "utf8");
+  });
+
+  // Outside code, as rendered text: a docs site that renders raw HTML must not run any of it.
+  function prose(markdown) {
+    return markdown
+      .replace(/^---\n[\s\S]*?\n---\n/, "")
+      .replace(/^```[^\n]*\n[\s\S]*?^```[ \t]*$/gm, "")
+      .replace(/`+[^`\n]*?`+/g, "");
+  }
+
+  it("escapes HTML from the spec so it shows as text instead of running", () => {
+    for (const doc of [overview, endpoint]) {
+      expect(prose(doc)).not.toMatch(/<(script|img|iframe|svg)\b/i);
+    }
+    expect(overview).toContain("&lt;script>alert(1)&lt;/script>");
+    expect(endpoint).toContain("# Endpoint: Get &lt;script>");
+  });
+
+  it("removes javascript: links, including ones with parentheses", () => {
+    expect(overview).not.toMatch(/javascript:/i);
+    expect(overview).toMatch(/\[click\]\(#unsafe-link-removed\)$/m);
+  });
+
+  it("keeps spec text that tries to add frontmatter keys inside the quoted title", () => {
+    const frontmatter = overview.match(/^---\n([\s\S]*?)\n---/)[1];
+    expect(frontmatter).not.toMatch(/^owner: attacker/m);
+    expect(frontmatter).toMatch(/^owner: "unassigned"$/m);
+  });
+
+  it("names files from the method and path only, so operationId cannot escape the folder", async () => {
+    expect(await fs.readdir(path.join(outputDirectory, "endpoints"))).toEqual(["get-items-id.md"]);
+  });
+
+  it("leaves code blocks untouched", () => {
+    expect(endpoint).toContain('"name": "</code><script>alert(5)</script>"');
+  });
+
+  it("passes the quality check's unsafe-HTML rule, which fails the same text unescaped", async () => {
+    const { stderr } = await execFileAsync(process.execPath, [path.join(repoRoot, "scripts", "validate-doc-quality.mjs"), outputDirectory]).catch((error) => error);
+    expect(stderr || "").not.toContain("unsafe HTML");
+
+    const handWritten = await fs.mkdtemp(path.join(os.tmpdir(), "repodocs-unsafe-"));
+    await fs.writeFile(path.join(handWritten, "page.md"), "---\ntitle: \"x\"\n---\n# Page\n\n<img src=x onerror=alert(1)>\n\n[a](javascript:alert(1))\n\nThe tag `<script>` is fine in code.\n", "utf8");
+    const result = await execFileAsync(process.execPath, [path.join(repoRoot, "scripts", "validate-doc-quality.mjs"), handWritten]).catch((error) => error);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("unsafe HTML that would run script on a docs site: an inline event handler (on...=), a javascript:, vbscript: or data: link");
   });
 });

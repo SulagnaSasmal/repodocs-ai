@@ -21,6 +21,10 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# The token can read the repository and nothing else.
+permissions:
+  contents: read
+
 jobs:
   automation:
     runs-on: ubuntu-latest

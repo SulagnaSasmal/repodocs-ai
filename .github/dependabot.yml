@@ -8,6 +8,14 @@ updates:
     groups:
       dev-tools:
         dependency-type: development
+  - package-ecosystem: npm
+    directory: /website
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      website:
+        patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

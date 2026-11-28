@@ -56,6 +56,13 @@ function slug(value) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "endpoint";
 }
 
+// Numbers and numeric strings compared as text.
+function numbersAsText(value) {
+  if (Array.isArray(value)) return value.map(numbersAsText);
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, numbersAsText(child)]));
+  return typeof value === "number" ? String(value) : value;
+}
+
 function section(doc, heading) {
   const start = doc.indexOf(`## ${heading}`);
   if (start === -1) return "";
@@ -78,7 +85,7 @@ describe.each(fixtures)("adopter path with %s", (fixture) => {
   beforeAll(async () => {
     workDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "repodocs-adopter-"));
     docsRepo = path.join(workDirectory, "docs-repo");
-    spec = yaml.load(await fs.readFile(path.join(fixturesDirectory, fixture), "utf8"));
+    spec = yaml.load(await fs.readFile(path.join(fixturesDirectory, fixture), "utf8"), { schema: yaml.CORE_SCHEMA });
 
     await execFileAsync(process.execPath, [script("bootstrap-docs-repo.mjs"), docsRepo], { cwd: repoRoot });
     await fs.mkdir(path.join(docsRepo, "openapi"), { recursive: true });
@@ -96,7 +103,7 @@ describe.each(fixtures)("adopter path with %s", (fixture) => {
   it("passes validate:docs with every check run and none skipped or failed", () => {
     expect(validateOutput).not.toContain("[FAIL]");
     expect(validateOutput).not.toContain("[SKIP]");
-    expect(validateOutput).toMatch(/4 of 4 checks passed/);
+    expect(validateOutput).toMatch(/^4 checks: (?!.*(?:skipped|failed)).*passed.*\.$/m);
   });
 
   it("writes one endpoint doc per operation in the spec", async () => {
@@ -158,8 +165,15 @@ describe.each(fixtures)("adopter path with %s", (fixture) => {
       const provided = media?.example ?? (media?.examples ? resolveRef(spec, Object.values(media.examples)[0])?.value : undefined);
       if (provided === undefined) continue;
       const doc = await fs.readFile(path.join(docsRepo, "generated", "endpoints", `${slug(`${method}-${route}`)}.md`), "utf8");
-      const shown = JSON.parse(codeBlocks(section(doc, "Response Example"), "json")[0]);
-      expect(shown).toEqual(provided);
+      const responseSection = section(doc, "Response Example");
+      const shown = JSON.parse(codeBlocks(responseSection, "json")[0]);
+      if (/its schema does not define|so (?:it is|they are) shown as/.test(responseSection)) {
+        // Fields the schema does not define are left out, and numeric strings
+        // are shown as the numbers their schema defines; the doc says so.
+        expect(numbersAsText(provided)).toMatchObject(numbersAsText(shown));
+      } else {
+        expect(shown).toEqual(provided);
+      }
     }
   });
 
@@ -229,6 +243,6 @@ describe.each(fixtures)("adopter path with %s", (fixture) => {
     expect(pinned).toBeTruthy();
     const script = step.replace(pinned, `node "${path.join(repoRoot, "bin", "repodocs.mjs")}"`);
     const { stdout } = await execFileAsync("bash", ["-c", script], { cwd: docsRepo });
-    expect(stdout).toMatch(/4 of 4 checks passed/);
+    expect(stdout).toMatch(/^4 checks: (?!.*(?:skipped|failed)).*passed.*\.$/m);
   });
 });

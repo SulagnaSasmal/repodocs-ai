@@ -7,3 +7,11 @@ knowledge-graph/output
 generated
 .control-plane
 .git
+
+# Secrets: never commit or copy into an image
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.npmrc

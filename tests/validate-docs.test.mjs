@@ -114,7 +114,7 @@ describe("validate-docs", () => {
     expect(stdout).toContain("[PASS] OpenAPI examples");
     expect(stdout).toContain("Compared 2 endpoint docs in");
     expect(stdout).toContain("[WARN] Structure and quality");
-    expect(stdout).toContain("4 of 4 checks passed; 1 with warnings to resolve before publishing.");
+    expect(stdout).toContain("4 checks: 3 passed, 1 passed with warnings to resolve before publishing.");
   });
 
   it("reports spec checks as skipped, not passed, when no specs are given", async () => {
@@ -122,8 +122,9 @@ describe("validate-docs", () => {
     const { stdout } = await execFileAsync(process.execPath, [script("validate-docs.mjs"), docsDirectory], { cwd: repoRoot });
     expect(stdout).toContain("[SKIP] OpenAPI examples");
     expect(stdout).toContain("[SKIP] API versions");
-    expect(stdout).toContain("2 of 4 checks passed");
-    expect(stdout).toContain("2 skipped and did not run");
+    expect(stdout).toMatch(/4 checks: \d passed.*, 2 skipped and did not run\./);
+    expect(stdout).toContain("Skipped, OpenAPI examples: no specs given.");
+    expect(stdout).toContain("Skipped, API versions: no specs given.");
   });
 
   it("fails a doc whose frontmatter breaks the schema", async () => {

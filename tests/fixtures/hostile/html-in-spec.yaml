@@ -1,0 +1,25 @@
+openapi: 3.0.3
+info:
+  title: "Evil API\"\nowner: attacker\nx: \""
+  version: "1.0"
+  description: "Hello <img src=x onerror=alert(document.cookie)> and <script>alert(1)</script> [click](javascript:alert(2))"
+servers:
+  - url: https://api.example.com
+paths:
+  /items/{id}:
+    get:
+      summary: "Get <script>alert(3)</script>"
+      operationId: "../../../etc/passwd"
+      description: "<iframe src=https://evil.example></iframe>"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: "Item id <svg onload=alert(4)>"
+          schema: { type: string, example: "a\"b<script>" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              example: { "name": "</code><script>alert(5)</script>" }

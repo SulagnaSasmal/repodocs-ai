@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 const specsRoot = path.join(repoRoot, "examples", "openapi");
-const scanDirectories = ["examples/api-docs", "examples/complete-system", "generated"];
+const scanDirectories = ["examples/api-docs", "examples/payments-api", "examples/complete-system", "generated"];
 
 async function pathExists(targetPath) {
   try {
@@ -174,7 +174,8 @@ async function main() {
   const specs = await loadSpecs(specTargets);
   if (targets.userMode && specs.length === 0) {
     console.error(`No OpenAPI specs found in ${specTargets.map((target) => displayPath(target, displayRoot)).join(", ")}.`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   const specVersions = specVersionsOf(specs);
   const allowedVersions = new Set([...specVersions, "n/a"]);
@@ -290,11 +291,11 @@ async function main() {
   }
 
   if (errors.length > 0) {
-    console.error("Version compatibility validation failed:\n");
-    for (const error of errors) {
-      console.error(`- ${error}`);
-    }
-    process.exit(1);
+    // One write, then let Node exit on its own, so no line is lost when the
+    // output is a pipe.
+    process.stderr.write(`Version compatibility validation failed:\n\n${errors.map((error) => `- ${error}`).join("\n")}\n`);
+    process.exitCode = 1;
+    return;
   }
 
   const skippedCount = markdownFiles.length - checkedCount;
@@ -314,5 +315,5 @@ async function main() {
 
 main().catch((error) => {
   console.error(error);
-  process.exit(1);
+  process.exitCode = 1;
 });

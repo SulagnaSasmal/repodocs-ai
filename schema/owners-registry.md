@@ -34,6 +34,8 @@ RepoDocs AI across multiple service repositories.
 | Owner Identifier | Team Description |
 | --- | --- |
 | `docs-platform` | Documentation platform and tooling |
+| `platform-docs` | Platform API documentation (used by the bundled examples) |
+| `product-docs` | Product and feature documentation (used by the bundled examples) |
 | `platform-team` | Core platform and infrastructure |
 | `payments-eng` | Payments service engineering |
 | `fraud-team` | Fraud and risk engineering |
