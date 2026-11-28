@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertPathsExist, displayPath, exitWithTargetError, parseTargets } from "./lib/cli-targets.mjs";
+import { fencedBlocks, withoutFences } from "./lib/markdown-blocks.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,13 +13,46 @@ const targetDirectories = ["examples", "generated"];
 // Link targets that would run script once a renderer decodes entities and
 // drops the whitespace browsers ignore: inline links, reference definitions
 // and href attributes.
+// The HTML tags in a piece of text, read the way a browser reads them: from
+// "<" and a letter to the next ">" outside quotes. One pass, so a run of
+// "<a <a <a" with no ">" cannot make every check rescan the rest of the page.
+function htmlTags(text) {
+  const tags = [];
+  let index = text.indexOf("<");
+  while (index !== -1 && index < text.length) {
+    if (/[A-Za-z]/.test(text[index + 1] || "")) {
+      let quote = null;
+      let end = index + 1;
+      for (; end < text.length; end += 1) {
+        const character = text[end];
+        if (quote) {
+          if (character === quote) quote = null;
+        } else if (character === '"' || character === "'") {
+          quote = character;
+        } else if (character === ">") {
+          break;
+        }
+      }
+      tags.push(text.slice(index, Math.min(end + 1, text.length)));
+      index = text.indexOf("<", end + 1);
+    } else {
+      index = text.indexOf("<", index + 1);
+    }
+  }
+  return tags;
+}
+
 function scriptLinks(prose) {
+  const tags = htmlTags(prose);
+  const attributeValues = (names) => tags.flatMap((tag) => [...tag.matchAll(new RegExp(`[\\s"'/](?:${names})\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^"'>\\s]+))`, "gi"))].map((match) => match[1] ?? match[2] ?? match[3]));
   const targets = [
     ...[...prose.matchAll(/\]\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)/g)].map((match) => match[1]),
     ...[...prose.matchAll(/^\s{0,3}\[[^\]]+\]:\s*(\S+)/gm)].map((match) => match[1]),
     // Attributes on real tags (a literal "<", not the escaped "&lt;").
     // A quoted value runs to its closing quote: browsers drop tabs and newlines inside it ("java\nscript:").
-    ...[...prose.matchAll(/<[a-z][^>]*?\b(?:href|src|action|formaction|xlink:href|data|poster|background)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^"'>\s]+))/gi)].map((match) => match[1] ?? match[2] ?? match[3]),
+    ...attributeValues("href|src|action|formaction|xlink:href|data|poster|background|srcdoc|codebase|cite|longdesc|ping|manifest|icon"),
+    // srcset lists several URLs separated by commas; each one counts.
+    ...attributeValues("srcset").flatMap((value) => String(value).split(",").map((entry) => entry.trim().split(/\s+/)[0])),
     // Autolinks: <javascript:...>
     ...[...prose.matchAll(/<([a-z][a-z0-9+.-]*:[^>\s]*)>/gi)].map((match) => match[1])
   ];
@@ -100,7 +134,7 @@ function markdownProblems(content) {
     problems.push(`the code fence opened on line ${openLine} is never closed, so the rest of the page renders as code`);
   }
   // An HTML comment left open hides everything after it.
-  const outsideCode = body.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[`~]*[ \t]*$/gm, "").replace(/`+[^`\n]*?`+/g, "");
+  const outsideCode = withoutFences(body).replace(/`+[^`\n]*?`+/g, "");
   const lastOpen = outsideCode.lastIndexOf("<!--");
   if (lastOpen !== -1 && outsideCode.indexOf("-->", lastOpen) === -1) {
     problems.push(`an HTML comment (<!--) is never closed, so the rest of the page does not render`);
@@ -117,7 +151,6 @@ const placeholderPatterns = [
   /GET\|POST\|PUT\|PATCH\|DELETE/g,
   /Replace with actual [^.\n]+/g,
   /\bTODO\b/g,
-  /\bTBD\b/gi,
   /\bFIXME\b/g,
   /\blorem ipsum\b/gi
 ];
@@ -128,7 +161,16 @@ const prosePlaceholderPatterns = [
   /<insert[^>]*>/i,
   /<your[-_ ][^>\n]{1,40}>/i,
   /\{\{[^}]*\}\}/,
-  /\binsert (?:a |an |the |your )?(?:description|text|content|value|example|details?|summary|name)(?: here)?\b/i
+  /\binsert (?:a |an |the |your )?(?:description|text|content|value|example|details?|summary|name)(?: here)?\b/i,
+  // TBD in prose only: in code it can be a real value, such as an enum member.
+  /\bTBD\b/i,
+  /\bT\.B\.D\b/i,
+  /\bto be determined\b/i,
+  /\bfill (?:me in|(?:this )?in later)\b/i,
+  /\b(?:description|text|content|details|summary) goes here\b/i,
+  /\?\?[^?\n]{1,40}\?\?/,
+  // "Coming soon." on its own line, standing in for content.
+  /^\s*coming soon\.?\s*$/im
 ];
 
 const validHttpMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
@@ -325,9 +367,7 @@ async function main() {
 
     // Prose: the text outside frontmatter, fenced code blocks (any fence
     // length) and code spans, which are shown as text.
-    const prose = content
-      .replace(/^---\n[\s\S]*?\n---\n/, "")
-      .replace(/^(`{3,})[^\n]*\n[\s\S]*?^\1`*[ \t]*$/gm, "")
+    const prose = withoutFences(content.replace(/^---\n[\s\S]*?\n---\n/, ""))
       .replace(/`+[^`\n]*?`+/g, "");
 
     // Placeholders a person leaves while drafting, in prose.
@@ -344,7 +384,7 @@ async function main() {
       warnings.push(`${relativePath}: no ## section headings`);
     }
     // The page title: Docusaurus can fall back on the frontmatter title, other renderers cannot.
-    const titleBody = content.replace(/^---\n[\s\S]*?\n---\n/, "").replace(/^(`{3,}|~{3,})[\s\S]*?^\1[`~]*\s*$/gm, "");
+    const titleBody = withoutFences(content.replace(/^---\n[\s\S]*?\n---\n/, ""));
     if (!/^ {0,3}# \S/m.test(titleBody) && !/^[^\n#>|-][^\n]*\n {0,3}=+\s*$/m.test(titleBody)) {
       warnings.push(`${relativePath}: no # title heading`);
     }
@@ -418,31 +458,59 @@ async function main() {
 
     // HTML that runs script, loads content or redirects on a docs site that
     // renders raw HTML. Code blocks and code spans are left out.
+    const tags = htmlTags(prose);
+    const anyTag = (pattern) => tags.some((tag) => pattern.test(tag));
     const unsafeHtml = [
-      [/<script\b/i, "<script>"],
-      [/<iframe\b/i, "<iframe>"],
-      [/<object\s|<\/object>|<embed[\s>/]/i, "<object> or <embed>"],
-      [/<meta\s[^>]*http-equiv/i, "<meta http-equiv>"],
-      [/<form[\s>]/i, "<form>"],
-      [/<style[\s>]|<link\s[^>]*rel\s*=/i, "<style> or <link>"],
-      [/<base\s/i, "<base>"],
-      [/<[a-z][^>\n]*[\s/"']on[a-z]+\s*=/i, "an inline event handler (on...=)"],
-      [/<[a-z][^>\n]*\sstyle\s*=\s*["'][^"']*url\s*\(/i, "a style attribute that loads a URL"]
-    ].filter(([pattern]) => pattern.test(prose)).map(([, label]) => label);
+      // The tag names are also matched anywhere in the text, so a split such
+      // as "<scr<script>ipt>" is caught however a renderer reads it.
+      [/<script\b/i.test(prose), "<script>"],
+      [/<iframe\b/i.test(prose), "<iframe>"],
+      [/<(?:object|embed)\b|<\/object>/i.test(prose), "<object> or <embed>"],
+      [/<(?:applet|portal|frame|frameset)\b/i.test(prose), "<applet>, <portal> or <frame>"],
+      [anyTag(/^<meta\b[\s\S]*http-equiv/i), "<meta http-equiv>"],
+      [/<form[\s>/]/i.test(prose), "<form>"],
+      [/<style[\s>/]/i.test(prose) || anyTag(/^<link\b[\s\S]*\brel\s*=/i), "<style> or <link>"],
+      [/<base[\s>/]/i.test(prose), "<base>"],
+      [anyTag(/[\s/"']on[a-z]+\s*=/i), "an inline event handler (on...=)"],
+      [anyTag(/\sstyle\s*=\s*["'][^"']*url\s*\(/i), "a style attribute that loads a URL"]
+    ].filter(([found]) => found).map(([, label]) => label);
     // An image from another site loads when the page is viewed (a tracking pixel).
-    if (/<img\b[^>]*\bsrc\s*=\s*["']?(?:https?:)?\/\//i.test(prose)) {
+    if (anyTag(/^<img\b[\s\S]*?[\s"'/]src\s*=\s*["']?(?:https?:)?\/\//i)) {
       warnings.push(`${relativePath}: an <img> loads from another site when the page is viewed; host images with the docs`);
+    }
+    // A Markdown image loads from another site just the same.
+    if (/!\[[^\]]*\]\(\s*<?(?:https?:)?\/\//i.test(prose)) {
+      warnings.push(`${relativePath}: a Markdown image loads from another site when the page is viewed; host images with the docs`);
+    }
+    // A block-level HTML element left open swallows the Markdown after it.
+    for (const tag of ["div", "details", "table", "section", "aside", "blockquote"]) {
+      const opened = tags.filter((candidate) => new RegExp(`^<${tag}(?:[\\s/>]|$)`, "i").test(candidate)).length;
+      const closed = (prose.match(new RegExp(`</${tag}\\s*>`, "gi")) || []).length;
+      if (opened > closed) {
+        errors.push(`${relativePath}: a <${tag}> is opened ${opened} time${opened === 1 ? "" : "s"} but closed ${closed} time${closed === 1 ? "" : "s"}, so the Markdown after it may not render`);
+      }
     }
     if (scriptLinks(prose).length > 0) {
       unsafeHtml.push("a javascript:, vbscript: or data: link");
+    }
+    // Frontmatter values end up in page titles, meta tags and links (a
+    // theme may render migration_guide as one), so they carry no HTML or script URLs.
+    const frontmatterText = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] || "";
+    if (/<\s*(?:script|iframe|object|embed|svg|img|a)\b|<[a-z][^>]*\son[a-z]+\s*=|(?:^|[\s"':])(?:javascript|vbscript)\s*:|\bdata:[a-z]+\/[a-z0-9.+-]+/im.test(frontmatterText.replace(/^[a-z_]+:/gim, ""))) {
+      unsafeHtml.push("HTML or a script URL in the frontmatter");
     }
     if (unsafeHtml.length > 0) {
       errors.push(`${relativePath}: unsafe HTML that would run script on a docs site: ${[...new Set(unsafeHtml)].join(", ")}`);
     }
 
     // A {name} placeholder in the example URL: the spec gave no example value.
-    const curlUrl = content.match(/curl -X \w+ "([^"]+)"/)?.[1] || "";
-    const urlPlaceholders = [...curlUrl.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]);
+    // <name> (or %3Cname%3E once encoded) counts too; <api-key> and <token> are credential placeholders the reader fills in.
+    const curlUrl = content.match(/curl\b[^\n"]*"(https?:\/\/[^"]+)"/)?.[1] || "";
+    const decodedUrl = curlUrl.replace(/%3C/gi, "<").replace(/%3E/gi, ">");
+    const urlPlaceholders = [
+      ...[...curlUrl.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]),
+      ...[...decodedUrl.matchAll(/<([A-Za-z][A-Za-z0-9_.-]*)>/g)].map((match) => match[1]).filter((name) => !/^(api-key|token|access-token|key)$/i.test(name))
+    ];
     if (urlPlaceholders.length > 0) {
       warnings.push(`${relativePath}: the request example URL still has placeholder(s) ${urlPlaceholders.map((name) => `{${name}}`).join(", ")}. Add examples to the spec or edit the doc before publication`);
     }
@@ -473,7 +541,7 @@ async function main() {
 
     // Generated placeholder values: the spec gave no example for these fields.
     // Only in code blocks: a JSON example with "value" in it, not prose.
-    const codeOnly = [...content.matchAll(/^(`{3,})[^\n]*\n([\s\S]*?)^\1`*[ \t]*$/gm)].map((block) => block[2]).join("\n");
+    const codeOnly = fencedBlocks(content).map((block) => block.body).join("\n");
     const placeholderValueCount = (codeOnly.match(/":\s*"value"/g) || []).length;
     if (placeholderValueCount > 0) {
       warnings.push(

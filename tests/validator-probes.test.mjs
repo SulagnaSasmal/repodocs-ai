@@ -312,7 +312,7 @@ describe("Adyen Checkout API (v1.2.2 release check)", () => {
     ["a Bearer token the spec does not use", captures, (doc) => doc.replace('-u "<username>:<password>" \\', '-H "Authorization: Bearer <token>" \\'), "the request example sends a Bearer token, but the spec's security"],
     ["a Content-Type the spec does not accept", captures, (doc) => doc.replace('-H "Content-Type: application/json"', '-H "Content-Type: application/xml"'), "the request example sends Content-Type application/xml"],
     ["an optional body described as required", captures, (doc) => doc.replace("Request body is optional.", "Request body is required."), "the Request Body says the body is required, but the spec says it is optional"],
-    ["an overview that names the wrong auth", "api-overview.md", (doc) => doc.replace("Use any one of these:\n\n- API key in header `X-API-Key`.\n- HTTP Basic authentication.", "OAuth 2.0 client credentials."), "Authentication mentions OAuth, but the spec's security for the API does not use it"]
+    ["an overview that names the wrong auth", "api-overview.md", (doc) => doc.replace(/(^## Authentication\n\n)[\s\S]*?(\n\n## Base URL)/m, "$1OAuth 2.0 client credentials.$2"), "Authentication mentions OAuth, but the spec's security for the API does not use it"]
   ])("catches %s", async (name, file, edit, expected) => {
     const result = await adyenProbe(file, edit);
     expect(result.failed).toBe(true);
@@ -421,7 +421,7 @@ describe("Apideck CRM API (v1.2.4 release check)", () => {
     await expect(execFileAsync(process.execPath, [script("validate-doc-quality.mjs"), docs])).resolves.toBeDefined();
     const list = await fs.readFile(path.join(docs, listContacts), "utf8");
     expect(list).not.toContain("object%20Object");
-    expect(list).toContain("sort[by]=created_at&sort[direction]=desc");
+    expect(list).toContain("sort%5Bby%5D=created_at&sort%5Bdirection%5D=desc");
     expect(list).toMatch(/^\| sort\[direction\] \| string \| no \| .*Allowed values: `asc`, `desc`\. Default: asc \|$/m);
     expect(list).not.toContain("cursor={cursor}");
     const create = await fs.readFile(path.join(docs, createContact), "utf8");
@@ -435,8 +435,8 @@ describe("Apideck CRM API (v1.2.4 release check)", () => {
   });
 
   it.each([
-    ["a deepObject value outside its enum", listContacts, (doc) => doc.replace("sort[by]=created_at", "sort[by]=age"), "query parameter 'sort[by]' uses 'age', which is not one of its allowed values"],
-    ["a deepObject key the parameter does not have", listContacts, (doc) => doc.replace("sort[by]=created_at", "sort[order]=created_at"), "'order' is not a key of 'sort'"],
+    ["a deepObject value outside its enum", listContacts, (doc) => doc.replace("sort%5Bby%5D=created_at", "sort%5Bby%5D=age"), "query parameter 'sort[by]' uses 'age', which is not one of its allowed values"],
+    ["a deepObject key the parameter does not have", listContacts, (doc) => doc.replace("sort%5Bby%5D=created_at", "sort%5Border%5D=created_at"), "'order' is not a key of 'sort'"],
     ["a query value above its maximum", listContacts, (doc) => doc.replace("limit=20", "limit=500"), "query parameter 'limit' is 500, above the spec's maximum of 200"],
     ["a query value of the wrong type", listContacts, (doc) => doc.replace("raw=false", "raw=maybe"), "query parameter 'raw' uses 'maybe', which is not a valid boolean"],
     ["the credentials removed from the curl", createContact, (doc) => doc.replace('  -H "Authorization: Bearer <api-key>" \\\n', ""), "the request example sends no credentials"],
@@ -499,7 +499,7 @@ describe("Apideck CRM API (v1.2.4 release check)", () => {
     ]) {
       expect((await probe(createContact, edit)).failed).toBe(false);
     }
-    expect((await probe(listContacts, (doc) => doc.replace("sort[by]=created_at&sort[direction]=desc", "sort[direction]=asc&sort[by]=updated_at"))).failed).toBe(false);
+    expect((await probe(listContacts, (doc) => doc.replace("sort%5Bby%5D=created_at&sort%5Bdirection%5D=desc", "sort[direction]=asc&sort[by]=updated_at"))).failed).toBe(false);
     expect((await probe(createContact, (doc) => doc.replace("## Summary\n", "## Summary\n\nThe `todo_items` field is not used here.\n"), "validate-doc-quality.mjs")).failed).toBe(false);
   });
 });
