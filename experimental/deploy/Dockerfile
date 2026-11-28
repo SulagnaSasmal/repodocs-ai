@@ -7,6 +7,10 @@ RUN npm ci
 
 COPY . .
 
+# Run as the unprivileged user the Node image provides, not root.
+RUN mkdir -p /var/data/control-plane && chown -R node:node /app /var/data
+USER node
+
 ENV NODE_ENV=production
 ENV REPODOCS_CONTROL_PLANE_HOST=0.0.0.0
 ENV REPODOCS_CONTROL_PLANE_PORT=4312

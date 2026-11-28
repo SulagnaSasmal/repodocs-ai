@@ -3,13 +3,15 @@ services:
     image: redis:7-alpine
     container_name: repodocs-ai-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    # Not published to the host: only the control plane, on the compose
+    # network, can reach Redis, and it needs the password.
     volumes:
       - repodocs-ai-redis-data:/data
-    command: ["redis-server", "--appendonly", "yes"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD, for example with openssl rand -hex 24}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -26,15 +28,15 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       REPODOCS_CONTROL_PLANE_HOST: 0.0.0.0
       REPODOCS_CONTROL_PLANE_PORT: 4312
       REPODOCS_CONTROL_PLANE_DATA_DIR: /var/data/control-plane
       REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER: admin
       REPODOCS_CONTROL_PLANE_BOOTSTRAP_DISPLAY_NAME: RepoDocs Admin
-      REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY: ${REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY:-replace-me}
+      REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY: ${REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY:?Set REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY to 24+ random characters, for example with openssl rand -hex 24}
     ports:
-      - "4312:4312"
+      - "127.0.0.1:4312:4312"
     volumes:
       - repodocs-ai-control-plane-data:/var/data
     healthcheck:

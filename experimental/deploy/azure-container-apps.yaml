@@ -10,10 +10,12 @@ properties:
       targetPort: 4312
       transport: auto
     secrets:
+      # Replace both placeholders before deploying. The control plane refuses
+      # to start with a bootstrap key shorter than 24 characters.
       - name: bootstrap-key
-        value: replace-me
+        value: <random-key-from-openssl-rand-hex-24>
       - name: redis-url
-        value: redis://<redis-host>:6379
+        value: rediss://:<redis-password>@<redis-host>:6380
   template:
     containers:
       - name: repodocs-ai-control-plane

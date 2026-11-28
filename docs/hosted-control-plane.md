@@ -79,7 +79,7 @@ npm run docker:control-plane:build
 Run:
 
 ```bash
-docker run --rm -p 4312:4312 --add-host=host.docker.internal:host-gateway -v repodocs-ai-control-plane-data:/var/data -e REDIS_URL=redis://host.docker.internal:6379 -e REPODOCS_CONTROL_PLANE_HOST=0.0.0.0 -e REPODOCS_CONTROL_PLANE_DATA_DIR=/var/data/control-plane -e REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER=admin -e REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY=replace-me repodocs-ai-control-plane
+docker run --rm -p 4312:4312 --add-host=host.docker.internal:host-gateway -v repodocs-ai-control-plane-data:/var/data -e REDIS_URL=redis://host.docker.internal:6379 -e REPODOCS_CONTROL_PLANE_HOST=0.0.0.0 -e REPODOCS_CONTROL_PLANE_DATA_DIR=/var/data/control-plane -e REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER=admin -e REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY repodocs-ai-control-plane
 ```
 
 ### Local Compose Stack
