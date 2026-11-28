@@ -106,6 +106,10 @@ describe.each(fixtures)("adopter path with %s", (fixture) => {
     expect(validateOutput).toMatch(/^4 checks: (?!.*(?:skipped|failed)).*passed.*\.$/m);
   });
 
+  it("writes docs that pass the markdownlint step of the CI workflow init writes", async () => {
+    await expect(execFileAsync(process.execPath, [path.join(repoRoot, "node_modules", "markdownlint-cli", "markdownlint.js"), "--config", path.join(docsRepo, ".markdownlint.json"), path.join(docsRepo, "generated")])).resolves.toBeDefined();
+  });
+
   it("writes one endpoint doc per operation in the spec", async () => {
     const files = await fs.readdir(path.join(docsRepo, "generated", "endpoints"));
     expect(files.length).toBe(operationsOf(spec).length);

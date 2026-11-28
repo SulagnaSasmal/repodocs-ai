@@ -1,0 +1,765 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Ledger Features Test API",
+    "version": "3.4.0",
+    "license": {
+      "name": "CC0-1.0"
+    },
+    "description": "Synthetic spec used to exercise generator and validator features."
+  },
+  "servers": [
+    {
+      "url": "https://api.ledger.example.com/v3",
+      "description": "Production"
+    },
+    {
+      "url": "https://sandbox.ledger.example.com/v3",
+      "description": "Sandbox"
+    }
+  ],
+  "security": [
+    {
+      "oauth": [
+        "ledger:read"
+      ]
+    }
+  ],
+  "paths": {
+    "/payments": {
+      "get": {
+        "operationId": "listPayments",
+        "summary": "List payments",
+        "description": "Lists payments. Pagination uses the Link header.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "style": "form",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "settled",
+                  "failed"
+                ]
+              }
+            },
+            "description": "Filter by one or more statuses."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "style": "deepObject",
+            "explode": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "currency": {
+                  "type": "string",
+                  "enum": [
+                    "USD",
+                    "EUR"
+                  ]
+                },
+                "minAmount": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "5b1f0c1e-8f77-4a0a-9b7e-1f2d3c4b5a69"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of payments",
+            "headers": {
+              "Link": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "RFC 8288 pagination links"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Payment"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPayment",
+        "summary": "Create a payment",
+        "security": [
+          {
+            "oauth": [
+              "ledger:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "example": "k-123"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Payment"
+              },
+              "example": {
+                "amount": 1250,
+                "currency": "USD",
+                "method": {
+                  "type": "card",
+                  "cardNumber": "4242424242424242",
+                  "cvv": "123"
+                },
+                "metadata": {
+                  "orderId": "ord_1"
+                }
+              }
+            }
+          }
+        },
+        "callbacks": {
+          "paymentSettled": {
+            "{$request.body#/callbackUrl}": {
+              "post": {
+                "requestBody": {
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "$ref": "#/components/schemas/Payment"
+                      }
+                    }
+                  }
+                },
+                "responses": {
+                  "204": {
+                    "description": "ok"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Payment"
+                },
+                "example": {
+                  "id": "pay_9f8e7d",
+                  "amount": 1250,
+                  "currency": "USD",
+                  "status": "pending",
+                  "method": {
+                    "type": "card",
+                    "last4": "4242"
+                  },
+                  "createdAt": "2026-01-02T03:04:05Z",
+                  "metadata": {
+                    "orderId": "ord_1"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      }
+    },
+    "/payments/{paymentId}": {
+      "parameters": [
+        {
+          "name": "paymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^pay_[a-z0-9]+$"
+          },
+          "example": "pay_9f8e7d"
+        }
+      ],
+      "get": {
+        "operationId": "getPayment",
+        "summary": "Get a payment",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Payment"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "cancelPayment",
+        "summary": "Cancel a payment",
+        "security": [
+          {
+            "oauth": [
+              "ledger:write",
+              "ledger:admin"
+            ]
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Cancelled"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/oauth/token": {
+      "post": {
+        "operationId": "issueToken",
+        "summary": "Issue an access token",
+        "security": [
+          {
+            "basic": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "grant_type"
+                ],
+                "properties": {
+                  "grant_type": {
+                    "type": "string",
+                    "enum": [
+                      "client_credentials",
+                      "refresh_token"
+                    ]
+                  },
+                  "scope": {
+                    "type": "string",
+                    "example": "ledger:read ledger:write"
+                  },
+                  "refresh_token": {
+                    "type": "string",
+                    "writeOnly": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          }
+        }
+      }
+    },
+    "/session": {
+      "get": {
+        "operationId": "getSession",
+        "summary": "Read the browser session",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "csrf_token",
+            "in": "cookie",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "c5f1"
+          },
+          {
+            "name": "theme",
+            "in": "cookie",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "light",
+                "dark"
+              ],
+              "default": "light"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports/{reportId}": {
+      "get": {
+        "operationId": "downloadReport",
+        "summary": "Download a report",
+        "parameters": [
+          {
+            "name": "reportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "example": 42
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "csv",
+                "pdf"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report file",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "id,amount\npay_1,100\n"
+              },
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/accounts": {
+      "post": {
+        "operationId": "createAccount",
+        "summary": "Create an account",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Account"
+              },
+              "example": {
+                "kind": "business",
+                "name": "Acme Ltd",
+                "registrationNumber": "RC123456",
+                "owner": {
+                  "email": "a@acme.example",
+                  "password": "s3cret-pass"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                },
+                "example": {
+                  "id": 7,
+                  "kind": "business",
+                  "name": "Acme Ltd",
+                  "registrationNumber": "RC123456",
+                  "owner": {
+                    "email": "a@acme.example"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "oauth": {
+        "type": "oauth2",
+        "flows": {
+          "authorizationCode": {
+            "authorizationUrl": "https://auth.ledger.example.com/authorize",
+            "tokenUrl": "https://auth.ledger.example.com/token",
+            "scopes": {
+              "ledger:read": "Read ledger",
+              "ledger:write": "Write ledger",
+              "ledger:admin": "Administer"
+            }
+          }
+        }
+      },
+      "basic": {
+        "type": "http",
+        "scheme": "basic"
+      },
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "ledger_session"
+      }
+    },
+    "schemas": {
+      "Money": {
+        "type": "object",
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000000
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "USD",
+              "EUR",
+              "GBP"
+            ]
+          }
+        }
+      },
+      "Card": {
+        "type": "object",
+        "required": [
+          "type",
+          "cardNumber"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "card"
+            ]
+          },
+          "cardNumber": {
+            "type": "string",
+            "writeOnly": true,
+            "minLength": 12,
+            "maxLength": 19
+          },
+          "cvv": {
+            "type": "string",
+            "writeOnly": true,
+            "pattern": "^[0-9]{3,4}$"
+          },
+          "last4": {
+            "type": "string",
+            "readOnly": true,
+            "minLength": 4,
+            "maxLength": 4
+          }
+        }
+      },
+      "Bank": {
+        "type": "object",
+        "required": [
+          "type",
+          "iban"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "bank"
+            ]
+          },
+          "iban": {
+            "type": "string",
+            "minLength": 15,
+            "maxLength": 34
+          },
+          "bic": {
+            "type": "string"
+          }
+        }
+      },
+      "Payment": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Money"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "readOnly": true
+              },
+              "status": {
+                "type": "string",
+                "readOnly": true,
+                "enum": [
+                  "pending",
+                  "settled",
+                  "failed"
+                ]
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "callbackUrl": {
+                "type": "string",
+                "format": "uri",
+                "writeOnly": true
+              },
+              "method": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/Card"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Bank"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "type",
+                  "mapping": {
+                    "card": "#/components/schemas/Card",
+                    "bank": "#/components/schemas/Bank"
+                  }
+                }
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "method"
+            ]
+          }
+        ]
+      },
+      "Owner": {
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "writeOnly": true,
+            "minLength": 8
+          }
+        }
+      },
+      "Account": {
+        "type": "object",
+        "required": [
+          "kind",
+          "name",
+          "owner"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "readOnly": true
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "business",
+              "personal"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "registrationNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "owner": {
+            "$ref": "#/components/schemas/Owner"
+          }
+        }
+      },
+      "Token": {
+        "type": "object",
+        "required": [
+          "access_token",
+          "token_type"
+        ],
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string",
+            "enum": [
+              "bearer"
+            ]
+          },
+          "expires_in": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "scope": {
+            "type": "string"
+          }
+        }
+      },
+      "Session": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "required": [
+          "title",
+          "status"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 599
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
