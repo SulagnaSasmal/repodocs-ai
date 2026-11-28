@@ -157,7 +157,7 @@ describe("AI review result structure", () => {
   // Simulated response shape that runAiReview should return when enabled
   const mockPassingReview = {
     enabled: true,
-    model: "claude-opus-4-6",
+    model: "claude-opus-5-5",
     result: {
       critical_issues: [],
       moderate_issues: ["curl example uses placeholder <token> — should be a realistic example value"],
@@ -170,7 +170,7 @@ describe("AI review result structure", () => {
 
   const mockFailingReview = {
     enabled: true,
-    model: "claude-opus-4-6",
+    model: "claude-opus-5-5",
     result: {
       critical_issues: ["Response field 'payment_uuid' not present in spec — spec uses 'payment_id'"],
       moderate_issues: [],
