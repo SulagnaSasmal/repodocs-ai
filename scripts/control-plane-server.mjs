@@ -47,6 +47,15 @@ const queueStateFilePath = path.join(dataDir, "queue-state.json");
 const bootstrapAdminUser = process.env.REPODOCS_CONTROL_PLANE_BOOTSTRAP_USER || "admin";
 const bootstrapAdminDisplayName = process.env.REPODOCS_CONTROL_PLANE_BOOTSTRAP_DISPLAY_NAME || "RepoDocs Admin";
 const bootstrapAdminKey = process.env.REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY || "";
+// A bootstrap key is chosen by a person, so it must be long and not a
+// placeholder copied from the docs. Generate one with: openssl rand -hex 24
+const MIN_BOOTSTRAP_KEY_LENGTH = 24;
+const PLACEHOLDER_KEYS = new Set(["replace-me", "changeme", "change-me", "admin", "password", "secret"]);
+const MAX_BODY_BYTES = Number(process.env.REPODOCS_MAX_BODY_BYTES || 64 * 1024);
+const MAX_RUN_OUTPUT_BYTES = 256 * 1024;
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX_REQUESTS = Number(process.env.REPODOCS_RATE_LIMIT_PER_MINUTE || 120);
+const RATE_LIMIT_MAX_FAILED_AUTH = Number(process.env.REPODOCS_FAILED_AUTH_PER_MINUTE || 10);
 const redisUrl = process.env.REDIS_URL || "redis://127.0.0.1:6379";
 const workerId = `${process.pid}-${crypto.randomBytes(3).toString("hex")}`;
 const queuePollTimeoutSeconds = 1;
@@ -75,6 +84,18 @@ const redisKeys = {
 };
 
 const redis = createClient({ url: redisUrl });
+// BLPOP holds its connection while it waits, so the worker gets its own;
+// on the shared one every request would queue behind it for up to a second.
+const blockingRedis = redis.duplicate();
+// Without a listener, a dropped Redis connection is an unhandled 'error'
+// event and takes the whole server down. The client reconnects by itself.
+for (const [name, client] of [["shared", redis], ["worker", blockingRedis]]) {
+  client.on("error", (error) => {
+    if (!shutdownRequested) {
+      log("error", "redis connection error", { connection: name, error: error.message });
+    }
+  });
+}
 let workerLoopStarted = false;
 let shutdownRequested = false;
 
@@ -88,6 +109,12 @@ function randomId(prefix) {
 
 function hashApiKey(apiKey) {
   return crypto.createHash("sha256").update(apiKey).digest("hex");
+}
+
+function hashesMatch(storedHash, presentedHash) {
+  const left = Buffer.from(String(storedHash || ""), "utf8");
+  const right = Buffer.from(String(presentedHash || ""), "utf8");
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
 
 function buildApiKey() {
@@ -313,6 +340,19 @@ function issueKeyForUser(user, label = "default") {
   return keyBundle;
 }
 
+function bootstrapKeyProblem(key) {
+  if (!key) {
+    return null;
+  }
+  if (PLACEHOLDER_KEYS.has(key.trim().toLowerCase())) {
+    return `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY is the placeholder '${key}'. Set a random value, for example: openssl rand -hex 24`;
+  }
+  if (key.length < MIN_BOOTSTRAP_KEY_LENGTH) {
+    return `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY must be at least ${MIN_BOOTSTRAP_KEY_LENGTH} characters. Generate one with: openssl rand -hex 24`;
+  }
+  return null;
+}
+
 async function bootstrapAdminIfNeeded() {
   const users = await getUsers();
   if (users.length > 0 || !bootstrapAdminKey) {
@@ -388,14 +428,92 @@ async function migrateFileStateToRedisIfNeeded() {
   await pipeline.exec();
 }
 
-function sendJson(response, statusCode, payload) {
-  response.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
+// Headers on every response. Responses can carry API keys, so nothing is cached.
+const baseSecurityHeaders = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "no-referrer",
+  "Cache-Control": "no-store",
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Resource-Policy": "same-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()"
+};
+
+function sendJson(response, statusCode, payload, extraHeaders = {}) {
+  response.writeHead(statusCode, { ...baseSecurityHeaders, "Content-Type": "application/json; charset=utf-8", ...extraHeaders });
   response.end(JSON.stringify(payload, null, 2));
 }
 
-function sendHtml(response, html) {
-  response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+function sendHtml(response, html, nonce) {
+  response.writeHead(200, {
+    ...baseSecurityHeaders,
+    "Content-Type": "text/html; charset=utf-8",
+    // The dashboard's one script runs by nonce; nothing else may load or run.
+    "Content-Security-Policy": [
+      "default-src 'none'",
+      `script-src 'nonce-${nonce}'`,
+      "style-src 'unsafe-inline'",
+      "connect-src 'self'",
+      "img-src 'self'",
+      "base-uri 'none'",
+      "form-action 'none'",
+      "frame-ancestors 'none'"
+    ].join("; ")
+  });
   response.end(html);
+}
+
+class HttpError extends Error {
+  constructor(statusCode, message) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
+
+function isLoopback(request) {
+  const address = request.socket.remoteAddress || "";
+  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+}
+
+// Fixed-window limits per client address, kept in memory for this process.
+const rateWindows = new Map();
+
+function overLimit(request, kind, limit) {
+  const key = `${kind}:${request.socket.remoteAddress || "unknown"}`;
+  const now = Date.now();
+  const window = rateWindows.get(key);
+  if (!window || now - window.started >= RATE_LIMIT_WINDOW_MS) {
+    rateWindows.set(key, { started: now, count: 1 });
+    return false;
+  }
+  window.count += 1;
+  return window.count > limit;
+}
+
+function countFailedAuth(request) {
+  overLimit(request, "failed-auth", RATE_LIMIT_MAX_FAILED_AUTH);
+}
+
+function failedAuthBlocked(request) {
+  const window = rateWindows.get(`failed-auth:${request.socket.remoteAddress || "unknown"}`);
+  return Boolean(window && Date.now() - window.started < RATE_LIMIT_WINDOW_MS && window.count >= RATE_LIMIT_MAX_FAILED_AUTH);
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, window] of rateWindows) {
+    if (now - window.started >= RATE_LIMIT_WINDOW_MS) {
+      rateWindows.delete(key);
+    }
+  }
+}, RATE_LIMIT_WINDOW_MS).unref();
+
+function appendCapped(current, chunk) {
+  const next = current + chunk;
+  if (next.length <= MAX_RUN_OUTPUT_BYTES) {
+    return next;
+  }
+  return `[output truncated to the last ${MAX_RUN_OUTPUT_BYTES} characters]\n${next.slice(-MAX_RUN_OUTPUT_BYTES)}`;
 }
 
 function getPresentedApiKey(request) {
@@ -428,7 +546,7 @@ async function findAuthenticatedPrincipal(request) {
         continue;
       }
 
-      if (keyRecord.key_hash === hashedApiKey) {
+      if (hashesMatch(keyRecord.key_hash, hashedApiKey)) {
         keyRecord.last_used_at = nowIso();
         user.updated_at = nowIso();
         await setUsers(users);
@@ -441,13 +559,31 @@ async function findAuthenticatedPrincipal(request) {
 }
 
 async function requireAuth(request, response) {
+  if (failedAuthBlocked(request)) {
+    sendJson(response, 429, { error: "Too many failed authentication attempts. Try again in a minute." }, { "Retry-After": "60" });
+    return null;
+  }
+
   const principal = await findAuthenticatedPrincipal(request);
   if (principal) {
     return principal;
   }
 
   if (!(await getAuthEnabled())) {
-    return { user: null, key: null };
+    // No keys exist yet. Only this machine may use the API until a bootstrap
+    // key is set; otherwise anyone who can reach the port could make
+    // themselves admin.
+    if (isLoopback(request)) {
+      return { user: null, key: null };
+    }
+    sendJson(response, 503, {
+      error: "Authentication is not configured. Set REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY and restart; until then only requests from this machine are accepted."
+    });
+    return null;
+  }
+
+  if (getPresentedApiKey(request)) {
+    countFailedAuth(request);
   }
 
   response.writeHead(401, {
@@ -477,11 +613,24 @@ function requireAdmin(principal, response) {
 
 function readRequestBody(request) {
   return new Promise((resolve, reject) => {
+    const declared = Number(request.headers["content-length"] || 0);
+    if (declared > MAX_BODY_BYTES) {
+      reject(new HttpError(413, `Request body is larger than ${MAX_BODY_BYTES} bytes`));
+      request.resume();
+      return;
+    }
     let body = "";
+    let received = 0;
+    let tooLarge = false;
     request.on("data", (chunk) => {
+      received += chunk.length;
+      if (received > MAX_BODY_BYTES) {
+        tooLarge = true;
+        return;
+      }
       body += chunk.toString();
     });
-    request.on("end", () => resolve(body));
+    request.on("end", () => (tooLarge ? reject(new HttpError(413, `Request body is larger than ${MAX_BODY_BYTES} bytes`)) : resolve(body)));
     request.on("error", reject);
   });
 }
@@ -492,12 +641,38 @@ async function parseJsonBody(request) {
     return {};
   }
 
-  return JSON.parse(rawBody);
+  try {
+    const parsed = JSON.parse(rawBody);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("not an object");
+    }
+    return parsed;
+  } catch {
+    throw new HttpError(400, "Request body must be a JSON object");
+  }
+}
+
+// Plain-text fields people type: trimmed, no control characters, bounded length.
+function cleanText(value, maxLength = 80) {
+  return String(value ?? "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, maxLength);
+}
+
+const USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+// service_scope lists the job names a user may run, comma separated.
+function scopeAllows(serviceScope, jobName) {
+  const allowed = String(serviceScope || "").split(",").map((entry) => entry.trim()).filter(Boolean);
+  return allowed.length === 0 || allowed.includes(jobName);
+}
+
+function isLastActiveAdmin(users, userId) {
+  const admins = users.filter((user) => user.role === "admin" && user.status !== "disabled");
+  return admins.length === 1 && admins[0].id === userId;
 }
 
 async function enqueueJob(jobName, requestedBy = "api", requestedByUser = null) {
-  if (!(jobName in jobs)) {
-    throw new Error(`Unknown job '${jobName}'`);
+  if (!Object.hasOwn(jobs, jobName)) {
+    throw new HttpError(404, `Unknown job '${jobName}'`);
   }
 
   const run = createRun(jobName, requestedBy, requestedByUser);
@@ -532,7 +707,7 @@ async function markRunFinished(run, exitCode, stderrAppend = "") {
 
 async function executeRun(run) {
   const jobName = run.job;
-  if (!(jobName in jobs)) {
+  if (!Object.hasOwn(jobs, jobName)) {
     throw new Error(`Unknown job '${jobName}'`);
   }
 
@@ -566,11 +741,11 @@ async function executeRun(run) {
     }, JOB_TIMEOUT_MS);
 
     child.stdout.on("data", (chunk) => {
-      run.stdout += chunk.toString();
+      run.stdout = appendCapped(run.stdout, chunk.toString());
     });
 
     child.stderr.on("data", (chunk) => {
-      run.stderr += chunk.toString();
+      run.stderr = appendCapped(run.stderr, chunk.toString());
     });
 
     child.on("exit", async (code) => {
@@ -628,7 +803,7 @@ async function loadArtifacts() {
   return artifacts;
 }
 
-function renderDashboard() {
+function renderDashboard(nonce) {
   const jobButtons = Object.keys(jobs)
     .map((job) => `<button data-job="${job}">${job}</button>`)
     .join("");
@@ -729,7 +904,7 @@ function renderDashboard() {
         <pre id="response">POST /jobs/:name and admin actions will stream metadata here.</pre>
       </section>
     </main>
-    <script>
+    <script nonce="${nonce}">
       const apiKeyInput = document.getElementById('api-key');
       const response = document.getElementById('response');
       const flash = document.getElementById('flash');
@@ -740,11 +915,22 @@ function renderDashboard() {
       const artifacts = document.getElementById('artifacts');
       const users = document.getElementById('users');
 
-      apiKeyInput.value = localStorage.getItem('repodocsApiKey') || '';
+      // The key lives only as long as this browser tab.
+      apiKeyInput.value = sessionStorage.getItem('repodocsApiKey') || '';
+
+      // Every value from the API is escaped before it goes into HTML.
+      function esc(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
 
       function headers() {
         const key = apiKeyInput.value.trim();
-        localStorage.setItem('repodocsApiKey', key);
+        sessionStorage.setItem('repodocsApiKey', key);
         return key ? { 'X-API-Key': key, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
       }
 
@@ -754,7 +940,7 @@ function renderDashboard() {
 
       function renderList(items, emptyText, formatter) {
         if (!items || items.length === 0) {
-          return '<p>' + emptyText + '</p>';
+          return '<p>' + esc(emptyText) + '</p>';
         }
         return '<ul>' + items.map(formatter).join('') + '</ul>';
       }
@@ -763,27 +949,27 @@ function renderDashboard() {
         const keys = (user.api_keys || []).map((key) => {
           const revokeButton = key.revoked_at
             ? '<span class="pill">revoked</span>'
-            : '<button class="warn" data-action="revoke-key" data-user-id="' + user.id + '" data-key-id="' + key.id + '">Revoke</button>';
+            : '<button class="warn" data-action="revoke-key" data-user-id="' + esc(user.id) + '" data-key-id="' + esc(key.id) + '">Revoke</button>';
           return '<div class="key-row">'
-            + '<div><strong>' + key.label + '</strong> <span class="pill">••••' + key.key_hint + '</span><div class="muted">created ' + key.created_at + (key.last_used_at ? ' • used ' + key.last_used_at : '') + '</div></div>'
+            + '<div><strong>' + esc(key.label) + '</strong> <span class="pill">••••' + esc(key.key_hint) + '</span><div class="muted">created ' + esc(key.created_at) + (key.last_used_at ? ' • used ' + esc(key.last_used_at) : '') + '</div></div>'
             + '<div>' + revokeButton + '</div>'
             + '</div>';
         }).join('');
 
         return '<article class="user-card">'
           + '<div class="user-head">'
-          + '<div><h3>' + user.display_name + '</h3><p class="muted">@' + user.username + ' • ' + user.id + '</p></div>'
-          + '<div><span class="pill">' + user.role + '</span><span class="pill">' + user.status + '</span></div>'
+          + '<div><h3>' + esc(user.display_name) + '</h3><p class="muted">@' + esc(user.username) + ' • ' + esc(user.id) + '</p></div>'
+          + '<div><span class="pill">' + esc(user.role) + '</span><span class="pill">' + esc(user.status) + '</span></div>'
           + '</div>'
           + '<div class="form-grid">'
-          + '<div class="field"><label>Display name</label><input data-field="display_name" data-user-id="' + user.id + '" value="' + user.display_name.replace(/"/g, '&quot;') + '" /></div>'
-          + '<div class="field compact"><label>Role</label><select data-field="role" data-user-id="' + user.id + '"><option value="operator"' + (user.role === 'operator' ? ' selected' : '') + '>operator</option><option value="admin"' + (user.role === 'admin' ? ' selected' : '') + '>admin</option></select></div>'
-          + '<div class="field compact"><label>Status</label><select data-field="status" data-user-id="' + user.id + '"><option value="active"' + (user.status === 'active' ? ' selected' : '') + '>active</option><option value="disabled"' + (user.status === 'disabled' ? ' selected' : '') + '>disabled</option></select></div>'
-          + '<div class="field"><label>New key label</label><input data-field="key_label" data-user-id="' + user.id + '" value="rotated" /></div>'
+          + '<div class="field"><label>Display name</label><input data-field="display_name" data-user-id="' + esc(user.id) + '" value="' + esc(user.display_name) + '" /></div>'
+          + '<div class="field compact"><label>Role</label><select data-field="role" data-user-id="' + esc(user.id) + '"><option value="operator"' + (user.role === 'operator' ? ' selected' : '') + '>operator</option><option value="admin"' + (user.role === 'admin' ? ' selected' : '') + '>admin</option></select></div>'
+          + '<div class="field compact"><label>Status</label><select data-field="status" data-user-id="' + esc(user.id) + '"><option value="active"' + (user.status === 'active' ? ' selected' : '') + '>active</option><option value="disabled"' + (user.status === 'disabled' ? ' selected' : '') + '>disabled</option></select></div>'
+          + '<div class="field"><label>New key label</label><input data-field="key_label" data-user-id="' + esc(user.id) + '" value="rotated" /></div>'
           + '</div>'
           + '<div class="button-row" style="margin-top: 12px;">'
-          + '<button class="ghost" data-action="save-user" data-user-id="' + user.id + '">Save user</button>'
-          + '<button data-action="rotate-key" data-user-id="' + user.id + '">Rotate key</button>'
+          + '<button class="ghost" data-action="save-user" data-user-id="' + esc(user.id) + '">Save user</button>'
+          + '<button data-action="rotate-key" data-user-id="' + esc(user.id) + '">Rotate key</button>'
           + '</div>'
           + '<div class="keys">' + (keys || '<p class="muted">No keys issued yet.</p>') + '</div>'
           + '</article>';
@@ -826,13 +1012,13 @@ function renderDashboard() {
           recentRuns.innerHTML = renderList(
             (runsData.active_runs || []).concat(runsData.queued_runs || []).concat(runsData.recent_runs || []),
             'No runs available yet.',
-            (run) => '<li><strong>' + run.job + '</strong> ' + run.status + (run.queue_position ? ' (queue #' + run.queue_position + ')' : '') + (run.worker_id ? ' • ' + run.worker_id : '') + '</li>'
+            (run) => '<li><strong>' + esc(run.job) + '</strong> ' + esc(run.status) + (run.queue_position ? ' (queue #' + esc(run.queue_position) + ')' : '') + (run.worker_id ? ' • ' + esc(run.worker_id) : '') + '</li>'
           );
 
           artifacts.innerHTML = renderList(
             artifactsData.artifacts || [],
             'No artifacts available yet.',
-            (artifact) => '<li><strong>' + artifact.path + '</strong></li>'
+            (artifact) => '<li><strong>' + esc(artifact.path) + '</strong></li>'
           );
 
           users.innerHTML = (usersData.users || []).length
@@ -863,24 +1049,24 @@ function renderDashboard() {
 
       async function saveUser(userId) {
         const payload = {
-          display_name: document.querySelector('[data-field="display_name"][data-user-id="' + userId + '"]').value.trim(),
-          role: document.querySelector('[data-field="role"][data-user-id="' + userId + '"]').value,
-          status: document.querySelector('[data-field="status"][data-user-id="' + userId + '"]').value
+          display_name: document.querySelector('[data-field="display_name"][data-user-id="' + CSS.escape(userId) + '"]').value.trim(),
+          role: document.querySelector('[data-field="role"][data-user-id="' + CSS.escape(userId) + '"]').value,
+          status: document.querySelector('[data-field="status"][data-user-id="' + CSS.escape(userId) + '"]').value
         };
-        await apiRequest('/users/' + userId, { method: 'PATCH', body: JSON.stringify(payload) });
+        await apiRequest('/users/' + encodeURIComponent(userId), { method: 'PATCH', body: JSON.stringify(payload) });
         showFlash('Updated user ' + userId + '.');
         await refreshOverview();
       }
 
       async function rotateKey(userId) {
-        const keyLabel = document.querySelector('[data-field="key_label"][data-user-id="' + userId + '"]').value.trim() || 'rotated';
-        const result = await apiRequest('/users/' + userId + '/keys', { method: 'POST', body: JSON.stringify({ key_label: keyLabel }) });
+        const keyLabel = document.querySelector('[data-field="key_label"][data-user-id="' + CSS.escape(userId) + '"]').value.trim() || 'rotated';
+        const result = await apiRequest('/users/' + encodeURIComponent(userId) + '/keys', { method: 'POST', body: JSON.stringify({ key_label: keyLabel }) });
         showFlash('Issued new key for ' + result.user.username + ': ' + result.api_key);
         await refreshOverview();
       }
 
       async function revokeKey(userId, keyId) {
-        await apiRequest('/users/' + userId + '/keys/' + keyId, { method: 'DELETE' });
+        await apiRequest('/users/' + encodeURIComponent(userId) + '/keys/' + encodeURIComponent(keyId), { method: 'DELETE' });
         showFlash('Revoked key ' + keyId + '.');
         await refreshOverview();
       }
@@ -968,7 +1154,7 @@ async function startWorkerLoop() {
 
   while (!shutdownRequested) {
     try {
-      const next = await redis.blPop(redisKeys.queue, queuePollTimeoutSeconds);
+      const next = await blockingRedis.blPop(redisKeys.queue, queuePollTimeoutSeconds);
       if (!next?.element) {
         continue;
       }
@@ -990,15 +1176,22 @@ async function startWorkerLoop() {
 
 async function shutdown() {
   shutdownRequested = true;
-  try {
-    await redis.quit();
-  } catch {
-    await redis.disconnect();
+  for (const client of [blockingRedis, redis]) {
+    try {
+      await client.quit();
+    } catch {
+      await client.disconnect().catch(() => {});
+    }
   }
 }
 
 const stateReady = (async () => {
+  const keyProblem = bootstrapKeyProblem(bootstrapAdminKey);
+  if (keyProblem) {
+    throw new Error(keyProblem);
+  }
   await redis.connect();
+  await blockingRedis.connect();
   await migrateFileStateToRedisIfNeeded();
   await bootstrapAdminIfNeeded();
   startWorkerLoop().catch((error) => {
@@ -1009,19 +1202,21 @@ const stateReady = (async () => {
 const server = http.createServer(async (request, response) => {
   try {
     await stateReady;
-    const url = new URL(request.url || "/", `http://${request.headers.host || `${host}:${port}`}`);
+    // Parse the path only; the Host header is not trusted.
+    const url = new URL(request.url || "/", "http://control-plane.local");
+
+    if (url.pathname !== "/health" && overLimit(request, "requests", RATE_LIMIT_MAX_REQUESTS)) {
+      return sendJson(response, 429, { error: "Too many requests. Try again in a minute." }, { "Retry-After": "60" });
+    }
 
     if (request.method === "GET" && url.pathname === "/health") {
-      const activeRuns = await getActiveRuns();
+      // Public, so it says only whether the service is up: no run details,
+      // user names, file paths or connection strings.
       return sendJson(response, 200, {
         status: "ok",
-        active_run: activeRuns[0] || null,
-        active_runs: activeRuns,
         queue_depth: await redis.lLen(redisKeys.queue),
         auth_enabled: await getAuthEnabled(),
         storage_backend: "redis",
-        redis_url: redisUrl.replace(/:[^:@/]+@/, ":***@"),
-        migration_source: dataDir,
         uptime_seconds: Math.round(process.uptime())
       });
     }
@@ -1097,7 +1292,8 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/dashboard")) {
-      return sendHtml(response, renderDashboard());
+      const nonce = crypto.randomBytes(16).toString("base64");
+      return sendHtml(response, renderDashboard(nonce), nonce);
     }
 
     if (request.method === "POST" && url.pathname === "/users") {
@@ -1111,8 +1307,8 @@ const server = http.createServer(async (request, response) => {
 
       const body = await parseJsonBody(request);
       const username = String(body.username || "").trim();
-      if (!username) {
-        return sendJson(response, 400, { error: "username is required" });
+      if (!USERNAME_PATTERN.test(username)) {
+        return sendJson(response, 400, { error: "username is required: 1 to 64 letters, digits, dots, hyphens or underscores, starting with a letter or digit" });
       }
 
       const users = await getUsers();
@@ -1121,14 +1317,14 @@ const server = http.createServer(async (request, response) => {
       }
 
       const role = body.role === "admin" ? "admin" : "operator";
-      const serviceScope = String(body.service_scope || "").trim();
+      const serviceScope = cleanText(body.service_scope, 200);
       const user = createUserRecord({
         username,
-        displayName: String(body.display_name || username).trim(),
+        displayName: cleanText(body.display_name || username) || username,
         role,
         serviceScope
       });
-      const keyBundle = issueKeyForUser(user, String(body.key_label || "default").trim() || "default");
+      const keyBundle = issueKeyForUser(user, cleanText(body.key_label || "default", 40) || "default");
       users.push(user);
       await setUsers(users);
       return sendJson(response, 201, {
@@ -1153,9 +1349,13 @@ const server = http.createServer(async (request, response) => {
       }
 
       const body = await parseJsonBody(request);
+      const demotesOrDisables = (body.role === "operator" && existingUser.role === "admin") || (body.status === "disabled" && existingUser.status !== "disabled");
+      if (demotesOrDisables && isLastActiveAdmin(await getUsers(), userId)) {
+        return sendJson(response, 409, { error: "This is the last active admin. Make another user admin first." });
+      }
       const user = await updateUser(userId, (candidate) => {
         if (body.display_name) {
-          candidate.display_name = String(body.display_name).trim();
+          candidate.display_name = cleanText(body.display_name) || candidate.display_name;
         }
         if (body.role === "admin" || body.role === "operator") {
           candidate.role = body.role;
@@ -1164,7 +1364,7 @@ const server = http.createServer(async (request, response) => {
           candidate.status = body.status;
         }
         if (body.service_scope !== undefined) {
-          candidate.service_scope = String(body.service_scope).trim();
+          candidate.service_scope = cleanText(body.service_scope, 200);
         }
         candidate.updated_at = nowIso();
         return candidate;
@@ -1190,7 +1390,7 @@ const server = http.createServer(async (request, response) => {
       const body = await parseJsonBody(request);
       let plainTextKey = "";
       const user = await updateUser(userId, (candidate) => {
-        const keyBundle = issueKeyForUser(candidate, String(body.key_label || "rotated").trim() || "rotated");
+        const keyBundle = issueKeyForUser(candidate, cleanText(body.key_label || "rotated", 40) || "rotated");
         plainTextKey = keyBundle.plain_text_key;
         return candidate;
       });
@@ -1247,7 +1447,7 @@ const server = http.createServer(async (request, response) => {
 
       const jobName = url.pathname.replace(/^\/jobs\//, "");
       const serviceScope = principal.user?.service_scope || "";
-      if (serviceScope && !jobName.includes(serviceScope)) {
+      if (!scopeAllows(serviceScope, jobName)) {
         return sendJson(response, 403, {
           error: `User '${principal.user?.username}' is scoped to service '${serviceScope}' and cannot trigger job '${jobName}'`
         });
@@ -1270,8 +1470,14 @@ const server = http.createServer(async (request, response) => {
 
     sendJson(response, 404, { error: "Not found" });
   } catch (error) {
-    const payload = error.run ? error.run : { error: error.message };
-    sendJson(response, 500, payload);
+    if (error instanceof HttpError) {
+      return sendJson(response, error.statusCode, { error: error.message });
+    }
+    // Details go to the server log, not to the client.
+    log("error", "request failed", { method: request.method, path: request.url, error: error.message });
+    if (!response.headersSent) {
+      sendJson(response, 500, { error: "Internal server error" });
+    }
   }
 });
 
@@ -1285,7 +1491,10 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 stateReady.then(() => {
   server.listen(port, host, () => {
-    log("info", "control plane started", { url: `http://${host}:${port}`, redis: redisUrl });
+    log("info", "control plane started", { url: `http://${host}:${port}`, redis: redisUrl.replace(/\/\/([^@/]*)@/, "//***@") });
+    if (!bootstrapAdminKey && host !== "127.0.0.1" && host !== "localhost" && host !== "::1") {
+      log("warn", `listening on ${host} with no bootstrap key: requests from other machines get 503 until REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY is set`);
+    }
     if (!bootstrapAdminKey) {
       log("warn", "no bootstrap admin key set — existing Redis users will still work but new environments should set REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY");
     }

@@ -1,5 +1,9 @@
 const baseUrl = process.env.REPODOCS_CONTROL_PLANE_URL || "http://127.0.0.1:4312";
-const bootstrapKey = process.env.REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY || "replace-me";
+const bootstrapKey = process.env.REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY || "";
+if (!bootstrapKey) {
+  console.error("Set REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY to the key the control plane was started with.");
+  process.exit(1);
+}
 const waitTimeoutMs = Number.parseInt(process.env.REPODOCS_CONTROL_PLANE_SMOKE_TIMEOUT_MS || "90000", 10);
 
 function delay(milliseconds) {

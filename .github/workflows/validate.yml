@@ -9,9 +9,25 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# The token can read the repository and nothing else.
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
+
+    # Redis for the control-plane security tests; reachable only inside the job.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
 
     steps:
       - name: Checkout repository
@@ -30,4 +46,6 @@ jobs:
         run: npm run validate
 
       - name: Run tests
+        env:
+          REPODOCS_TEST_REDIS_URL: redis://127.0.0.1:6379/15
         run: npm test
