@@ -68,6 +68,17 @@ jobs:
           # Pinned to the release that created this repository. To pin an exact
           # commit instead of a tag, replace v${version} with its commit SHA.
           npx --yes github:SulagnaSasmal/repodocs-ai#v${version} validate "\${targets[@]}" "\${specs[@]}"
+
+      - name: Lint Markdown
+        # The same rules as .markdownlint.json, which init created.
+        run: |
+          targets=()
+          for folder in docs generated; do
+            if [ -d "$folder" ]; then targets+=("$folder"); fi
+          done
+          if [ \${#targets[@]} -gt 0 ]; then
+            npx --yes markdownlint-cli@0.50.1 --config .markdownlint.json "\${targets[@]}"
+          fi
 `;
 }
 

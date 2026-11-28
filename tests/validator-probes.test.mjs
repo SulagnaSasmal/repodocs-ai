@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import * as yaml from "js-yaml";
 import { beforeAll, describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
@@ -127,7 +128,8 @@ describe("init and CI", () => {
     const target = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "repodocs-init-")), "docs-repo");
     await execFileAsync(process.execPath, [script("bootstrap-docs-repo.mjs"), target]);
     const workflow = await fs.readFile(path.join(target, ".github", "workflows", "docs-validate.yml"), "utf8");
-    const step = workflow.split("run: |\n").pop().split("\n").map((line) => line.replace(/^ {10}/, "")).join("\n");
+    // The step that runs repodocs-ai validate (the workflow also has a lint step).
+    const step = yaml.load(workflow).jobs.validate.steps.find((candidate) => /repodocs-ai#v/.test(candidate.run || "")).run;
     const pinned = step.match(/npx --yes github:SulagnaSasmal\/repodocs-ai#v[\d.]+/)[0];
     const runnable = step.replace(pinned, `node "${path.join(repoRoot, "bin", "repodocs.mjs")}"`);
     await expect(execFileAsync("bash", ["-c", runnable], { cwd: target })).rejects.toMatchObject({
