@@ -57,7 +57,7 @@ Not applicable.
 ## Request Example
 
 ```bash
-curl -X GET "https://api.example.com/payments/v1/payments?status=completed&customer_id=cus_123&from_date=2026-01-01&page=1&per_page=20" \
+curl -X GET "https://api.startup-payments.example/v1/payments?status=completed&customer_id=cus_123&from_date=2026-01-01&page=1&per_page=20" \
   -H "Authorization: Bearer <token>"
 ```
 
