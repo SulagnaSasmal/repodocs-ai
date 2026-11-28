@@ -67,7 +67,7 @@ Include:
 
 If you deploy the RepoDocs AI hosted control plane:
 
-1. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY` to a random value of at least 24 characters, for example `openssl rand -hex 24`. The server refuses to start with a shorter key, a key containing a placeholder word such as `replace-me` or `password`, or a guessable one (fewer than 10 distinct characters, or a short pattern repeated).
+1. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY` to a random value of at least 24 characters, for example `openssl rand -hex 24`. The server refuses to start with a shorter key, a key containing a placeholder word such as `replace-me` or `password`, or a guessable one (fewer than 10 distinct characters, a short pattern repeated, or a run along the keyboard, the alphabet or the digits, such as `qwertyuiop…`).
 2. Until a key is set, the server answers only requests from the same machine, addressed to `localhost` or `127.0.0.1`; other requests get 503, and other Host names get 421, so a site that rebinds its DNS name to this machine cannot read the API. Never put it on a public address without a key.
 3. Requests that change something are refused from any other origin (403), and their bodies must be JSON (415), so a web page open in the same browser cannot create users or queue jobs.
 4. Give operators a `service_scope`: a comma-separated list of the job names they may run, matched exactly.
@@ -82,14 +82,14 @@ If you deploy the RepoDocs AI hosted control plane:
 - Every GitHub Action in this repository, and in the workflow `init` writes for adopters, is pinned to a full commit SHA, with the version in a comment. Dependabot updates both.
 - Workflow tokens are read-only.
 - Dependabot watches the root package, the website and the actions. `npm audit` reports no advisories in either package.
-- Releases are installed from Git tags (`#v1.2.5`). To make a release's tag impossible to move, the maintainer enables immutable releases in the repository settings. Teams that want certainty regardless can pin a commit SHA instead of a tag.
+- Releases are installed from Git tags (`#v1.2.6`). To make a release's tag impossible to move, the maintainer enables immutable releases in the repository settings. Teams that want certainty regardless can pin a commit SHA instead of a tag.
 
 ## Generated Documentation
 
 OpenAPI specs often come from other teams or vendors, so the generator treats their text as untrusted.
 
 - Outside code blocks, HTML from a spec is escaped, entities are shown as written, and `javascript:`, `vbscript:` and `data:` links are removed in every form (inline, reference-style, entity-encoded, split by whitespace). A docs site that renders raw HTML (MkDocs, Jekyll, Hugo with unsafe HTML on) shows that text instead of running it.
-- The curl examples are safe to paste into a shell. Characters the shell acts on are percent-encoded in URLs and escaped in header values, header names are reduced to valid header characters, and line breaks are removed, so a crafted server URL, parameter or security scheme cannot run a command. The test suite runs the generated example for a hostile spec with `curl` stubbed out and checks nothing ran.
+- The curl examples are safe to paste into a shell. Characters the shell acts on are percent-encoded in URLs and escaped in header values, header names are reduced to valid header characters, and line breaks are removed, so a crafted server URL, parameter or security scheme cannot run a command. The test suite runs the generated example for a hostile spec with `curl` stubbed out and checks nothing ran. `!` is quoted so shell history expansion cannot rewrite a value. Multipart text fields use `--form-string`, which sends a value as text even when it starts with `@` or `<`; only fields the spec marks as files use `-F "name=@<file>"`, and the OpenAPI check fails an example that names a real local file, such as `@/etc/passwd`, so a copied example cannot upload one.
 - The quality check fails hand-written docs that contain `<script>`, `<iframe>`, `<object>`, `<embed>`, `<form>`, `<style>`, `<meta http-equiv>`, inline event handlers or script links.
 
 ## Last Audit

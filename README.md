@@ -2,7 +2,7 @@
 
 [![Build](https://github.com/SulagnaSasmal/repodocs-ai/actions/workflows/validate.yml/badge.svg)](https://github.com/SulagnaSasmal/repodocs-ai/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.2.5-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.2.6-green.svg)](CHANGELOG.md)
 
 AI-prompt-powered docs-as-code documentation system for SaaS API teams.
 
@@ -121,11 +121,11 @@ The final step, `lint:markdown`, prints nothing when there are no linting errors
 Running `npm test`:
 
 ```text
- Test Files  10 passed (10)
-      Tests  349 passed (349)
+ Test Files  12 passed (12)
+      Tests  398 passed (398)
 ```
 
-The tests include the full adopter path (`init`, `generate`, `validate`, and the CI step `init` writes), and the CLI installed from a packed tarball. They run against nine OpenAPI specs written by other people in `tests/fixtures/third-party/`. They check the generated docs against each spec, not only that the commands succeed. Before each release, a fresh AI agent also follows the README from scratch; the procedure and past reports are in `.github/release-checks/`.
+The tests include the full adopter path (`init`, `generate`, `validate`, and the CI step `init` writes), and the CLI installed from a packed tarball. They run against ten OpenAPI specs written by other people in `tests/fixtures/third-party/`. They check the generated docs against each spec, not only that the commands succeed. Before each release, a fresh AI agent also follows the README from scratch; the procedure and past reports are in `.github/release-checks/`.
 
 ## Quick Start
 
@@ -134,11 +134,11 @@ Install the `repodocs-ai` command, set up a docs repository, generate docs from 
 > Requires Node.js 20 or later. Check with `node --version`.
 
 ```bash
-npm install -g github:SulagnaSasmal/repodocs-ai#v1.2.5
+npm install -g github:SulagnaSasmal/repodocs-ai#v1.2.6
 repodocs-ai init company-docs
 ```
 
-Or run any command once without installing, with `npx --yes github:SulagnaSasmal/repodocs-ai#v1.2.5 <command>`. Paths resolve from the folder you run the command in. Run `repodocs-ai help` for every command.
+Or run any command once without installing, with `npx --yes github:SulagnaSasmal/repodocs-ai#v1.2.6 <command>`. Paths resolve from the folder you run the command in. Run `repodocs-ai help` for every command.
 
 `init` copies the templates, prompts, diagrams, schema and review checklists, and writes a CI workflow, a CODEOWNERS file to fill in, and a starter README. It does not run `git init` or create the GitHub repository for you. Add `--with-examples` to include the payments example set.
 
@@ -173,14 +173,14 @@ The command exits with a non-zero code when a check fails, so it can gate CI.
 
 Each check reports PASS, WARN, FAIL or SKIP and names the folder it checked:
 
-- **Frontmatter:** required fields, which must not be empty, allowed values, and a `last_reviewed` date that exists on the calendar and is not in the future, from `schema/metadata-frontmatter.md`.
-- **Structure and quality:** errors for leftover placeholders (`TODO`, `TBD`, `FIXME`, `todo:`, `[PLACEHOLDER]`, `<insert …>`, `{{…}}`, lorem ipsum), template instructions, HTML that would run script, load content or redirect on a docs site (`<script>`, `<iframe>`, `<object>`, `<embed>`, `<form>`, `<style>`, `<meta http-equiv>`, inline event handlers, and `javascript:`, `vbscript:` or `data:` links in any form, including reference-style, entity-encoded and whitespace-split), and Markdown that renders differently from how it reads (an unclosed code fence, a table row with the wrong number of cells, a table with no separator row, a second H1). Warnings: missing sections other than the Response section an endpoint doc needs, pages with no `##` headings, sections dropped from the template a hand-written doc follows, suspicious status codes in hand-written docs (such as a POST returning 200), unresolved `Needs SME input` labels, placeholder example values, `{name}` placeholders left in the request URL, and owners that are `unassigned`, missing from `schema/owners-registry.md`, or not checked because there is no registry.
-- **OpenAPI examples:** request, response and error JSON examples at every depth: unknown fields, values outside an enum, values of the wrong JSON type, values outside the spec's minimum, maximum, length or format (`email`, `date`, `date-time`, `uuid`, `uri`), required request fields left out at any depth, every shape of a `oneOf`, readOnly fields sent in requests and writeOnly fields shown in responses. Request Body table rows: each field exists, with the spec's type (all the types of an `anyOf` or `oneOf`), Required flag, allowed values, default, format, minimum and maximum, a Deprecated note where the spec deprecates it, and whether the body itself is required. Parameter tables, with the same notes, including one row per key of a deepObject parameter. In the request example: the HTTP method, the server URL, the path and its placeholders, query parameters with their types, ranges and allowed values (deepObject keys included), the headers it sends (none the spec does not define, every required one present), the `Content-Type` of a body, and credentials for one of the operation's security requirements in the form the spec describes. The authentication section, including any header it names, against the spec's security. The success status and Error Codes against the spec's responses. Two docs in one folder for the same operation are an error. Warnings, which a hand-written doc may leave on purpose: optional parameters and error codes it leaves out, required response fields a response example leaves out, a table header that does not read Name, Type, Required, Description, and spec operations with no doc.
+- **Frontmatter:** required fields, which must not be empty, allowed values, a `last_reviewed` date that exists on the calendar and is not in the future, an `owner` written as a lowercase slug (such as `payments-eng`), and a `reviewed_by` approver on any doc whose `status` is `stable` or `beta`, from `schema/metadata-frontmatter.md`.
+- **Structure and quality:** errors for leftover placeholders (`TODO`, `TBD` in any case, `FIXME`, `todo:`, `[PLACEHOLDER]`, lorem ipsum, and in prose outside code `<insert …>`, `<your-…>` and `{{…}}`), template instructions, HTML that would run script, load content or redirect on a docs site (`<script>`, `<iframe>`, `<object>`, `<embed>`, `<form>`, `<style>`, `<meta http-equiv>`, inline event handlers, `style` attributes that load a URL, and `javascript:`, `vbscript:` or `data:` links in any form and any attribute, including `formaction`, autolinks, reference-style, entity-encoded and whitespace-split), and Markdown that renders differently from how it reads (an unclosed code fence or HTML comment, a table row or separator with the wrong number of cells, a table with no separator row, a heading with no space after `#` or indented into a code block, a second H1). Warnings: missing sections other than the Response section an endpoint doc needs, pages with no `#` title or no `##` headings, images loaded from another site, sections dropped from the template a hand-written doc follows, suspicious status codes in hand-written docs (such as a POST returning 200), unresolved `Needs SME input` labels, placeholder example values, `{name}` placeholders left in the request URL, and owners that are `unassigned`, missing from `schema/owners-registry.md`, or not checked because there is no registry.
+- **OpenAPI examples:** request, response and error JSON examples at every depth: unknown fields, values outside an enum, values of the wrong JSON type, values outside the spec's minimum, maximum, length or format (`email`, `date`, `date-time`, `uuid`, `uri`), required request fields left out at any depth, every shape of a `oneOf`, readOnly fields sent in requests and writeOnly fields shown in responses. Request Body table rows: each field exists, with the spec's type (all the types of an `anyOf` or `oneOf`), Required flag, allowed values, default, format, minimum and maximum, a Deprecated note where the spec deprecates it, and whether the body itself is required. Parameter tables, with the same notes, including one row per key of a deepObject parameter. In the request example: the HTTP method, the server URL, the path and its placeholders, query parameters with their types, ranges and allowed values (deepObject keys included), the headers it sends (none the spec does not define, every required one present), the `Content-Type` of a body (and no body where the operation takes none), multipart fields with their types and allowed values, with an error for a real local file path such as `@/etc/passwd`, and credentials for one of the operation's security requirements in the form the spec describes. The authentication section, including any header it names, against the spec's security. The Endpoint URL's placeholders against the spec's path parameter names. A doc with two Endpoint, Request Example, Response Example, Request Body or Error Codes sections. In guides and overview pages, every curl call to a spec server must use a path and method the spec defines. The success status and Error Codes against the spec's responses. Two docs in one folder for the same operation are an error. Warnings, which a hand-written doc may leave on purpose: optional parameters and error codes it leaves out, required response fields a response example leaves out, a table header that does not read Name, Type, Required, Description, spec operations with no doc, a Response Example with no `Status:` line, a Request Example with no curl or more than one, an auth header the spec uses on other operations but not this one, and a Swagger 2.0 file in the specs folder, which is not checked.
 - **API versions:** `api_version` in frontmatter against the spec's version.
 
 Without `--specs`, the last two checks report SKIP. They also report SKIP when the folder has no endpoint docs to compare. A skipped check did not run; it never counts as a pass, and the summary gives the reason for each one. Add `--strict` to make a skipped check fail the run. Pass several folders to check them together, for example `company-docs/generated company-docs/docs`.
 
-`init` also writes `.github/workflows/docs-validate.yml` into your docs repository. Once you push to GitHub, it runs the same checks on every pull request and every push to `main`, against `generated/` and `docs/`, using the specs in `openapi/`. It uses the same RepoDocs AI version that created the repository, and it fails until there is at least one Markdown doc to check. Its token is read-only and its actions are pinned to commit SHAs. To pin RepoDocs AI itself to an exact commit rather than a release tag, replace the `#v` version in its `npx` line with the commit SHA.
+`init` also writes `.github/workflows/docs-validate.yml` into your docs repository. Once you push to GitHub, it runs the same checks on every pull request and every push to `main`, against `generated/` and `docs/`, using the specs in `openapi/`. It uses the same RepoDocs AI version that created the repository, and it fails until there is at least one Markdown doc to check. It also lints the Markdown with `markdownlint-cli`, using the `.markdownlint.json` that `init` writes. Its token is read-only and its actions are pinned to commit SHAs. To pin RepoDocs AI itself to an exact commit rather than a release tag, replace the `#v` version in its `npx` line with the commit SHA.
 
 These checks cover format and consistency with the spec. They cannot tell whether the spec itself is right or complete.
 
@@ -206,6 +206,9 @@ For hand-authored docs:
 - The template-section check applies only to a hand-written doc that already follows at least half of one template's sections. Other docs with the same `component` are treated as a different kind of page.
 - It cannot tell whether prose is true. If someone replaces `Needs SME input` with an invented sentence, such as a made-up rate limit, or writes a summary that describes the wrong operation, the checks pass.
 - It does not flag `XXX` as a placeholder: real specs use it as an ISO currency code and in format masks such as `XXX XXX XXX`.
+- It reads OpenAPI 3.0 and 3.1 only. A Swagger 2.0 file is reported and skipped; convert it first.
+- An auth header named in a doc that the spec mentions only in its description, or on other operations, is a warning, not an error: many specs describe their API key in prose and declare it on some operations only.
+- The Required column accepts `yes`, `required`, `true` and `mandatory`, and `no`, `optional` and `false`. Anything else is an error.
 - `component` in frontmatter is free text ("specific module or subsystem"), so any value is accepted.
 - In a request example, any `Authorization` value with the prefix the spec describes (such as `Bearer`) passes; the check cannot tell a real key from another token with the same prefix.
 - It does not upload anything. `npm run export` writes files formatted for Confluence, Google Docs, Notion and print, which you import yourself.
