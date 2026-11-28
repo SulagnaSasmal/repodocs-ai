@@ -24,23 +24,62 @@ function normalizeText(value, fallback = "") {
 function escapeUntrustedHtml(markdown) {
   const frontmatter = markdown.match(/^---\n[\s\S]*?\n---\n/)?.[0] || "";
   const body = markdown.slice(frontmatter.length);
-  const segments = body.split(/(^```[^\n]*\n[\s\S]*?^```[ \t]*$)/m);
-  const escaped = segments.map((segment, index) => {
-    if (index % 2 === 1) {
-      return segment; // fenced code block
+  // Fenced blocks of three or more backticks, closed by a fence at least as long.
+  const segments = body.split(/(^(`{3,})[^\n]*\n[\s\S]*?^\2`*[ \t]*$)/m);
+  const out = [];
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    if (index % 3 === 1) {
+      // A fence copied from spec prose with no language gets "text" (MD040).
+      out.push(segment.replace(/^(`{3,})[ \t]*\n/, "$1text\n")); // fenced code block
+      continue;
     }
-    return segment
+    if (index % 3 === 2) {
+      continue; // the captured fence itself
+    }
+    out.push(segment
       .split(/(`+[^`\n]*?`+)/)
-      .map((part, partIndex) =>
-        partIndex % 2 === 1
-          ? part // inline code span
-          : part
-              .replace(/</g, "&lt;")
-              .replace(/\]\(\s*(?:javascript|vbscript|data):(?:[^()]|\([^()]*\))*\)/gi, "](#unsafe-link-removed)")
-      )
-      .join("");
-  });
-  return frontmatter + escaped.join("");
+      .map((part, partIndex) => (partIndex % 2 === 1 ? part : escapeProse(part)))
+      .join("")
+      .replace(/\n{3,}/g, "\n\n")); // removed comments can leave extra blank lines (MD012)
+  }
+  return frontmatter + out.join("");
+}
+
+// A link target that would run script once a renderer decodes entities and
+// drops the whitespace browsers ignore in URLs.
+function isScriptUrl(target) {
+  const decoded = String(target)
+    .replace(/&amp;/gi, "&")
+    .replace(/&#x([0-9a-f]+);?/gi, (match, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);?/g, (match, decimal) => String.fromCodePoint(Number(decimal)))
+    .replace(/&colon;/gi, ":")
+    .replace(/&tab;|&newline;/gi, "")
+    .replace(/[\u0000-\u0020\u007f]+/g, "")
+    .toLowerCase();
+  return /^(javascript|vbscript|data):/.test(decoded);
+}
+
+function escapeProse(text) {
+  const autolinks = [];
+  return text
+    // Keep autolinks to web pages; every other "<" becomes text.
+    .replace(/<(https?:\/\/[^\s<>]+)>/g, (match, url) => {
+      autolinks.push(url);
+      return `\u0001${autolinks.length - 1}\u0001`;
+    })
+    // Entities are shown as written, so they cannot spell out a script URL.
+    .replace(/&(?=#|[A-Za-z]+;)/g, "&amp;")
+    .replace(/</g, "&lt;")
+    // Bare web addresses become autolinks (markdownlint MD034).
+    // Not a URL that is already a link target: "](https://...)".
+    .replace(/(^|\s|(?<!\])\()(https?:\/\/[^\s<>()\]"']*[^\s<>()\]"'.,;:!?])/g, (match, lead, url) => `${lead}<${url}>`)
+    .replace(/\u0001(\d+)\u0001/g, (match, index) => `<${autolinks[Number(index)]}>`)
+    // Inline links and reference definitions to script URLs are dropped.
+    // The whole target, whitespace included: browsers drop tabs and newlines
+    // inside URLs, so "java<TAB>script:" still runs.
+    .replace(/\]\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)/g, (match, target) => (isScriptUrl(target) ? "](#unsafe-link-removed)" : match))
+    .replace(/^(\s{0,3}\[[^\]]+\]:\s*)(\S+)(.*)$/gm, (match, lead, target, rest) => (isScriptUrl(target) ? `${lead}#unsafe-link-removed` : match));
 }
 
 function toSlug(value) {
@@ -119,7 +158,39 @@ function resolveReference(spec, value, depth = 0) {
 
 // Table cells must stay on one line and must not contain an unescaped pipe.
 function tableCell(text) {
-  return String(text).replace(/\r?\n+/g, " ").replace(/(?<!\\)\|/g, "\\|").replace(/\s{2,}/g, " ").trim();
+  return cleanSpecText(text).replace(/\r?\n+/g, " ").replace(/(?<!\\)\|/g, "\\|").replace(/\s{2,}/g, " ").trim();
+}
+
+// Spec prose often carries HTML line breaks and comments meant for other
+// renderers (ReDoc, Swagger UI). Breaks become spaces; comments are dropped.
+function cleanSpecText(text) {
+  return String(text ?? "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<br\s*\/?>/gi, " ");
+}
+
+// A code span that survives backticks inside the value.
+function codeSpan(value) {
+  const text = String(value);
+  if (!text.includes("`")) {
+    return `\u0000${text}\u0000`;
+  }
+  const longest = Math.max(...(text.match(/`+/g) || [""]).map((run) => run.length));
+  const fence = "\u0000".repeat(longest + 1);
+  return `${fence} ${text} ${fence}`;
+}
+
+// A fenced code block whose fence is longer than any backtick run inside it,
+// so content such as a JSON string containing three backticks cannot close it.
+function fenced(lang, body) {
+  const longest = Math.max(0, ...(String(body).match(/`+/g) || []).map((run) => run.length));
+  const fence = "\u0000".repeat(Math.max(3, longest + 1));
+  return `${fence}${lang}\n${body}\n${fence}`;
+}
+
+// One line of text, for headings and frontmatter values.
+function oneLine(text) {
+  return cleanSpecText(text).replace(/\s*\r?\n\s*/g, " ").trim();
 }
 
 // The local calendar date, so last_reviewed matches the day the docs were generated.
@@ -131,7 +202,15 @@ function localDate() {
 // Spec descriptions can contain their own Markdown headings; demote them so
 // they cannot add a second "## Authentication" to a generated doc.
 function demoteHeadings(text) {
-  return String(text).replace(/^(#{1,3})\s+/gm, (match, hashes) => `${"#".repeat(Math.min(hashes.length + 3, 6))} `);
+  const source = cleanSpecText(text);
+  const levels = [...source.matchAll(/^(#{1,6})\s+/gm)].map((match) => match[1].length);
+  if (levels.length === 0) {
+    return source;
+  }
+  // The spec's highest heading becomes ###, and every other heading keeps its
+  // distance from it, so the hierarchy never skips a level.
+  const shift = 3 - Math.min(...levels);
+  return source.replace(/^(#{1,6})(\s+)/gm, (match, hashes, space) => `${"#".repeat(Math.min(Math.max(hashes.length + shift, 3), 6))}${space}`);
 }
 
 function resolveSchema(spec, schema, depth = 0) {
@@ -297,7 +376,8 @@ function schemaTypeLabel(spec, schema) {
 
   const choices = resolved.oneOf || resolved.anyOf;
   if (!resolved.type && Array.isArray(choices) && choices.length > 0) {
-    return `one of: ${[...new Set(choices.map((choice) => schemaTypeLabel(spec, choice)))].join(" \\| ")}`;
+    // oneOf: exactly one shape matches; anyOf: one or more may.
+    return `${resolved.oneOf ? "one of" : "any of"}: ${[...new Set(choices.map((choice) => schemaTypeLabel(spec, choice)))].join(" \\| ")}`;
   }
 
   return resolved.type || (resolved.properties ? "object" : "string");
@@ -386,7 +466,7 @@ function buildExampleValue(spec, schema, mode = "any", depth = 0) {
   }
 }
 
-function buildConstraintNotes(spec, schema) {
+function buildConstraintNotes(spec, schema, ownerDescription = "") {
   const resolved = resolveSchema(spec, schema);
   if (!resolved || typeof resolved !== "object") {
     return [];
@@ -394,7 +474,16 @@ function buildConstraintNotes(spec, schema) {
 
   const notes = [];
   if (Array.isArray(resolved.enum) && resolved.enum.length > 0) {
-    notes.push(`Allowed values: ${resolved.enum.map((value) => `\u0000${value}\u0000`).join(", ")}`);
+    notes.push(`Allowed values: ${resolved.enum.map((value) => codeSpan(value)).join(", ")}`);
+  }
+  if (resolved.nullable === true || (Array.isArray(resolved.type) && resolved.type.includes("null"))) {
+    notes.push("Nullable");
+  }
+  if (resolved.minLength !== undefined) {
+    notes.push(`Minimum length: ${resolved.minLength}`);
+  }
+  if (resolved.maxLength !== undefined) {
+    notes.push(`Maximum length: ${resolved.maxLength}`);
   }
   if (resolved.default !== undefined) {
     notes.push(`Default: ${typeof resolved.default === "object" ? JSON.stringify(resolved.default) : resolved.default}`);
@@ -408,7 +497,17 @@ function buildConstraintNotes(spec, schema) {
   if (resolved.maximum !== undefined) {
     notes.push(`Maximum: ${resolved.maximum}`);
   }
-  return notes;
+  // Skip a note the spec's own description already states ("Minimum 1,
+  // Maximum 200, Default 20"), so the cell does not say it twice.
+  const prose = `${resolved.description || ""} ${ownerDescription || ""}`.toLowerCase();
+  return notes.filter((note) => {
+    const match = note.match(/^(Default|Minimum|Maximum|Format): (.+)$/);
+    if (!match) {
+      return true;
+    }
+    const value = match[2].toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return !new RegExp(`\\b${match[1].toLowerCase()}\\b[^.;]{0,12}?\\b${value}\\b`).test(prose);
+  });
 }
 
 function joinSentenceParts(parts) {
@@ -464,18 +563,28 @@ function buildSchemaDescription(spec, schema) {
     : "Needs SME input";
 }
 
-function summarizeSecuritySchemes(spec, securityRequirements) {
+// The first sentence of a scheme description, without Markdown structure,
+// for endpoint docs; the overview keeps the full text.
+function briefDescription(text) {
+  const flat = cleanSpecText(text).replace(/^\s*[-*+]\s+/gm, "").replace(/^#+\s+/gm, "").replace(/\s+/g, " ").trim();
+  const first = flat.split(/(?<=[.!?])\s+/)[0] || "";
+  return first.length > 200 ? `${first.slice(0, 197).replace(/\s+\S*$/, "")}...` : first;
+}
+
+function summarizeSecuritySchemes(spec, securityRequirements, { brief = false } = {}) {
   const schemes = spec.components?.securitySchemes || {};
   const summaries = [];
 
   for (const requirement of securityRequirements) {
+    const parts = [];
     for (const [schemeName, scopes] of Object.entries(requirement || {})) {
       const scheme = resolveReference(spec, schemes[schemeName]);
       if (!scheme) {
         continue;
       }
+      const summaries = parts; // each scheme of this requirement
 
-      const schemeDescription = normalizeText(scheme.description).replace(/\n+/g, " ");
+      const schemeDescription = brief ? briefDescription(scheme.description) : cleanSpecText(normalizeText(scheme.description)).replace(/\n+/g, " ");
       const withDescription = (label) => (schemeDescription ? `${label}: ${schemeDescription.replace(/[.\s]+$/, "")}` : label);
 
       if (scheme.type === "http" && String(scheme.scheme).toLowerCase() === "bearer") {
@@ -502,6 +611,14 @@ function summarizeSecuritySchemes(spec, securityRequirements) {
 
       summaries.push(withDescription(`${scheme.type || "security"} \`${schemeName}\``));
     }
+    if (parts.length === 1) {
+      summaries.push(parts[0]);
+    } else if (parts.length > 1) {
+      // Several schemes in one requirement must all be sent together.
+      summaries.push(brief
+        ? `all of these together: ${parts.map((part) => part.replace(/[.\s]+$/, "")).join("; ")}`
+        : `all of these are required together:\n\n${parts.map((part) => `- ${part.replace(/[.\s]+$/, "")}.`).join("\n")}`);
+    }
   }
 
   return [...new Set(summaries)];
@@ -516,7 +633,7 @@ function buildAuthenticationText(spec, operation) {
     return "No authentication requirements are defined in the OpenAPI specification.";
   }
 
-  const summaries = summarizeSecuritySchemes(spec, securityRequirements);
+  const summaries = summarizeSecuritySchemes(spec, securityRequirements, { brief: true });
   if (summaries.length === 0) {
     return "Authentication is required. Validate the exact scheme against the source OpenAPI file.";
   }
@@ -532,16 +649,19 @@ function buildOverviewAuthentication(spec) {
     return "No authentication requirements are defined in the OpenAPI specification.";
   }
   const summaries = summarizeSecuritySchemes(spec, securityRequirements);
-  return summaries.length > 0 ? summaries.join(". ") : "Needs SME input";
+  if (summaries.length === 0) {
+    return "Needs SME input";
+  }
+  const sentence = (text) => (text.includes("\n- ") ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : `${text.charAt(0).toUpperCase()}${text.slice(1).replace(/[.\s]+$/, "")}.`);
+  return summaries.length === 1
+    ? sentence(summaries[0])
+    : `Use any one of these:\n\n${summaries.map((entry) => `- ${sentence(entry)}`).join("\n")}`;
 }
 
 // The credential arguments a curl example needs, based on the spec's security
 // requirements. No requirements means no credentials are added.
 function buildCredentialArgs(spec, operation) {
-  const securityRequirements = Array.isArray(operation.security)
-    ? operation.security
-    : (Array.isArray(spec.security) ? spec.security : []);
-  const firstRequirement = securityRequirements.find((requirement) => requirement && Object.keys(requirement).length > 0);
+  const firstRequirement = firstSecurityRequirement(spec, operation);
   if (!firstRequirement) {
     return [];
   }
@@ -556,9 +676,12 @@ function buildCredentialArgs(spec, operation) {
     if (scheme.type === "http" && String(scheme.scheme).toLowerCase() === "basic") {
       args.push('-u "<username>:<password>"');
     } else if (scheme.type === "apiKey" && scheme.in === "header" && scheme.name) {
-      args.push(`-H "${scheme.name}: <api-key>"`);
+      // An API key sent in Authorization often has a prefix the spec states
+      // in prose, such as "Bearer <key>".
+      const prefix = headerName(scheme.name).toLowerCase() === "authorization" ? (normalizeText(scheme.description).match(/\b(Bearer|Token|Basic|ApiKey)\s+</i)?.[1] || "") : "";
+      args.push(`-H "${headerName(scheme.name)}: ${prefix ? `${prefix} ` : ""}<api-key>"`);
     } else if (scheme.type === "apiKey" && scheme.in === "cookie" && scheme.name) {
-      args.push(`--cookie "${scheme.name}=<api-key>"`);
+      args.push(`--cookie "${headerName(scheme.name)}=<api-key>"`);
     } else if (scheme.type === "http" || scheme.type === "oauth2" || scheme.type === "openIdConnect") {
       args.push('-H "Authorization: Bearer <token>"');
     }
@@ -609,11 +732,36 @@ function buildParameterRows(spec, parameters) {
       const description = tableCell(joinSentenceParts([
         normalizeText(parameter.description, `Parameter in ${parameter.in}`),
         ...(parameter.deprecated ? ["Deprecated"] : []),
-        ...buildConstraintNotes(spec, parameter.schema)
+        ...buildConstraintNotes(spec, parameter.schema, parameter.description)
       ]));
-      return `| ${parameter.name} | ${type} | ${required} | ${description} |`;
+      const row = `| ${tableCell(parameter.name)} | ${type} | ${required} | ${description} |`;
+      return [row, ...deepObjectRows(spec, parameter)].join("\n");
     })
     .join("\n");
+}
+
+// A deepObject query parameter is sent as name[key]=value, so each key gets
+// its own row with its type, allowed values and default.
+function isDeepObject(spec, parameter) {
+  const schema = resolveSchema(spec, parameter.schema) || {};
+  return parameter.in === "query" && parameter.style === "deepObject" && (schema.type === "object" || schema.properties);
+}
+
+function deepObjectRows(spec, parameter) {
+  if (!isDeepObject(spec, parameter)) {
+    return [];
+  }
+  const schema = resolveSchema(spec, parameter.schema) || {};
+  const required = new Set(schema.required || []);
+  return Object.entries(schema.properties || {}).map(([key, propertySchema]) => {
+    const resolved = resolveSchema(spec, propertySchema) || {};
+    const description = tableCell(joinSentenceParts([
+      normalizeText(resolved.description, `Sent as \u0000${parameter.name}[${key}]\u0000`),
+      ...(resolved.deprecated ? ["Deprecated"] : []),
+      ...buildConstraintNotes(spec, propertySchema)
+    ]));
+    return `| ${tableCell(`${parameter.name}[${key}]`)} | ${schemaTypeLabel(spec, propertySchema)} | ${required.has(key) ? "yes" : "no"} | ${description} |`;
+  });
 }
 
 function buildSplitParameterSections(spec, parameters) {
@@ -780,18 +928,18 @@ function buildRequestBodyArgs(body) {
   const fields = body.value && typeof body.value === "object" && !Array.isArray(body.value) ? Object.entries(body.value) : [];
   const fieldText = (value) => (typeof value === "object" ? JSON.stringify(value) : String(value));
   if (body.kind === "json") {
-    return [`-H "Content-Type: ${body.type}"`, `-d '${JSON.stringify(body.value).replace(/'/g, "'\\''")}'`];
+    return [`-H "Content-Type: ${shellText(body.type)}"`, `-d '${JSON.stringify(body.value).replace(/'/g, "'\\''")}'`];
   }
   if (body.kind === "form") {
     return [
-      `-H "Content-Type: ${body.type}"`,
+      `-H "Content-Type: ${shellText(body.type)}"`,
       ...fields.map(([name, value]) => `--data-urlencode "${shellQuote(name)}=${shellQuote(fieldText(value))}"`)
     ];
   }
   if (body.kind === "multipart") {
     return fields.map(([name, value]) => `-F "${shellQuote(name)}=${shellQuote(fieldText(value))}"`);
   }
-  return [`-H "Content-Type: ${body.type}"`, "--data-binary @<file>"];
+  return [`-H "Content-Type: ${shellText(body.type)}"`, '--data-binary "@<file>"'];
 }
 
 function buildResponseExample(spec, operation) {
@@ -913,7 +1061,7 @@ function buildErrorSection(spec, operation) {
   if (example === undefined || media.kind !== "json") {
     return table;
   }
-  return `${table}\n\nError response body (\u0000${withBody[0]}\u0000):\n\n\u0000\u0000\u0000json\n${JSON.stringify(example, null, 2)}\n\u0000\u0000\u0000`;
+  return `${table}\n\nError response body (\u0000${withBody[0]}\u0000):\n\n${fenced("json", JSON.stringify(example, null, 2))}`;
 }
 
 // True when the generator fell back to the word "value" because the spec
@@ -926,6 +1074,34 @@ function isPlaceholderValue(spec, parameter, value) {
   return parameter.example !== "value" && schema.example !== "value" && schema.default !== "value" && !(schema.enum || []).includes("value");
 }
 
+// Query pairs for one parameter's example value, serialised the way the
+// spec's style says: deepObject as name[key]=value, exploded arrays as
+// repeated keys. Objects are never written as "[object Object]".
+function queryPairs(spec, parameter, value) {
+  const encode = (text) => encodeURIComponent(String(text));
+  const schema = resolveSchema(spec, parameter.schema) || {};
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const primitive = Object.entries(value).filter(([, entry]) => entry === null || typeof entry !== "object");
+    if (parameter.style === "deepObject") {
+      return primitive.map(([key, entry]) => `${encode(parameter.name)}[${encode(key)}]=${encode(entry)}`);
+    }
+    if (parameter.explode === false) {
+      return [`${encode(parameter.name)}=${primitive.map(([key, entry]) => `${encode(key)},${encode(entry)}`).join(",")}`];
+    }
+    return primitive.map(([key, entry]) => `${encode(key)}=${encode(entry)}`);
+  }
+  if (Array.isArray(value)) {
+    const items = value.filter((entry) => entry === null || typeof entry !== "object");
+    return parameter.explode === false || (parameter.style && parameter.style !== "form")
+      ? [`${encode(parameter.name)}=${items.map(encode).join(",")}`]
+      : items.map((entry) => `${encode(parameter.name)}=${encode(entry)}`);
+  }
+  if (schema.type === "object" || schema.properties) {
+    return []; // an object parameter with no usable example
+  }
+  return [`${encode(parameter.name)}=${encode(value)}`];
+}
+
 function buildExampleUrl(spec, route, operation, pathItem) {
   const baseUrl = serverUrl(spec, "https://api.example.com").replace(/\/$/, "");
   const parameters = extractParameters(spec, operation, pathItem);
@@ -934,16 +1110,58 @@ function buildExampleUrl(spec, route, operation, pathItem) {
 
   for (const parameter of parameters) {
     const exampleValue = buildParameterExampleValue(spec, operation, parameter);
+    const placeholder = isPlaceholderValue(spec, parameter, exampleValue);
     if (parameter.in === "path") {
       // With no example in the spec, keep a visible {name} placeholder rather than the word "value".
-      examplePath = examplePath.replace(`{${parameter.name}}`, isPlaceholderValue(spec, parameter, exampleValue) ? `{${parameter.name}}` : encodeURIComponent(String(exampleValue)));
+      examplePath = examplePath.replace(`{${parameter.name}}`, placeholder ? `{${parameter.name}}` : encodeURIComponent(String(exampleValue)));
     }
     if (parameter.in === "query") {
-      queryParams.push(`${encodeURIComponent(parameter.name)}=${isPlaceholderValue(spec, parameter, exampleValue) ? `{${parameter.name}}` : encodeURIComponent(String(exampleValue))}`);
+      if (placeholder && !parameter.required) {
+        continue; // optional, and the spec gives no value to show
+      }
+      queryParams.push(...(placeholder ? [`${encodeURIComponent(parameter.name)}={${parameter.name}}`] : queryPairs(spec, parameter, exampleValue)));
     }
   }
+  for (const name of apiKeyQueryNames(spec, operation)) {
+    queryParams.push(`${encodeURIComponent(name)}=<api-key>`);
+  }
 
-  return `${baseUrl}${examplePath}${queryParams.length > 0 ? `?${queryParams.join("&")}` : ""}`;
+  return safeUrl(`${baseUrl}${examplePath}${queryParams.length > 0 ? `?${queryParams.join("&")}` : ""}`);
+}
+
+// The URL goes inside double quotes in a shell command. Characters the shell
+// would act on there, and any whitespace, are percent-encoded, so a crafted
+// server URL cannot end the string or run a command.
+function safeUrl(url) {
+  return String(url).replace(/[\s"`$\\]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
+}
+
+// Text placed inside a double-quoted shell argument: no line breaks, and the
+// characters the shell interprets there are escaped.
+function shellText(value) {
+  return shellQuote(String(value).replace(/[\r\n\t\u0000-\u001f\u007f]+/g, " "));
+}
+
+// Header names are tokens; anything else is dropped so a name cannot end the
+// quoted argument.
+function headerName(name) {
+  return String(name).replace(/[^A-Za-z0-9!#$%&'*+.^_`|~-]/g, "").replace(/[$`]/g, "");
+}
+
+function apiKeyQueryNames(spec, operation) {
+  const requirement = firstSecurityRequirement(spec, operation);
+  const schemes = spec.components?.securitySchemes || {};
+  return Object.keys(requirement || {})
+    .map((schemeName) => resolveReference(spec, schemes[schemeName]))
+    .filter((scheme) => scheme?.type === "apiKey" && scheme.in === "query" && scheme.name)
+    .map((scheme) => scheme.name);
+}
+
+function firstSecurityRequirement(spec, operation) {
+  const securityRequirements = Array.isArray(operation.security)
+    ? operation.security
+    : (Array.isArray(spec.security) ? spec.security : []);
+  return securityRequirements.find((requirement) => requirement && Object.keys(requirement).length > 0) || null;
 }
 
 function buildApiOverview(spec, serviceName, owner) {
@@ -1006,7 +1224,7 @@ ${formatOverviewValue(spec.info?.["x-example-use-case"])}
 }
 
 function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, method, operation, pathItem) {
-  const summary = normalizeText(operation.summary, humanizeOperationId(operation.operationId) || titleCaseFromSlug(toSlug(`${method}-${route}`)));
+  const summary = oneLine(normalizeText(operation.summary, humanizeOperationId(operation.operationId) || titleCaseFromSlug(toSlug(`${method}-${route}`))));
   const parameters = extractParameters(spec, operation, pathItem);
   const endpointSlug = toSlug(`${method}-${route}`);
   const isDeprecated = operation.deprecated === true;
@@ -1049,16 +1267,18 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
   }
   const headerArgs = headerParams
     .filter((parameter) => !headersWrittenByDefault.has(parameter.name.toLowerCase()))
+    .filter((parameter) => parameter.required || !isPlaceholderValue(spec, parameter, buildParameterExampleValue(spec, operation, parameter)))
     .map((parameter) => {
       const example = buildParameterExampleValue(spec, operation, parameter);
-      const value = example === "value" ? `<${parameter.name}>` : String(example);
-      return `-H "${parameter.name}: ${value.replace(/(["\\$`])/g, "\\$1")}"`;
+      const name = headerName(parameter.name);
+      const value = isPlaceholderValue(spec, parameter, example) ? `<${name}>` : typeof example === "object" ? JSON.stringify(example) : String(example);
+      return `-H "${name}: ${shellText(value)}"`;
     });
   const requestBodyExample = buildRequestBodyExample(spec, operation);
   const requestBodySection = buildRequestBodySection(spec, operation);
   const exampleUrl = buildExampleUrl(spec, route, operation, pathItem);
   const curlArgs = [
-    `curl -X ${method.toUpperCase()} "${exampleUrl}"`,
+    `curl -X ${method.toUpperCase()} "${exampleUrl}"`, // safeUrl already removed shell characters
     ...credentialArgs,
     ...headerArgs,
     ...buildRequestBodyArgs(requestBodyExample)
@@ -1075,8 +1295,8 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
   const responseExampleSection = responseExample === null
     ? `This operation returns \u0000${successCode}\u0000 with no response body.`
     : typeof responseExample === "object"
-      ? `\u0000\u0000\u0000${responseExample.lang}\n${responseExample.text}\n\u0000\u0000\u0000`
-      : `\u0000\u0000\u0000json\n${responseExample}\n\u0000\u0000\u0000`;
+      ? fenced(responseExample.lang, responseExample.text)
+      : fenced("json", responseExample);
   const purpose = normalizeText(operation.description, summary);
   const lifecycleSection = isDeprecated
     ? `
@@ -1123,9 +1343,7 @@ ${requestBodySection}
 
 ## Request Example
 
-${requestExampleNote}${requestPruneNote}\u0000\u0000\u0000bash
-${requestExample}
-\u0000\u0000\u0000
+${requestExampleNote}${requestPruneNote}${fenced("bash", requestExample)}
 
 ## Response Example
 

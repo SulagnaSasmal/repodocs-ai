@@ -1,0 +1,42 @@
+openapi: 3.0.3
+info:
+  title: Shell injection probe
+  version: "1.0"
+  description: |
+    Links that must not stay live: [ref][r], [enc](&#106;avascript:alert(1)), [tab](java	script:alert(2)), [paren](javascript:alert((3))).
+
+    [r]: javascript:alert(4)
+servers:
+  - url: 'https://x.example"; touch PWNED_SERVER_QUOTE; echo "/$(touch PWNED_SUBST)/`touch PWNED_BACKTICK`'
+components:
+  securitySchemes:
+    key:
+      type: apiKey
+      in: header
+      name: 'X-Key"; touch PWNED_SCHEME_NAME; echo "'
+security:
+  - key: []
+paths:
+  /items:
+    post:
+      summary: "Create\nan item"
+      parameters:
+        - name: 'X-Trace"; touch PWNED_HEADER_NAME; echo "'
+          in: header
+          required: true
+          schema: { type: string, example: 'v"; touch PWNED_HEADER_VALUE; echo "$(touch PWNED_HEADER_SUBST)' }
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, example: '"; touch PWNED_QUERY; echo "' }
+      requestBody:
+        required: true
+        content:
+          'application/json"; touch PWNED_CONTENT_TYPE; echo "':
+            schema:
+              type: object
+              properties:
+                note: { type: string, example: "'; touch PWNED_BODY; echo '" }
+      responses:
+        "201":
+          description: Created

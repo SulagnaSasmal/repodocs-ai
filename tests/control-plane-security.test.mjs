@@ -106,7 +106,15 @@ describe.skipIf(!redisAvailable)("control plane security", () => {
     redisProcess?.kill("SIGTERM");
   });
 
-  it.each(["replace-me", "short-key"])("refuses to start with the bootstrap key '%s'", async (key) => {
+  it.each([
+    "replace-me",
+    "short-key",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "password1234567890123456789",
+    "changeme-changeme-changeme-123",
+    "replace-me-replace-me-replace-me",
+    "abcabcabcabcabcabcabcabcabcabc"
+  ])("refuses to start with the bootstrap key '%s'", async (key) => {
     const result = spawnSync(process.execPath, [serverScript], {
       cwd: repoRoot,
       env: { ...process.env, REDIS_URL: redisUrl, REPODOCS_CONTROL_PLANE_PORT: String(freePort()), REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY: key },
@@ -114,7 +122,7 @@ describe.skipIf(!redisAvailable)("control plane security", () => {
       timeout: 10000
     });
     expect(result.status).not.toBe(0);
-    expect(`${result.stdout}${result.stderr}`).toMatch(/placeholder|at least 24 characters/);
+    expect(`${result.stdout}${result.stderr}`).toMatch(/placeholder|at least 24 characters|guessable/);
   });
 
   describe("with no bootstrap key", () => {
@@ -130,6 +138,37 @@ describe.skipIf(!redisAvailable)("control plane security", () => {
       expect(response.status).toBe(200);
     });
 
+    it("refuses a cross-site request from a web page, even from this machine", async () => {
+      // What a malicious page can send without a CORS preflight: text/plain with its own Origin.
+      const fromPage = await fetch(`http://127.0.0.1:${server.port}/users`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain", Origin: "https://evil.example" },
+        body: JSON.stringify({ username: "mallory", role: "admin" })
+      });
+      expect(fromPage.status).toBe(403);
+      await fromPage.arrayBuffer();
+      const plainText = await fetch(`http://127.0.0.1:${server.port}/users`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ username: "mallory", role: "admin" })
+      });
+      expect(plainText.status).toBe(415);
+      await plainText.arrayBuffer();
+    });
+
+    it("refuses a Host that is not this machine, so DNS rebinding cannot read the API", async () => {
+      const { request } = await import("node:http");
+      const status = await new Promise((resolve, reject) => {
+        const req = request({ host: "127.0.0.1", port: server.port, path: "/jobs", headers: { Host: "rebind.evil.example" } }, (res) => {
+          res.resume();
+          resolve(res.statusCode);
+        });
+        req.on("error", reject);
+        req.end();
+      });
+      expect(status).toBe(421);
+    });
+
     it("does not treat a request forwarded by a local proxy as local", async () => {
       const response = await fetch(`http://127.0.0.1:${server.port}/jobs`, { headers: { "X-Forwarded-For": "203.0.113.9" } });
       expect(response.status).toBe(503);
@@ -139,10 +178,12 @@ describe.skipIf(!redisAvailable)("control plane security", () => {
     it.skipIf(!networkAddress)("refuses requests from other machines instead of letting them create an admin", async () => {
       const response = await fetch(`http://${networkAddress}:${server.port}/users`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: "mallory", role: "admin" })
       });
-      expect(response.status).toBe(503);
-      expect((await response.json()).error).toContain("Authentication is not configured");
+      // Refused either for the Host it names (421) or for coming from the network (503).
+      expect([421, 503]).toContain(response.status);
+      await response.arrayBuffer();
     });
   });
 

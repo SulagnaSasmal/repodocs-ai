@@ -4,6 +4,44 @@ This changelog tracks product-facing changes to RepoDocs AI.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.5] — 2026-11-28
+
+Fixes from the v1.2.4 fresh-agent release check, which used the Apideck CRM API, 175 deliberate breaks and 29 legitimate edits. v1.2.4 failed the run on 134 breaks; v1.2.5 fails it on 158 and warns on 12 more. See `.github/release-checks/2026-11-28-v1.2.4.md`.
+
+### Security
+
+- Curl examples are safe to paste into a shell whatever the spec contains: URLs percent-encoded, header names reduced to valid characters, values escaped.
+- `javascript:`, `vbscript:` and `data:` links are removed or flagged in every form: reference-style, entity-encoded, whitespace-split, nested parentheses.
+- Control plane: cross-origin requests that change something get 403 and non-JSON bodies 415, so a web page cannot create users or queue jobs; with no key, Host names other than localhost get 421, which stops DNS rebinding. Guessable bootstrap keys are refused.
+- The quality check fails `<object>`, `<embed>`, `<form>`, `<style>` and `<meta http-equiv>` in docs.
+
+### Added
+
+- The OpenAPI check reads the request example's method, headers, credentials, Content-Type, query value types and ranges, deepObject keys and path placeholders.
+- Example values are checked against minimum, maximum, length and format; required request fields at every depth; all the types of an `anyOf` or `oneOf`; Deprecated notes; header names in the authentication prose.
+- Errors for two docs in one folder for the same operation, an unclosed code fence, broken table rows, a missing table separator, a second H1, `[PLACEHOLDER]` and `todo:`.
+- Warnings for optional parameters and error codes a doc leaves out, required response fields an example leaves out, unexpected table headers, operations with no doc, and owners that could not be checked.
+- The Apideck CRM API as a ninth third-party fixture, a shell-injection fixture, and probe tests for every new check.
+
+### Changed
+
+- deepObject query parameters get one table row per key and are sent as `name[key]=value`.
+- Optional parameters with no example are left out of the curl instead of shown as `{name}`.
+- An API key sent in `Authorization` gets the prefix the spec describes, such as `Bearer`.
+- Notes for `Nullable`, `Minimum length` and `Maximum length`; `anyOf` reads "any of"; a note the description already states is not repeated.
+- The overview lists keys that must be sent together; endpoint docs show a one-line summary of each scheme.
+- Missing sections other than Response, and pages with no `##` headings, are warnings.
+- The validator prefers the spec in the doc's own folder, or the one whose server the example calls.
+
+### Fixed
+
+- `[object Object]` in the curl of list endpoints with object query parameters.
+- The bundled payments example failed against its own spec.
+- The response example was read from the error body when its fence lost its language.
+- Overview headings skipped levels; `<br />` and HTML comments showed as text; generated docs failed the markdownlint config `init` ships.
+- Pipes in parameter names, backticks in enum values, newlines in summaries and ```` ``` ```` inside JSON broke the Markdown.
+- Non-JSON request bodies were written as `--data-binary @<file>`, which a shell reads as a redirect.
+
 ## [1.2.4] — 2026-11-28
 
 Closes the items the 1.2.3 security audit left open. See `.github/release-checks/2026-11-28-security-audit.md`.
