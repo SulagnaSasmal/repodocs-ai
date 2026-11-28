@@ -349,7 +349,15 @@ function bootstrapKeyProblem(key) {
     return `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY must be at least ${MIN_BOOTSTRAP_KEY_LENGTH} characters. ${generate}`;
   }
   // Long but guessable: few distinct characters, or one short pattern repeated.
-  if (new Set(key).size < 10 || /^(.{1,8})\1+.{0,8}$/.test(key)) {
+  // Runs such as abcdef, 123456 or qwerty count as guessable too.
+  const rows = ["abcdefghijklmnopqrstuvwxyz", "0123456789", "qwertyuiop", "asdfghjkl", "zxcvbnm"];
+  const lowerKey = key.toLowerCase();
+  let sequential = 0;
+  for (let index = 1; index < lowerKey.length; index += 1) {
+    const pair = lowerKey.slice(index - 1, index + 1);
+    if (rows.some((row) => row.includes(pair) || row.includes([...pair].reverse().join("")))) sequential += 1;
+  }
+  if (new Set(key).size < 10 || /^(.{1,8})\1+.{0,8}$/.test(key) || sequential / Math.max(1, key.length - 1) >= 0.5) {
     return `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY looks guessable (too few distinct characters or a repeated pattern). ${generate}`;
   }
   return null;

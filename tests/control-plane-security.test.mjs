@@ -113,7 +113,9 @@ describe.skipIf(!redisAvailable)("control plane security", () => {
     "password1234567890123456789",
     "changeme-changeme-changeme-123",
     "replace-me-replace-me-replace-me",
-    "abcabcabcabcabcabcabcabcabcabc"
+    "abcabcabcabcabcabcabcabcabcabc",
+    "abcdefghijklmnopqrstuvwxyz0123",
+    "qwertyuiopasdfghjklzxcvbnm12345"
   ])("refuses to start with the bootstrap key '%s'", async (key) => {
     const result = spawnSync(process.execPath, [serverScript], {
       cwd: repoRoot,
