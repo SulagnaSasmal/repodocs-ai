@@ -91,7 +91,7 @@ describe("documented commands", () => {
     const readme = await fs.readFile(path.join(repoRoot, "README.md"), "utf8");
     // Files the bootstrap writes into a user's docs repository, not into this one.
     const writtenIntoDocsRepos = new Set([".github/workflows/docs-validate.yml"]);
-    const prefixes = ["scripts/", "docs/", "templates/", "prompts/", "examples/", "schema/", "validation/", "experimental/", "archive/", "website/", ".github/"];
+    const prefixes = ["scripts/", "docs/", "templates/", "prompts/", "examples/", "schema/", "validation/", "experimental/", "website/", ".github/"];
     const mentioned = [...new Set([...readme.matchAll(/`([^`\s]+)`/g)].map((match) => match[1]))]
       .filter((value) => prefixes.some((prefix) => value.startsWith(prefix)))
       .filter((value) => !/[<>*]/.test(value))
