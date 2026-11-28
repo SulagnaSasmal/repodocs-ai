@@ -49,6 +49,8 @@ curl -X GET "https://api.example.com/payments/v1/payments/pay_123" \
 
 ## Response Example
 
+Status: `200`
+
 ```json
 {
   "payment_id": "pay_123",

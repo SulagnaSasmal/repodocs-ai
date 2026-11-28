@@ -63,6 +63,8 @@ curl -X GET "https://api.startup-payments.example/v1/payments?status=completed&c
 
 ## Response Example
 
+Status: `200`
+
 ```json
 {
   "data": [

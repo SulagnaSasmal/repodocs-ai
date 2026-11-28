@@ -54,6 +54,8 @@ curl -X GET "https://api.startup-payments.example/v1/payments/pay_123" \
 
 ## Response Example
 
+Status: `200`
+
 ```json
 {
   "payment_id": "pay_123",
