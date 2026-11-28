@@ -48,6 +48,8 @@ async function startServer(env) {
       REPODOCS_CONTROL_PLANE_PORT: String(port),
       REPODOCS_CONTROL_PLANE_DATA_DIR: path.join(os.tmpdir(), `repodocs-cp-${port}`),
       REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY: "",
+      // High enough that the other tests never hit it; the rate-limit test sets its own.
+      REPODOCS_RATE_LIMIT_PER_MINUTE: "10000",
       ...env
     },
     stdio: ["ignore", "pipe", "pipe"]
@@ -78,7 +80,13 @@ async function statusOf(url, options) {
 }
 
 function stop(child) {
-  child.kill("SIGTERM");
+  if (child.exitCode !== null) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    child.once("exit", resolve);
+    child.kill("SIGTERM");
+  });
 }
 
 describe.skipIf(!redisAvailable)("control plane security", () => {
@@ -93,8 +101,8 @@ describe.skipIf(!redisAvailable)("control plane security", () => {
     await new Promise((resolve) => setTimeout(resolve, 500));
   });
 
-  afterAll(() => {
-    servers.forEach(stop);
+  afterAll(async () => {
+    await Promise.all(servers.map(stop));
     redisProcess?.kill("SIGTERM");
   });
 
@@ -120,6 +128,12 @@ describe.skipIf(!redisAvailable)("control plane security", () => {
     it("still serves requests from this machine, for local development", async () => {
       const response = await fetch(`http://127.0.0.1:${server.port}/jobs`);
       expect(response.status).toBe(200);
+    });
+
+    it("does not treat a request forwarded by a local proxy as local", async () => {
+      const response = await fetch(`http://127.0.0.1:${server.port}/jobs`, { headers: { "X-Forwarded-For": "203.0.113.9" } });
+      expect(response.status).toBe(503);
+      await response.arrayBuffer();
     });
 
     it.skipIf(!networkAddress)("refuses requests from other machines instead of letting them create an admin", async () => {
@@ -211,6 +225,68 @@ describe.skipIf(!redisAvailable)("control plane security", () => {
       }
       expect(statuses.slice(0, 10).every((status) => status === 401)).toBe(true);
       expect(statuses.at(-1)).toBe(429);
+    });
+  });
+
+  describe("isolation and shared limits", () => {
+    const key = crypto.randomBytes(24).toString("hex");
+    let first;
+    let second;
+    const asAdmin = { "X-API-Key": key, "Content-Type": "application/json" };
+
+    beforeAll(async () => {
+      await flushRedis();
+      // Two instances on one Redis, as in a multi-instance deployment.
+      const env = { REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY: key, REPODOCS_RATE_LIMIT_PER_MINUTE: "60", REPODOCS_TRUST_PROXY: "1" };
+      first = await startServer(env);
+      second = await startServer(env);
+    });
+    afterAll(() => Promise.all([stop(first.child), stop(second.child)]));
+
+    it("shows an operator only their own runs and the artifacts their scope allows", async () => {
+      const base = `http://127.0.0.1:${first.port}`;
+      const create = async (username, scope) => (await (await fetch(`${base}/users`, {
+        method: "POST", headers: asAdmin, body: JSON.stringify({ username, service_scope: scope })
+      })).json()).api_key;
+      const alice = await create("alice", "validate");
+      const bob = await create("bob", "analytics");
+
+      const queued = await (await fetch(`${base}/jobs/validate`, { method: "POST", headers: { "X-API-Key": alice } })).json();
+      const allRuns = (runs) => [...runs.active_runs, ...runs.queued_runs, ...runs.recent_runs].map((run) => run.id);
+
+      // The worker may be between taking the run off the queue and marking it
+      // running; wait until the run shows up somewhere.
+      let asAlice;
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        asAlice = await (await fetch(`${base}/runs`, { headers: { "X-API-Key": alice } })).json();
+        if (allRuns(asAlice).includes(queued.run.id)) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      const asBob = await (await fetch(`${base}/runs`, { headers: { "X-API-Key": bob } })).json();
+      const asAdminRuns = await (await fetch(`${base}/runs`, { headers: asAdmin })).json();
+      expect(allRuns(asAlice)).toContain(queued.run.id);
+      expect(allRuns(asBob)).not.toContain(queued.run.id);
+      expect(allRuns(asAdminRuns)).toContain(queued.run.id);
+
+      const bobJobs = await (await fetch(`${base}/jobs`, { headers: { "X-API-Key": bob } })).json();
+      expect(bobJobs.jobs).toEqual(["analytics"]);
+      const bobArtifacts = (await (await fetch(`${base}/artifacts`, { headers: { "X-API-Key": bob } })).json()).artifacts;
+      expect(bobArtifacts.every((artifact) => artifact.path === "analytics/output/report.json")).toBe(true);
+    });
+
+    it("counts the rate limit per client across instances, using the proxy's address when trusted", async () => {
+      // A client address no other test uses, so the count starts at zero.
+      const asClient = { ...asAdmin, "X-Forwarded-For": "198.51.100.7" };
+      const statuses = [];
+      for (let attempt = 0; attempt < 35; attempt += 1) {
+        statuses.push(await statusOf(`http://127.0.0.1:${first.port}/jobs`, { headers: asClient }));
+        statuses.push(await statusOf(`http://127.0.0.1:${second.port}/jobs`, { headers: asClient }));
+      }
+      // 70 requests split over two instances: neither alone passes 60, together they do.
+      expect(statuses.slice(0, 60).every((status) => status === 200)).toBe(true);
+      expect(statuses.slice(60)).toContain(429);
+      // Another client is not affected.
+      expect(await statusOf(`http://127.0.0.1:${first.port}/jobs`, { headers: { ...asAdmin, "X-Forwarded-For": "198.51.100.8" } })).toBe(200);
     });
   });
 });
