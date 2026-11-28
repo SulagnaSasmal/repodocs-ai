@@ -16,12 +16,15 @@ function scriptLinks(prose) {
   const targets = [
     ...[...prose.matchAll(/\]\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)/g)].map((match) => match[1]),
     ...[...prose.matchAll(/^\s{0,3}\[[^\]]+\]:\s*(\S+)/gm)].map((match) => match[1]),
-    ...[...prose.matchAll(/\bhref\s*=\s*["']?([^"'>]+)/gi)].map((match) => match[1])
+    // Attributes on real tags (a literal "<", not the escaped "&lt;").
+    // A quoted value runs to its closing quote: browsers drop tabs and newlines inside it ("java\nscript:").
+    ...[...prose.matchAll(/<[a-z][^>]*?\b(?:href|src|action|formaction|xlink:href|data|poster|background)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^"'>\s]+))/gi)].map((match) => match[1] ?? match[2] ?? match[3]),
+    // Autolinks: <javascript:...>
+    ...[...prose.matchAll(/<([a-z][a-z0-9+.-]*:[^>\s]*)>/gi)].map((match) => match[1])
   ];
   return targets.filter((target) => {
     const decoded = String(target)
-      .replace(/&amp;/gi, "&")
-    .replace(/&#x([0-9a-f]+);?/gi, (match, hex) => String.fromCodePoint(parseInt(hex, 16)))
+      .replace(/&#x([0-9a-f]+);?/gi, (match, hex) => String.fromCodePoint(parseInt(hex, 16)))
       .replace(/&#(\d+);?/g, (match, decimal) => String.fromCodePoint(Number(decimal)))
       .replace(/&colon;/gi, ":")
       .replace(/&tab;|&newline;/gi, "")
@@ -60,8 +63,14 @@ function markdownProblems(content) {
       table = null;
       return;
     }
-    if (/^#\s/.test(line)) {
-      h1Count += 1;
+    if (/^#\s/.test(line) || (/^=+\s*$/.test(line) && index > 0 && /\S/.test(lines[index - 1]) && !/^\s*\|/.test(lines[index - 1]))) {
+      h1Count += 1; // ATX "# Title" or setext "Title" underlined with ===
+    }
+    if (/^#{1,6}[A-Za-z]/.test(line)) {
+      problems.push(`line ${index + 1} ("${line.slice(0, 30)}") needs a space after the #, or it renders as text`);
+    }
+    if (/^ {4,}#{1,6}\s/.test(line) && (index === 0 || !/\S/.test(lines[index - 1]))) {
+      problems.push(`line ${index + 1} is a heading indented four spaces, which renders as a code block`);
     }
     if (!/^\s*\|.*\|\s*$/.test(line)) {
       table = null;
@@ -77,6 +86,9 @@ function markdownProblems(content) {
       if (!/^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(line)) {
         problems.push(`the table starting "${table.header.slice(0, 40)}" has no separator row (| --- |) under its header, so it renders as plain text`);
         table.broken = true;
+      } else if (cells !== table.cells) {
+        problems.push(`the table starting "${table.header.slice(0, 40)}" has ${table.cells} header cells but ${cells} in its separator row, so it renders as plain text`);
+        table.broken = true;
       }
       return;
     }
@@ -86,6 +98,12 @@ function markdownProblems(content) {
   });
   if (openFence) {
     problems.push(`the code fence opened on line ${openLine} is never closed, so the rest of the page renders as code`);
+  }
+  // An HTML comment left open hides everything after it.
+  const outsideCode = body.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[`~]*[ \t]*$/gm, "").replace(/`+[^`\n]*?`+/g, "");
+  const lastOpen = outsideCode.lastIndexOf("<!--");
+  if (lastOpen !== -1 && outsideCode.indexOf("-->", lastOpen) === -1) {
+    problems.push(`an HTML comment (<!--) is never closed, so the rest of the page does not render`);
   }
   if (h1Count > 1) {
     problems.push(`has ${h1Count} H1 headings; a page should have one`);
@@ -99,11 +117,18 @@ const placeholderPatterns = [
   /GET\|POST\|PUT\|PATCH\|DELETE/g,
   /Replace with actual [^.\n]+/g,
   /\bTODO\b/g,
-  /\bTBD\b/g,
+  /\bTBD\b/gi,
   /\bFIXME\b/g,
-  /<insert[^>]*>/gi,
-  /\{\{[^}]*\}\}/g,
   /\blorem ipsum\b/gi
+];
+
+// Checked only in prose: in a code block, {{name}} is template syntax and
+// <insert> may be a real tag in an example.
+const prosePlaceholderPatterns = [
+  /<insert[^>]*>/i,
+  /<your[-_ ][^>\n]{1,40}>/i,
+  /\{\{[^}]*\}\}/,
+  /\binsert (?:a |an |the |your )?(?:description|text|content|value|example|details?|summary|name)(?: here)?\b/i
 ];
 
 const validHttpMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
@@ -185,7 +210,8 @@ async function loadTemplateText() {
     const component = frontmatter?.[1].match(/^component:\s*"?([^"\n]+?)"?\s*$/m)?.[1];
     if (component && component !== "endpoint" && component !== "api") {
       // A component two templates share says nothing about which one a doc used.
-      headingsByComponent.set(component, headingsByComponent.has(component) ? null : text.split(/\r?\n/).filter((line) => /^## /.test(line)).map((line) => line.slice(3).trim()));
+      // Several templates may share a component; keep them all and match by overlap.
+      headingsByComponent.set(component, [...(headingsByComponent.get(component) || []), text.split(/\r?\n/).filter((line) => /^## /.test(line)).map((line) => line.slice(3).trim())]);
     }
     if (description) {
       descriptions.add(description.trim());
@@ -306,7 +332,7 @@ async function main() {
 
     // Placeholders a person leaves while drafting, in prose.
     // ("XXX" is not one: it is an ISO currency code and a common format mask.)
-    for (const [pattern, label] of [[/\[(?:PLACEHOLDER|TBD|TODO|INSERT[^\]]*)\]/i, null], [/\btodo:/i, null]]) {
+    for (const [pattern, label] of [[/\[(?:PLACEHOLDER|TBD|TODO|INSERT[^\]]*)\]/i, null], [/\btodo:/i, null], ...prosePlaceholderPatterns.map((pattern) => [pattern, null])]) {
       const found = prose.match(pattern);
       if (found) {
         errors.push(`${relativePath}: unresolved placeholder content detected (${label || found[0]})`);
@@ -316,6 +342,11 @@ async function main() {
     // Section structure. A short page may have none; it is worth a look, not a failure.
     if (!content.includes("## ")) {
       warnings.push(`${relativePath}: no ## section headings`);
+    }
+    // The page title: Docusaurus can fall back on the frontmatter title, other renderers cannot.
+    const titleBody = content.replace(/^---\n[\s\S]*?\n---\n/, "").replace(/^(`{3,}|~{3,})[\s\S]*?^\1[`~]*\s*$/gm, "");
+    if (!/^ {0,3}# \S/m.test(titleBody) && !/^[^\n#>|-][^\n]*\n {0,3}=+\s*$/m.test(titleBody)) {
+      warnings.push(`${relativePath}: no # title heading`);
     }
 
     // Markdown that renders differently from how it reads.
@@ -365,7 +396,8 @@ async function main() {
       // Generated docs take their statuses from the spec, which the OpenAPI
       // check compares; this heuristic is for hand-written docs.
       const generated = /^description:\s*"Generated endpoint documentation for /m.test(content);
-      for (const rule of generated ? [] : suspiciousStatusRules) {
+      // With --specs, the OpenAPI check compares statuses with the spec, so the heuristic stays quiet.
+      for (const rule of generated || targets.specPaths?.length > 0 ? [] : suspiciousStatusRules) {
         if (rule.methodPattern.test(content) && rule.statusPattern.test(content)) {
           warnings.push(`${relativePath}: ${rule.message}`);
         }
@@ -394,8 +426,13 @@ async function main() {
       [/<form[\s>]/i, "<form>"],
       [/<style[\s>]|<link\s[^>]*rel\s*=/i, "<style> or <link>"],
       [/<base\s/i, "<base>"],
-      [/<[a-z][^>\n]*\son[a-z]+\s*=/i, "an inline event handler (on...=)"]
+      [/<[a-z][^>\n]*[\s/"']on[a-z]+\s*=/i, "an inline event handler (on...=)"],
+      [/<[a-z][^>\n]*\sstyle\s*=\s*["'][^"']*url\s*\(/i, "a style attribute that loads a URL"]
     ].filter(([pattern]) => pattern.test(prose)).map(([, label]) => label);
+    // An image from another site loads when the page is viewed (a tracking pixel).
+    if (/<img\b[^>]*\bsrc\s*=\s*["']?(?:https?:)?\/\//i.test(prose)) {
+      warnings.push(`${relativePath}: an <img> loads from another site when the page is viewed; host images with the docs`);
+    }
     if (scriptLinks(prose).length > 0) {
       unsafeHtml.push("a javascript:, vbscript: or data: link");
     }
@@ -412,15 +449,19 @@ async function main() {
 
     // Hand-written docs: the sections of the template for this component are all present.
     const component = content.match(/^component:\s*"?([^"\n]+?)"?\s*$/m)?.[1];
-    const templateHeadings = templateText.headingsByComponent?.get(component);
+    const docHeadings = new Set(content.split(/\r?\n/).filter((line) => /^## /.test(line)).map((line) => line.slice(3).trim()));
+    const templateHeadings = (templateText.headingsByComponent?.get(component) || [])
+      .map((candidate) => ({ candidate, overlap: candidate.filter((heading) => docHeadings.has(heading)).length }))
+      .sort((left, right) => right.overlap - left.overlap)[0]?.candidate;
     if (templateHeadings && !/^description:\s*"Generated /m.test(content)) {
-      const headings = new Set(content.split(/\r?\n/).filter((line) => /^## /.test(line)).map((line) => line.slice(3).trim()));
+      const headings = docHeadings;
       const missing = templateHeadings.filter((heading) => !headings.has(heading));
       // Only a doc that follows the template for at least half its sections
       // was written from it; any other doc with the same component is a
       // different kind of page.
       const followed = templateHeadings.length - missing.length;
-      if (missing.length > 0 && followed >= Math.ceil(templateHeadings.length / 2)) {
+      // At least a third of the template's sections, and two or more.
+      if (missing.length > 0 && followed >= Math.max(2, Math.ceil(templateHeadings.length / 3))) {
         warnings.push(`${relativePath}: missing section(s) from the ${component} template: ${missing.join(", ")}`);
       }
     }
