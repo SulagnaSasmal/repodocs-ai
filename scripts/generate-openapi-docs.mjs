@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as yaml from "js-yaml";
+import { conformValue, exampleFor, includeProperty as includeForMode, resolveSchema as resolveSharedSchema } from "./lib/schema-values.mjs";
+import { splitByFences } from "./lib/markdown-blocks.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,20 +26,16 @@ function normalizeText(value, fallback = "") {
 function escapeUntrustedHtml(markdown) {
   const frontmatter = markdown.match(/^---\n[\s\S]*?\n---\n/)?.[0] || "";
   const body = markdown.slice(frontmatter.length);
-  // Fenced blocks of three or more backticks, closed by a fence at least as long.
-  const segments = body.split(/(^(`{3,})[^\n]*\n[\s\S]*?^\2`*[ \t]*$)/m);
+  // Fenced blocks, found line by line: a regular expression backtracks on a
+  // long run of backticks in a spec description.
   const out = [];
-  for (let index = 0; index < segments.length; index += 1) {
-    const segment = segments[index];
-    if (index % 3 === 1) {
+  for (const piece of splitByFences(body)) {
+    if (piece.code) {
       // A fence copied from spec prose with no language gets "text" (MD040).
-      out.push(segment.replace(/^(`{3,})[ \t]*\n/, "$1text\n")); // fenced code block
+      out.push(piece.text.replace(/^(`{3,}|~{3,})[ \t]*\n/, "$1text\n"));
       continue;
     }
-    if (index % 3 === 2) {
-      continue; // the captured fence itself
-    }
-    out.push(segment
+    out.push(piece.text
       .split(/(`+[^`\n]*?`+)/)
       .map((part, partIndex) => (partIndex % 2 === 1 ? part : escapeProse(part)))
       .join("")
@@ -114,7 +112,10 @@ function stringifyYamlLines(fields) {
       continue;
     }
 
-    lines.push(`${key}: ${JSON.stringify(value)}`);
+    // Values come from the spec: no HTML tags or script URLs, which a docs
+    // theme could put into a page title or a link.
+    const clean = typeof value === "string" ? value.replace(/<[^<>]{0,500}>/g, "").replace(/<(?=[a-z/!])/gi, "").replace(/\b(?:javascript|vbscript)\s*:/gi, "").replace(/\bdata:(?=[a-z]+\/)/gi, "") : value;
+    lines.push(`${key}: ${JSON.stringify(clean)}`);
   }
 
   lines.push("---", "");
@@ -158,15 +159,98 @@ function resolveReference(spec, value, depth = 0) {
 
 // Table cells must stay on one line and must not contain an unescaped pipe.
 function tableCell(text) {
-  return cleanSpecText(text).replace(/\r?\n+/g, " ").replace(/(?<!\\)\|/g, "\\|").replace(/\s{2,}/g, " ").trim();
+  return normaliseEmphasis(cleanSpecText(text)
+    // A list inside one cell reads as bullets, not as emphasis markers (MD037).
+    .replace(/(^|\n)[ \t]*(?:[-*+]|\d+[.)])[ \t]+/g, "$1• ")
+    .replace(/^• /, "")
+    .replace(/\r?\n+/g, " ")
+    .replace(/(?<!\\)\|/g, "\\|")
+    .replace(/\s{2,}/g, " ")
+    .trim());
 }
 
 // Spec prose often carries HTML line breaks and comments meant for other
 // renderers (ReDoc, Swagger UI). Breaks become spaces; comments are dropped.
+// Formatting tags such as <p>, <b> and <a href> become Markdown, so they
+// read as formatting rather than as escaped tag text. Any other tag is
+// escaped later, outside code, by escapeUntrustedHtml.
 function cleanSpecText(text) {
   return String(text ?? "")
     .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<br\s*\/?>/gi, " ");
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/?p(?:\s[^<>]{0,500})?>/gi, "\n\n")
+    .replace(/<(b|strong)>([^<]*)<\/\1>/gi, "**$2**")
+    .replace(/<(i|em)>([^<]*)<\/\1>/gi, "*$2*")
+    .replace(/<code>([^<`]*)<\/code>/gi, "`$1`")
+    .replace(/<a\s[^<>]{0,500}?href\s*=\s*["'](https?:\/\/[^"'\s<>]+)["'][^<>]{0,500}>([^<]*)<\/a>/gi, (match, url, label) => (label.trim() ? `[${label.trim()}](${url})` : `<${url}>`))
+    .replace(/<li(?:\s[^<>]{0,500})?>\s*/gi, "\n- ")
+    .replace(/<\/li>/gi, "")
+    .replace(/<\/?(?:ul|ol)(?:\s[^<>]{0,500})?>/gi, "\n")
+    // A link to an anchor on the spec's own page (ReDoc's #operationId) has
+    // nowhere to go in a generated doc; keep its text (MD051).
+    .replace(/\[([^\]\n]+)\]\(#[^)\s]*\)/g, "$1")
+    .replace(/^\n+|\n+$/g, "")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
+// One emphasis style (asterisks), and a lone "*" escaped, so spec prose that
+// mixes _x_ and *x* or leaves a stray asterisk passes MD037, MD049 and MD050.
+// snake_case words and code spans are left alone.
+function normaliseEmphasis(text) {
+  return String(text).split(/(`+[^`\n]*?`+)/).map((part, index) => (index % 2 === 1 ? part : part
+    .replace(/(^|[\s([])__(?=\S)([^_\n]*?\S)__(?=$|[\s.,;:!?)\]])/g, "$1**$2**")
+    .replace(/(^|[\s([])_(?=\S)([^_\n]*?\S)_(?=$|[\s.,;:!?)\]])/g, "$1*$2*")
+    .replace(/\\\*|\*\*(?=\S)([^*\n]*?\S)\*\*|\*(?=[^\s*])([^*\n]*?[^\s*\\])\*|\*/g, (match) => (match === "*" ? "\\*" : match)))).join("");
+}
+
+// Spec Markdown, made to pass the markdownlint rules the docs are checked
+// with: one list marker, and blank lines around headings, fences and lists.
+function tidyMarkdown(text) {
+  const lines = String(text).split("\n");
+  const out = [];
+  let fence = null;
+  const isList = (line) => /^\s*(?:[-*+]|\d+[.)])\s+/.test(line);
+  const blankBefore = () => {
+    if (out.length > 0 && out[out.length - 1].trim() !== "") out.push("");
+  };
+  for (let index = 0; index < lines.length; index += 1) {
+    let line = fence ? lines[index] : lines[index].replace(/[ \t]+$/, "");
+    const fenceMatch = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (fence) {
+      out.push(line);
+      if (fenceMatch && fenceMatch[1][0] === fence[0] && fenceMatch[1].length >= fence.length) {
+        fence = null;
+        if (index + 1 < lines.length && lines[index + 1].trim() !== "") out.push("");
+      }
+      continue;
+    }
+    if (fenceMatch) {
+      blankBefore();
+      fence = fenceMatch[1];
+      out.push(line);
+      continue;
+    }
+    if (/^#{1,6}\s/.test(line)) {
+      blankBefore();
+      out.push(line);
+      if (index + 1 < lines.length && lines[index + 1].trim() !== "") out.push("");
+      continue;
+    }
+    if (isList(line)) {
+      line = line.replace(/^(\s*)[*+](\s+)/, "$1-$2");
+      if (out.length > 0 && out[out.length - 1].trim() !== "" && !isList(out[out.length - 1]) && !/^\s+\S/.test(out[out.length - 1])) out.push("");
+      out.push(line);
+      const next = lines[index + 1];
+      if (next !== undefined && next.trim() !== "" && !isList(next) && !/^\s+\S/.test(next)) out.push("");
+      continue;
+    }
+    out.push(normaliseEmphasis(line));
+  }
+  // A fence the spec never closes would turn the rest of the doc into code.
+  if (fence) {
+    out.push(fence);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
 // A code span that survives backticks inside the value.
@@ -202,7 +286,7 @@ function localDate() {
 // Spec descriptions can contain their own Markdown headings; demote them so
 // they cannot add a second "## Authentication" to a generated doc.
 function demoteHeadings(text) {
-  const source = cleanSpecText(text);
+  const source = tidyMarkdown(cleanSpecText(text));
   const levels = [...source.matchAll(/^(#{1,6})\s+/gm)].map((match) => match[1].length);
   if (levels.length === 0) {
     return source;
@@ -213,92 +297,8 @@ function demoteHeadings(text) {
   return source.replace(/^(#{1,6})(\s+)/gm, (match, hashes, space) => `${"#".repeat(Math.min(Math.max(hashes.length + shift, 3), 6))}${space}`);
 }
 
-function resolveSchema(spec, schema, depth = 0) {
-  const resolved = resolveReference(spec, schema);
-  if (!resolved || depth > 10 || !Array.isArray(resolved.allOf) || resolved.allOf.length === 0) {
-    return resolved;
-  }
-
-  // Flatten allOf so properties and required fields from every part are kept.
-  const merged = { ...resolved, properties: { ...(resolved.properties || {}) }, required: [...(resolved.required || [])] };
-  delete merged.allOf;
-  for (const part of resolved.allOf) {
-    const candidate = resolveSchema(spec, part, depth + 1) || {};
-    Object.assign(merged.properties, candidate.properties || {});
-    merged.required.push(...(candidate.required || []));
-    if (!merged.type && candidate.type) {
-      merged.type = candidate.type;
-    }
-    if (!merged.description && candidate.description) {
-      merged.description = candidate.description;
-    }
-  }
-  merged.required = [...new Set(merged.required)];
-  if (!merged.type && Object.keys(merged.properties).length > 0) {
-    merged.type = "object";
-  }
-  return merged;
-}
-
-// Removes fields a schema does not define from an example, at every depth,
-// and returns their paths. Objects with no listed properties, or that allow
-// extra properties, are left alone.
-// A numeric string where the schema says integer or number becomes that
-// number, and its path is recorded in removed.converted.
-function coerceNumber(spec, container, key, schema, path, removed) {
-  const resolved = resolveSchema(spec, schema);
-  const types = [].concat(resolved?.type || []);
-  const raw = container[key];
-  if (typeof raw !== "string" || types.includes("string")) {
-    return;
-  }
-  const pattern = types.includes("number") ? /^-?\d+(?:\.\d+)?$/ : types.includes("integer") ? /^-?\d+$/ : null;
-  if (pattern && pattern.test(raw) && Number.isSafeInteger(Math.trunc(Number(raw)))) {
-    container[key] = Number(raw);
-    removed.converted ||= [];
-    if (!removed.converted.some((entry) => entry.path === path)) {
-      removed.converted.push({ path, type: types.includes("number") ? "number" : "integer" });
-    }
-  }
-}
-
-function pruneToSchema(spec, value, schema, prefix = "", removed = [], depth = 0) {
-  const resolved = resolveSchema(spec, schema);
-  if (!resolved || depth > 8 || value === null || typeof value !== "object") {
-    return removed;
-  }
-  const variants = !resolved.properties ? (resolved.oneOf || resolved.anyOf) : null;
-  if (Array.isArray(variants) && variants.length > 0) {
-    // Prune against the variant that already fits best.
-    const shapes = variants.map((variant) => resolveSchema(spec, variant)).filter(Boolean);
-    const fit = (shape) => Object.keys(value).filter((key) => key in (shape.properties || {})).length;
-    const best = shapes.reduce((winner, shape) => (fit(shape) > fit(winner) ? shape : winner), shapes[0]);
-    return best ? pruneToSchema(spec, value, best, prefix, removed, depth + 1) : removed;
-  }
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => {
-      coerceNumber(spec, value, index, resolved.items, `${prefix}[]`, removed);
-      pruneToSchema(spec, item, resolved.items, `${prefix}[]`, removed, depth + 1);
-    });
-    return removed;
-  }
-  const properties = resolved.properties || {};
-  if (Object.keys(properties).length === 0 || resolved.additionalProperties) {
-    return removed;
-  }
-  for (const key of Object.keys(value)) {
-    const childPath = prefix ? `${prefix}.${key}` : key;
-    if (!(key in properties)) {
-      delete value[key];
-      if (!removed.includes(childPath)) {
-        removed.push(childPath);
-      }
-    } else {
-      coerceNumber(spec, value, key, properties[key], childPath, removed);
-      pruneToSchema(spec, value[key], properties[key], childPath, removed, depth + 1);
-    }
-  }
-  return removed;
+function resolveSchema(spec, schema) {
+  return resolveSharedSchema(spec, schema);
 }
 
 // Picks the media type to document: JSON first, then form, multipart, or
@@ -331,7 +331,7 @@ function requestMedia(operation) {
 
 // The example a media type gives: its example, its first named example, or
 // one built from its schema.
-function mediaExample(spec, media, mode = "any") {
+function mediaExample(spec, media, mode = "any", changes = null) {
   if (!media) {
     return undefined;
   }
@@ -343,7 +343,15 @@ function mediaExample(spec, media, mode = "any") {
     return firstExample.value;
   }
   const schema = resolveSchema(spec, media.schema);
-  return schema ? buildExampleValue(spec, schema, mode) : undefined;
+  // An example on the schema itself is still the spec's own example: return
+  // it as written, so the caller corrects it and says what changed.
+  if (schema?.example !== undefined) {
+    return schema.example;
+  }
+  if (Array.isArray(schema?.examples) && schema.examples.length > 0) {
+    return schema.examples[0];
+  }
+  return schema ? exampleFor(spec, schema, mode, 0, "", changes) : undefined;
 }
 
 // The first server URL, with server variables replaced by their defaults.
@@ -412,121 +420,12 @@ function schemaTypeLabel(spec, schema) {
 // mode "request" leaves out readOnly properties (the server sets them);
 // mode "response" leaves out writeOnly properties (the server never returns them).
 function includeProperty(spec, propertySchema, mode) {
-  const resolved = resolveSchema(spec, propertySchema);
-  if (mode === "request" && resolved?.readOnly) {
-    return false;
-  }
-  if (mode === "response" && resolved?.writeOnly) {
-    return false;
-  }
-  return true;
+  return includeForMode(spec, propertySchema, mode);
 }
 
-function buildExampleValue(spec, schema, mode = "any", depth = 0) {
-  const resolved = resolveSchema(spec, schema);
-  if (!resolved || depth > 8) {
-    return "value";
-  }
-
-  if (resolved.example !== undefined) {
-    return resolved.example;
-  }
-
-  // OpenAPI 3.1 schemas list examples in an array.
-  if (Array.isArray(resolved.examples) && resolved.examples.length > 0) {
-    return resolved.examples[0];
-  }
-
-  if (resolved.default !== undefined) {
-    return resolved.default;
-  }
-
-  if (resolved.const !== undefined) {
-    return resolved.const;
-  }
-
-  if (Array.isArray(resolved.enum) && resolved.enum.length > 0) {
-    return resolved.enum[0];
-  }
-
-  if (Array.isArray(resolved.oneOf) && resolved.oneOf.length > 0) {
-    return buildExampleValue(spec, resolved.oneOf[0], mode, depth + 1);
-  }
-
-  if (Array.isArray(resolved.anyOf) && resolved.anyOf.length > 0) {
-    return buildExampleValue(spec, resolved.anyOf[0], mode, depth + 1);
-  }
-
-  if (Array.isArray(resolved.allOf) && resolved.allOf.length > 0) {
-    const merged = resolved.allOf.reduce((accumulator, item) => {
-      const candidate = resolveSchema(spec, item);
-      if (candidate?.properties) {
-        accumulator.properties = { ...(accumulator.properties || {}), ...candidate.properties };
-      }
-      return { ...accumulator, ...candidate };
-    }, {});
-    return buildExampleValue(spec, merged, mode, depth + 1);
-  }
-
-  // OpenAPI 3.1 type arrays such as ["integer", "null"]: show the real type.
-  const types = [].concat(resolved.type || []);
-  const type = types.find((candidate) => candidate !== "null") || (types.includes("null") ? "null" : undefined);
-  if (type === "null") {
-    return null;
-  }
-
-  if (type === "object" || (!type && resolved.properties)) {
-    const payload = {};
-    for (const [name, propertySchema] of Object.entries(resolved.properties || {})) {
-      if (includeProperty(spec, propertySchema, mode)) {
-        payload[name] = buildExampleValue(spec, propertySchema, mode, depth + 1);
-      }
-    }
-    return payload;
-  }
-
-  if (type === "array") {
-    return [buildExampleValue(spec, resolved.items, mode, depth + 1)];
-  }
-
-  // A value of the right shape for common formats, so the example passes
-  // the format check instead of showing "value".
-  const formatExamples = {
-    date: "2026-01-01",
-    "date-time": "2026-01-01T00:00:00Z",
-    time: "12:00:00",
-    email: "user@example.com",
-    "idn-email": "user@example.com",
-    uuid: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-    uri: "https://example.com",
-    url: "https://example.com",
-    "uri-reference": "https://example.com",
-    hostname: "example.com",
-    ipv4: "192.0.2.1",
-    ipv6: "2001:db8::1",
-    byte: "U3dhZ2dlciByb2Nrcw=="
-  };
-  if ((type === "string" || !type) && formatExamples[resolved.format]) {
-    return formatExamples[resolved.format];
-  }
-
-  switch (type) {
-    case "integer":
-    case "number": {
-      // Inside the schema's range.
-      let number = 1;
-      if (typeof resolved.minimum === "number") number = Math.max(number, resolved.minimum);
-      if (typeof resolved.exclusiveMinimum === "number") number = Math.max(number, Math.floor(resolved.exclusiveMinimum) + 1);
-      if (typeof resolved.maximum === "number") number = Math.min(number, resolved.maximum);
-      return number;
-    }
-    case "boolean":
-      return true;
-    default: {
-      const minLength = typeof resolved.minLength === "number" ? resolved.minLength : 0;
-      return minLength > 5 ? "value".padEnd(minLength, "x") : "value";
-    }
-  }
+// An example value that fits the schema: see exampleFor in lib/schema-values.mjs.
+function buildExampleValue(spec, schema, mode = "any") {
+  return exampleFor(spec, schema, mode);
 }
 
 function buildConstraintNotes(spec, schema, ownerDescription = "") {
@@ -538,6 +437,10 @@ function buildConstraintNotes(spec, schema, ownerDescription = "") {
   const notes = [];
   if (Array.isArray(resolved.enum) && resolved.enum.length > 0) {
     notes.push(`Allowed values: ${resolved.enum.map((value) => codeSpan(value)).join(", ")}`);
+  }
+  const itemSchema = resolved.type === "array" ? resolveSchema(spec, resolved.items) : null;
+  if (Array.isArray(itemSchema?.enum) && itemSchema.enum.length > 0) {
+    notes.push(`Allowed values for each item: ${itemSchema.enum.map((value) => codeSpan(value)).join(", ")}`);
   }
   if (resolved.nullable === true || (Array.isArray(resolved.type) && resolved.type.includes("null"))) {
     notes.push("Nullable");
@@ -556,6 +459,9 @@ function buildConstraintNotes(spec, schema, ownerDescription = "") {
   }
   if (resolved.format) {
     notes.push(`Format: ${resolved.format}`);
+  }
+  if (typeof resolved.pattern === "string" && resolved.pattern.length <= 200) {
+    notes.push(`Pattern: ${codeSpan(resolved.pattern)}`);
   }
   if (resolved.minimum !== undefined) {
     notes.push(`Minimum: ${resolved.minimum}`);
@@ -670,7 +576,7 @@ function summarizeSecuritySchemes(spec, securityRequirements, { brief = false } 
       }
 
       if (scheme.type === "oauth2") {
-        const scopeText = Array.isArray(scopes) && scopes.length > 0 ? ` with scopes: ${scopes.join(", ")}` : "";
+        const scopeText = Array.isArray(scopes) && scopes.length > 0 ? ` (scopes: ${scopes.map((scope) => codeSpan(scope)).join(", ")})` : "";
         summaries.push(withDescription(`OAuth 2.0${scopeText}`));
         continue;
       }
@@ -690,13 +596,13 @@ function summarizeSecuritySchemes(spec, securityRequirements, { brief = false } 
   return [...new Set(summaries)];
 }
 
-function buildAuthenticationText(spec, operation) {
+function buildAuthenticationText(spec, operation, pathItem = null) {
   const securityRequirements = Array.isArray(operation.security)
     ? operation.security
     : (Array.isArray(spec.security) ? spec.security : []);
 
   if (securityRequirements.length === 0) {
-    return noSecurityText(spec, extractParameters(spec, operation, spec.paths?.[Object.keys(spec.paths || {}).find((route) => Object.values(spec.paths[route] || {}).includes(operation))]));
+    return noSecurityText(spec, extractParameters(spec, operation, pathItem || {}));
   }
 
   const summaries = summarizeSecuritySchemes(spec, securityRequirements, { brief: true });
@@ -722,10 +628,41 @@ function noSecurityText(spec, parameters) {
     : "No authentication requirements are defined in the OpenAPI specification.";
 }
 
+function allOperations(spec) {
+  return Object.entries(spec.paths || {}).flatMap(([route, pathItem]) =>
+    ["get", "post", "put", "patch", "delete", "head", "options"].filter((method) => pathItem?.[method]).map((method) => ({ route, method, operation: pathItem[method], pathItem })));
+}
+
 function buildOverviewAuthentication(spec) {
-  const securityRequirements = Array.isArray(spec.security) && spec.security.length > 0
-    ? spec.security
-    : Object.keys(spec.components?.securitySchemes || {}).map((schemeName) => ({ [schemeName]: [] }));
+  // The global requirements, then any other requirement an operation sets
+  // (such as HTTP Basic on a token endpoint), so no scheme goes unmentioned.
+  const operations = allOperations(spec);
+  const operationRequirements = operations.flatMap(({ operation }) => (Array.isArray(operation.security) ? operation.security : []));
+  const seenRequirements = new Set();
+  const securityRequirements = [
+    ...(Array.isArray(spec.security) && spec.security.length > 0 ? spec.security : []),
+    ...operationRequirements
+  ].filter((requirement) => requirement && Object.keys(requirement).length > 0).filter((requirement) => {
+    const key = JSON.stringify(Object.keys(requirement).sort());
+    if (seenRequirements.has(key)) return false;
+    seenRequirements.add(key);
+    return true;
+  });
+  if (securityRequirements.length === 0) {
+    securityRequirements.push(...Object.keys(spec.components?.securitySchemes || {}).map((schemeName) => ({ [schemeName]: [] })));
+  }
+  const openOperations = operations.filter(({ operation }) => Array.isArray(operation.security) && (operation.security.length === 0 || operation.security.some((requirement) => Object.keys(requirement || {}).length === 0)));
+  const openNote = securityRequirements.length > 0 && openOperations.length > 0
+    ? `\n\n${openOperations.length === 1 ? "One operation needs" : `${openOperations.length} operations need`} no authentication: ${openOperations.slice(0, 6).map(({ method, route }) => codeSpan(`${method.toUpperCase()} ${route}`)).join(", ")}${openOperations.length > 6 ? ` and ${openOperations.length - 6} more` : ""}.`
+    : "";
+  // "Any one of these" is true only when every operation accepts the same choices.
+  const signature = (requirements) => JSON.stringify((requirements || []).filter((requirement) => Object.keys(requirement || {}).length > 0).map((requirement) => Object.keys(requirement).sort().join("+")).sort());
+  const signatures = new Set(operations.map(({ operation }) => signature(Array.isArray(operation.security) ? operation.security : spec.security)).filter((value) => value !== "[]"));
+  const mixed = signatures.size > 1;
+  return buildOverviewAuthenticationText(spec, securityRequirements, mixed) + openNote;
+}
+
+function buildOverviewAuthenticationText(spec, securityRequirements, mixed = false) {
   if (securityRequirements.length === 0) {
     const allParameters = Object.entries(spec.paths || {}).flatMap(([route, pathItem]) =>
       ["get", "post", "put", "patch", "delete"].filter((method) => pathItem?.[method]).flatMap((method) => extractParameters(spec, pathItem[method], pathItem)));
@@ -738,7 +675,7 @@ function buildOverviewAuthentication(spec) {
   const sentence = (text) => (text.includes("\n- ") ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : `${text.charAt(0).toUpperCase()}${text.slice(1).replace(/[.\s]+$/, "")}.`);
   return summaries.length === 1
     ? sentence(summaries[0])
-    : `Use any one of these:\n\n${summaries.map((entry) => `- ${sentence(entry)}`).join("\n")}`;
+    : `${mixed ? "The API uses these schemes; each endpoint's Authentication Requirements section says which one it needs:" : "Use any one of these:"}\n\n${summaries.map((entry) => `- ${sentence(entry)}`).join("\n")}`;
 }
 
 // The credential arguments a curl example needs, based on the spec's security
@@ -864,7 +801,12 @@ function buildSplitParameterSections(spec, parameters) {
     ? null
     : `| Name | Type | Required | Description |\n| --- | --- | --- | --- |\n${buildParameterRows(spec, headerParams)}`;
 
-  return { pathSection, querySection, headerSection, headerParams };
+  const cookieParams = parameters.filter((parameter) => parameter.in === "cookie");
+  const cookieSection = cookieParams.length === 0
+    ? null
+    : `| Name | Type | Required | Description |\n| --- | --- | --- | --- |\n${buildParameterRows(spec, cookieParams)}`;
+
+  return { pathSection, querySection, headerSection, headerParams, cookieSection, cookieParams };
 }
 
 function refName(schema) {
@@ -872,10 +814,17 @@ function refName(schema) {
 }
 
 // One row per request field, plus nested object fields (parent.child) and
-// fields of arrays of objects (parent[].child), two levels deep. readOnly
+// fields of arrays of objects (parent[].child), six levels deep. readOnly
 // fields are left out because the server sets them.
-function bodyFieldRows(spec, schema, requestBodyIsRequired, prefix = "", depth = 0, optionLabel = "") {
+function bodyFieldRows(spec, schema, requestBodyIsRequired, prefix = "", depth = 0, optionLabel = "", ancestors = new Set(), seen = new Set()) {
   const resolved = resolveSchema(spec, schema);
+  // A schema that contains itself (a tree, a linked list) is listed once,
+  // not once per level, and no row appears twice.
+  const identity = typeof schema?.$ref === "string" ? schema.$ref : schema;
+  if (ancestors.has(identity)) {
+    return [];
+  }
+  const nextAncestors = new Set(ancestors).add(identity);
   const properties = resolved?.properties || {};
   const requiredFields = new Set(Array.isArray(resolved?.required) ? resolved.required : []);
   const hasRequiredList = requiredFields.size > 0;
@@ -886,18 +835,22 @@ function bodyFieldRows(spec, schema, requestBodyIsRequired, prefix = "", depth =
       continue;
     }
     const fullName = prefix ? `${prefix}.${name}` : name;
+    if (seen.has(`${optionLabel}|${fullName}`)) {
+      continue;
+    }
+    seen.add(`${optionLabel}|${fullName}`);
     const required = prefix
       ? (requiredFields.has(name) ? "yes" : "no")
       : formatRequiredValue(requiredFields.has(name), requestBodyIsRequired, hasRequiredList);
     rows.push(`| ${fullName} | ${typeCell(spec, propertySchema)} | ${required} | ${optionLabel}${buildSchemaDescription(spec, propertySchema)} |`);
 
-    if (depth >= 2) {
+    if (depth >= 5) {
       continue;
     }
     const child = resolveSchema(spec, propertySchema);
     const choices = child && !child.properties ? (child.oneOf || child.anyOf) : null;
     if (child?.properties) {
-      rows.push(...bodyFieldRows(spec, child, false, fullName, depth + 1, optionLabel));
+      rows.push(...bodyFieldRows(spec, propertySchema, false, fullName, depth + 1, optionLabel, nextAncestors, seen));
     } else if (Array.isArray(choices) && choices.length > 0) {
       // A field that takes one of several object shapes: list each shape's
       // fields, labelled with the option they belong to.
@@ -905,12 +858,12 @@ function bodyFieldRows(spec, schema, requestBodyIsRequired, prefix = "", depth =
         const resolvedChoice = resolveSchema(spec, choice);
         const name = normalizeText(resolvedChoice?.title) || refName(choice);
         const label = `Option ${index + 1} of ${choices.length}${name ? ` (${name})` : ""}. `;
-        rows.push(...bodyFieldRows(spec, resolvedChoice, false, fullName, depth + 1, label));
+        rows.push(...bodyFieldRows(spec, choice, false, fullName, depth + 1, label, nextAncestors, seen));
       });
     } else if (child?.type === "array") {
       const item = resolveSchema(spec, child.items);
       if (item?.properties) {
-        rows.push(...bodyFieldRows(spec, item, false, `${fullName}[]`, depth + 1, optionLabel));
+        rows.push(...bodyFieldRows(spec, child.items, false, `${fullName}[]`, depth + 1, optionLabel, nextAncestors, seen));
       }
     }
   }
@@ -927,7 +880,8 @@ function buildRequestBodySection(spec, operation) {
   const requestBodyIsRequired = requestBodyOf(operation)?.required === true;
   const header = "| Field | Type | Required | Description |\n| --- | --- | --- | --- |";
   const intro = requestBodyIsRequired ? "Request body is required." : "Request body is optional.";
-  const typeNote = media.type !== "application/json" ? ` Content type: \`${media.type}\`.` : "";
+  const alternates = otherMediaTypes(requestBodyOf(operation)?.content, media.type);
+  const typeNote = `${media.type !== "application/json" ? ` Content type: \`${media.type}\`.` : ""}${alternates.length ? ` The spec also accepts ${alternates.map((type) => `\`${type}\``).join(" or ")} for this body; the fields and example below are for \`${media.type}\`.` : ""}`;
 
   const variants = schema && !schema.properties ? (schema.oneOf || schema.anyOf) : null;
   if (Array.isArray(variants) && variants.length > 0) {
@@ -967,37 +921,20 @@ function buildRequestBodyExample(spec, operation) {
   if (!media) {
     return null;
   }
-  let value = mediaExample(spec, media.media, "request");
+  const built = [];
+  let value = mediaExample(spec, media.media, "request", built);
   if (value === undefined) {
     return null;
   }
 
-  // A spec's own example can leave out required fields. Add them from the
-  // schema, using the shape the example is closest to, and say so in the doc.
-  const addedFields = [];
-  const schema = resolveSchema(spec, media.media.schema);
-  if (value && typeof value === "object" && !Array.isArray(value) && schema) {
-    const variants = !schema.properties ? (schema.oneOf || schema.anyOf) : null;
-    const shapes = (Array.isArray(variants) && variants.length > 0 ? variants : [schema]).map((shape) => resolveSchema(spec, shape)).filter(Boolean);
-    const missingFor = (shape) => (shape.required || []).filter((key) => !(key in value) && shape.properties?.[key]);
-    const closest = shapes.reduce((best, shape) => (missingFor(shape).length < missingFor(best).length ? shape : best), shapes[0]);
-    if (closest) {
-      const missing = missingFor(closest);
-      if (missing.length > 0) {
-        value = { ...value };
-        for (const key of missing) {
-          value[key] = buildExampleValue(spec, closest.properties[key], "request");
-          addedFields.push(key);
-        }
-      }
-    }
+  // A spec's own example can break its own schema: fields it does not define,
+  // readOnly fields, wrong types, values too long, required fields left out.
+  // It is corrected, and the doc says what changed.
+  let changes = built;
+  if (media.media.schema) {
+    ({ value, changes } = conformValue(spec, structuredClone(value), media.media.schema, "request", 0, "", built));
   }
-  let removedFields = [];
-  if (value && typeof value === "object") {
-    value = structuredClone(value);
-    removedFields = pruneToSchema(spec, value, media.media.schema);
-  }
-  return { kind: media.kind, type: media.type, value, addedFields, removedFields, schema: media.media.schema, encoding: media.media.encoding };
+  return { kind: media.kind, type: media.type, value, changes, schema: media.media.schema, encoding: media.media.encoding };
 }
 
 function shellQuote(value) {
@@ -1030,7 +967,7 @@ function buildRequestBodyArgs(body, spec = null) {
   if (body.kind === "form") {
     return [
       `-H "Content-Type: ${shellText(body.type)}"`,
-      ...fields.map(([name, value]) => `--data-urlencode "${shellQuote(name)}=${shellQuote(fieldText(value))}"`)
+      ...fields.map(([name, value]) => `--data-urlencode "${formFieldName(name)}=${shellText(fieldText(value))}"`)
     ];
   }
   if (body.kind === "multipart") {
@@ -1058,29 +995,70 @@ function buildResponseExample(spec, operation) {
   if (!media) {
     return null;
   }
-  const original = mediaExample(spec, media.media, "response");
+  const built = [];
+  const original = mediaExample(spec, media.media, "response", built);
   if (original === undefined) {
     return JSON.stringify({ status: statusCode, note: "Needs SME input" }, null, 2);
   }
-  if (media.kind !== "json" && typeof original === "string") {
-    return { lang: "text", text: original };
+  if (media.kind !== "json") {
+    // A CSV, XML or file response is not JSON; showing an invented JSON body
+    // would be wrong, and the JSON check would compare it as if it were real.
+    return typeof original === "string"
+      ? { lang: "text", text: original.replace(/\s+$/, "") }
+      : { lang: "prose", text: `The response body is \u0000${media.type}\u0000. The spec gives no example of it: Needs SME input.` };
   }
-  const value = structuredClone(original);
-  const removed = pruneToSchema(spec, value, media.media.schema);
-  return { lang: "json", text: JSON.stringify(value, null, 2), removed };
+  const { value, changes } = media.media.schema
+    ? conformValue(spec, structuredClone(original), media.media.schema, "response", 0, "", built)
+    : { value: original, changes: built };
+  return { lang: "json", text: JSON.stringify(value, null, 2), changes };
 }
 
-function undefinedFieldsNote(fields) {
-  const converted = fields?.converted || [];
-  const convertedNote = converted.length === 0
-    ? ""
-    : `The spec's own example gives ${converted.slice(0, 8).map((entry) => `\u0000${entry.path}\u0000`).join(", ")}${converted.length > 8 ? ` and ${converted.length - 8} more` : ""} as ${converted.length === 1 ? "a string" : "strings"}, but ${converted.length === 1 ? "its schema says" : "their schemas say"} ${[...new Set(converted.map((entry) => entry.type))].join(" or ")}, so ${converted.length === 1 ? "it is" : "they are"} shown as ${converted.length === 1 ? "a number" : "numbers"} here.\n\n`;
-  if (!fields?.length) {
-    return convertedNote;
+// What was changed in the spec's own example, in a few sentences.
+function exampleChangesNote(changes, which = "example") {
+  if (!changes?.length) {
+    return "";
   }
-  const shown = fields.slice(0, 8).map((field) => `\u0000${field}\u0000`).join(", ");
-  const more = fields.length > 8 ? ` and ${fields.length - 8} more` : "";
-  return `The spec's own example also shows ${fields.length === 1 ? "a field" : "fields"} its schema does not define (${shown}${more}). ${fields.length === 1 ? "It is" : "They are"} left out here.\n\n${convertedNote}`;
+  const list = (entries) => `${entries.slice(0, 8).map((entry) => `\u0000${entry.path}\u0000`).join(", ")}${entries.length > 8 ? ` and ${entries.length - 8} more` : ""}`;
+  const plural = (entries, one, many) => (entries.length === 1 ? one : many);
+  const unique = (entries) => entries.filter((entry, index) => entries.findIndex((other) => other.path === entry.path && other.action === entry.action) === index);
+  const of = (action, reason) => unique(changes.filter((entry) => entry.action === action && (reason === undefined || entry.reason === reason)));
+  const sentences = [];
+  const added = of("added");
+  if (added.length) {
+    sentences.push(`The spec's own ${which} leaves out required ${plural(added, "field", "fields")} ${list(added)}. ${plural(added, "It is", "They are")} added below from the schema.`);
+  }
+  const undefinedFields = of("removed", "undefined");
+  if (undefinedFields.length) {
+    sentences.push(`The spec's own example also shows ${plural(undefinedFields, "a field", "fields")} its schema does not define (${list(undefinedFields)}). ${plural(undefinedFields, "It is", "They are")} left out here.`);
+  }
+  const readOnly = of("removed", "readOnly");
+  if (readOnly.length) {
+    sentences.push(`The spec's own ${which} sends readOnly ${plural(readOnly, "field", "fields")} ${list(readOnly)}, which the server sets. ${plural(readOnly, "It is", "They are")} left out here.`);
+  }
+  const writeOnly = of("removed", "writeOnly");
+  if (writeOnly.length) {
+    sentences.push(`The spec's own ${which} shows writeOnly ${plural(writeOnly, "field", "fields")} ${list(writeOnly)}, which the server never returns. ${plural(writeOnly, "It is", "They are")} left out here.`);
+  }
+  // Conversions grouped by what they were and what the schema says.
+  const converted = of("converted");
+  const groups = new Map();
+  for (const entry of converted) {
+    const match = /^was an? (\S+); the schema says (.+)$/.exec(entry.reason);
+    const key = match ? `${match[1]}|${match[2].split(" or ")[0]}` : entry.reason;
+    groups.set(key, [...(groups.get(key) || []), entry]);
+  }
+  for (const [key, entries] of groups) {
+    const [from, to] = key.includes("|") ? key.split("|") : [null, null];
+    sentences.push(from
+      ? `The spec's own example gives ${list(entries)} as ${plural(entries, `a ${from}`, `${from}s`)}, but ${plural(entries, "its schema says", "their schemas say")} ${to}, so ${plural(entries, "it is", "they are")} shown as ${plural(entries, `a ${to}`, `${to}s`)} here.`
+      : `The spec's own example gives ${list(entries)} in a form its schema does not allow (${entries[0].reason}); ${plural(entries, "it is", "they are")} converted here.`);
+  }
+  const replaced = of("replaced");
+  if (replaced.length) {
+    const reasons = replaced.slice(0, 8).map((entry) => `\u0000${entry.path}\u0000 ${entry.reason}`).join("; ");
+    sentences.push(`Some values in the spec's own example break its own schema: ${reasons}${replaced.length > 8 ? `; and ${replaced.length - 8} more` : ""}. ${plural(replaced, "It is", "They are")} replaced here with ${plural(replaced, "a value", "values")} that fit; confirm with an SME.`);
+  }
+  return `${sentences.join("\n\n")}\n\n`;
 }
 
 function findNamedPropertyExample(spec, schema, propertyName) {
@@ -1115,12 +1093,14 @@ function findNamedPropertyExample(spec, schema, propertyName) {
 }
 
 function buildParameterExampleValue(spec, operation, parameter) {
+  // The spec's own parameter example, brought in line with its schema.
+  const fitted = (value) => (parameter.schema ? conformValue(spec, structuredClone(value), parameter.schema, "request").value : value);
   if (parameter.example !== undefined) {
-    return parameter.example;
+    return fitted(parameter.example);
   }
   const namedExample = parameter.examples ? resolveReference(spec, Object.values(parameter.examples)[0]) : undefined;
   if (namedExample?.value !== undefined) {
-    return namedExample.value;
+    return fitted(namedExample.value);
   }
 
   const schemaExample = buildExampleValue(spec, parameter.schema);
@@ -1155,7 +1135,7 @@ function buildErrorSection(spec, operation) {
   }
 
   const rows = responseEntries
-    .map(([code, response]) => `| ${code} | ${normalizeText(response.description, "Needs SME input").replace(/\|/g, "\\|").replace(/\n+/g, " ")} |`)
+    .map(([code, response]) => `| ${code} | ${tableCell(normalizeText(response.description, "Needs SME input"))} |`)
     .join("\n");
   const table = `| Code | Description |\n| --- | --- |\n${rows}`;
 
@@ -1164,10 +1144,11 @@ function buildErrorSection(spec, operation) {
     return table;
   }
   const media = pickMedia(withBody[1].content);
-  const example = mediaExample(spec, media.media, "response");
-  if (example === undefined || media.kind !== "json") {
+  const original = mediaExample(spec, media.media, "response");
+  if (original === undefined || media.kind !== "json") {
     return table;
   }
+  const example = media.media.schema ? conformValue(spec, structuredClone(original), media.media.schema, "response").value : original;
   return `${table}\n\nError response body (\u0000${withBody[0]}\u0000):\n\n${fenced("json", JSON.stringify(example, null, 2))}`;
 }
 
@@ -1239,8 +1220,10 @@ function buildExampleUrl(spec, route, operation, pathItem) {
 // The URL goes inside double quotes in a shell command. Characters the shell
 // would act on there, and any whitespace, are percent-encoded, so a crafted
 // server URL cannot end the string or run a command.
+// Square brackets are encoded too: curl treats them as a glob range and
+// fails on name[key]=value when the example is pasted as written.
 function safeUrl(url) {
-  return String(url).replace(/[\s"`$\\!]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
+  return String(url).replace(/[\s"`$\\![\]]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
 }
 
 // Text placed inside a double-quoted shell argument: no line breaks, and the
@@ -1332,8 +1315,69 @@ ${formatOverviewValue(spec.info?.["x-example-use-case"])}
 `.replace(/\u0000/g, "`");
 }
 
+// Content types a body can also be sent or returned as, besides the one documented.
+function otherMediaTypes(content, documentedType) {
+  return Object.keys(content || {}).filter((type) => type !== documentedType);
+}
+
+function successEntry(operation) {
+  return Object.entries(operation.responses || {}).find(([code]) => code.startsWith("2")) || null;
+}
+
+// Headers the success response sets, such as Link for paging.
+function responseHeadersText(spec, response) {
+  const headers = Object.entries(resolveReference(spec, response)?.headers || {});
+  if (headers.length === 0) {
+    return "";
+  }
+  const items = headers.map(([name, header]) => {
+    const resolved = resolveReference(spec, header) || {};
+    const description = oneLine(normalizeText(resolved.description));
+    return `- ${codeSpan(name)}${description ? `: ${description.replace(/[.\s]+$/, "")}.` : ""}`;
+  });
+  return `Response headers:\n\n${items.join("\n")}\n\n`;
+}
+
+// Callbacks the API makes to a URL the client provides.
+function callbacksSection(spec, operation) {
+  const callbacks = Object.entries(operation.callbacks || {});
+  if (callbacks.length === 0) {
+    return "";
+  }
+  const items = [];
+  for (const [name, callback] of callbacks) {
+    for (const [expression, pathItem] of Object.entries(resolveReference(spec, callback) || {})) {
+      for (const method of ["get", "post", "put", "patch", "delete"]) {
+        const callbackOperation = pathItem?.[method];
+        if (!callbackOperation) continue;
+        const summary = oneLine(normalizeText(callbackOperation.summary || callbackOperation.description));
+        items.push(`- ${codeSpan(name)}: the API sends ${codeSpan(method.toUpperCase())} to ${codeSpan(expression)}${summary ? `. ${summary.replace(/[.\s]+$/, "")}.` : "."}`);
+      }
+    }
+  }
+  return items.length === 0 ? "" : `\n\n## Callbacks\n\n${items.join("\n")}`;
+}
+
+// Cookies a request sends: an API key kept in a cookie, and cookie parameters.
+function cookieArg(spec, operation, cookieParams, credentialArgs) {
+  const pairs = [];
+  for (const arg of credentialArgs) {
+    const match = /^--cookie "([^"]*)"$/.exec(arg);
+    if (match) pairs.push(match[1]);
+  }
+  for (const parameter of cookieParams) {
+    const example = buildParameterExampleValue(spec, operation, parameter);
+    const placeholder = isPlaceholderValue(spec, parameter, example);
+    if (placeholder && !parameter.required) continue;
+    const value = placeholder ? `<${headerName(parameter.name)}>` : typeof example === "object" ? JSON.stringify(example) : String(example);
+    pairs.push(`${headerName(parameter.name)}=${shellText(value).replace(/;/g, "%3B")}`);
+  }
+  return pairs.length === 0 ? [] : [`--cookie "${pairs.join("; ")}"`];
+}
+
 function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, method, operation, pathItem) {
-  const summary = oneLine(normalizeText(operation.summary, humanizeOperationId(operation.operationId) || titleCaseFromSlug(toSlug(`${method}-${route}`))));
+  // No trailing full stop: the summary becomes the page heading (MD026).
+  const summary = oneLine(normalizeText(operation.summary, humanizeOperationId(operation.operationId) || titleCaseFromSlug(toSlug(`${method}-${route}`)))).replace(/[.,;:!]+$/, "");
   const parameters = extractParameters(spec, operation, pathItem);
   const endpointSlug = toSlug(`${method}-${route}`);
   const isDeprecated = operation.deprecated === true;
@@ -1343,7 +1387,7 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
   const migrationGuide = normalizeText(operation["x-migration-guide"]);
   const securityImpact = pickAllowedValue(normalizeText(operation["x-security-impact"] || spec.info?.["x-security-impact"]), new Set(["low", "medium", "high"]), "medium");
   const frontmatter = stringifyYamlLines({
-    title: `${summary.replace(/<[^>]*>/g, "").trim() || summary}`,
+    title: `${summary.replace(/<[^<>]{0,500}>/g, "").trim() || summary}`,
     description: `Generated endpoint documentation for ${method.toUpperCase()} ${route}`,
     service: serviceName,
     component: "endpoint",
@@ -1363,7 +1407,7 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
       : {})
   });
 
-  const { pathSection, querySection, headerSection, headerParams } = buildSplitParameterSections(spec, parameters);
+  const { pathSection, querySection, headerSection, headerParams, cookieSection, cookieParams } = buildSplitParameterSections(spec, parameters);
   // Skip a header parameter only when the credentials or the request body
   // already write that header, so it never appears twice.
   const credentialArgs = buildCredentialArgs(spec, operation);
@@ -1386,21 +1430,30 @@ function buildEndpointDocument(spec, serviceName, owner, apiVersion, route, meth
   const requestBodyExample = buildRequestBodyExample(spec, operation);
   const requestBodySection = buildRequestBodySection(spec, operation);
   const exampleUrl = buildExampleUrl(spec, route, operation, pathItem);
+  const success = successEntry(operation);
+  const successMedia = success ? pickMedia(resolveReference(spec, success[1])?.content) : null;
+  // A CSV or file download names the type it wants back.
+  const acceptArgs = successMedia && successMedia.kind !== "json" && !headerParams.some((parameter) => parameter.name.toLowerCase() === "accept")
+    ? [`-H "Accept: ${shellText(successMedia.type)}"`]
+    : [];
   const curlArgs = [
     `curl -X ${method.toUpperCase()} "${exampleUrl}"`, // safeUrl already removed shell characters
-    ...credentialArgs,
+    ...credentialArgs.filter((arg) => !arg.startsWith("--cookie ")),
+    ...cookieArg(spec, operation, cookieParams, credentialArgs),
     ...headerArgs,
+    ...acceptArgs,
     ...buildRequestBodyArgs(requestBodyExample, spec)
   ];
   const requestExample = curlArgs.join(" \\\n  ");
-  const requestExampleNote = requestBodyExample?.addedFields?.length
-    ? `The spec's own request example leaves out required ${requestBodyExample.addedFields.length === 1 ? "field" : "fields"} ${requestBodyExample.addedFields.map((field) => `\u0000${field}\u0000`).join(", ")}. ${requestBodyExample.addedFields.length === 1 ? "It is" : "They are"} added below from the schema.\n\n`
-    : "";
-  const requestPruneNote = undefinedFieldsNote(requestBodyExample?.removedFields);
-  const authText = buildAuthenticationText(spec, operation);
+  const requestExampleNote = exampleChangesNote(requestBodyExample?.changes, "request example");
+  const requestPruneNote = "";
+  const authText = buildAuthenticationText(spec, operation, pathItem);
   const responseExample = buildResponseExample(spec, operation);
   const successCode = Object.keys(operation.responses || {}).find((code) => code.startsWith("2"));
-  const statusLine = successCode ? `Status: \u0000${successCode}\u0000\n\n` : "";
+  const otherResponseTypes = successMedia ? otherMediaTypes(resolveReference(spec, success[1])?.content, successMedia.type) : [];
+  const statusLine = successCode
+    ? `Status: \u0000${successCode}\u0000\n\n${otherResponseTypes.length ? `The response can also be ${otherResponseTypes.map((type) => codeSpan(type)).join(" or ")}; the example shows ${codeSpan(successMedia.type)}.\n\n` : ""}${responseHeadersText(spec, success[1])}`
+    : "";
   const responseExampleSection = responseExample === null
     ? `This operation returns \u0000${successCode}\u0000 with no response body.`
     : typeof responseExample === "object"
@@ -1447,7 +1500,7 @@ ${pathSection}
 
 ${querySection}
 
-${headerSection ? `## Header Parameters\n\n${headerSection}\n\n` : ""}## Request Body
+${headerSection ? `## Header Parameters\n\n${headerSection}\n\n` : ""}${cookieSection ? `## Cookie Parameters\n\n${cookieSection}\n\n` : ""}## Request Body
 
 ${requestBodySection}
 
@@ -1457,11 +1510,11 @@ ${requestExampleNote}${requestPruneNote}${fenced("bash", requestExample)}
 
 ## Response Example
 
-${responseExample === null ? "" : statusLine}${undefinedFieldsNote(responseExample?.removed)}${responseExampleSection}
+${responseExample === null ? "" : statusLine}${exampleChangesNote(responseExample?.changes, "response example")}${responseExampleSection}
 
 ## Error Codes
 
-${buildErrorSection(spec, operation)}
+${buildErrorSection(spec, operation)}${callbacksSection(spec, operation)}
 
 ## Performance Notes
 
@@ -1474,17 +1527,68 @@ async function ensureDirectory(directory) {
   await fs.mkdir(directory, { recursive: true });
 }
 
-async function parseSpec(inputPath) {
-  const raw = await fs.readFile(inputPath, "utf8");
-  try {
-    if (inputPath.endsWith(".json")) {
-      return JSON.parse(raw);
+// Limits on what a spec may cost to read. A YAML alias bomb is a few lines
+// that expand to billions of values; a value count with aliases counted at
+// every use stops it before the generator walks the tree.
+const MAX_SPEC_BYTES = Number(process.env.REPODOCS_MAX_SPEC_BYTES || 50 * 1024 * 1024);
+const MAX_SPEC_VALUES = Number(process.env.REPODOCS_MAX_SPEC_VALUES || 5_000_000);
+
+function checkSpecSize(spec, source) {
+  let count = 0;
+  const stack = [spec];
+  while (stack.length > 0) {
+    const value = stack.pop();
+    count += 1;
+    if (count > MAX_SPEC_VALUES) {
+      throw new Error(`Could not read ${source}: it expands to more than ${MAX_SPEC_VALUES} values, which usually means YAML aliases repeated many times over. Set REPODOCS_MAX_SPEC_VALUES to allow a larger spec.`);
     }
+    if (value && typeof value === "object") {
+      for (const child of Array.isArray(value) ? value : Object.values(value)) {
+        stack.push(child);
+      }
+    }
+  }
+}
+
+async function parseSpec(inputPath) {
+  const stats = await fs.stat(inputPath);
+  if (stats.size > MAX_SPEC_BYTES) {
+    throw new Error(`Could not read ${inputPath}: it is ${stats.size} bytes, more than the ${MAX_SPEC_BYTES}-byte limit. Set REPODOCS_MAX_SPEC_BYTES to allow a larger spec.`);
+  }
+  const raw = await fs.readFile(inputPath, "utf8");
+  let spec;
+  try {
     // CORE_SCHEMA keeps values like 2018-01-01 10:00:00 as written instead of
     // turning them into local-time Date objects.
-    return yaml.load(raw, { schema: yaml.CORE_SCHEMA });
+    spec = inputPath.endsWith(".json") ? JSON.parse(raw) : yaml.load(raw, { schema: yaml.CORE_SCHEMA });
   } catch (error) {
     throw new Error(`Could not read ${inputPath}: ${String(error.message).split("\n")[0]}`);
+  }
+  checkSpecSize(spec, inputPath);
+  return spec;
+}
+
+// Output is never written through a symbolic link: a link planted in the
+// output folder (by a pull request, say) could point the generator at files
+// anywhere on the machine.
+async function refuseSymlink(target) {
+  try {
+    if ((await fs.lstat(target)).isSymbolicLink()) {
+      throw new Error(`${target} is a symbolic link; refusing to write through it. Remove the link or choose another output folder.`);
+    }
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+}
+
+async function writeOutput(filePath, content) {
+  await refuseSymlink(filePath);
+  const { O_WRONLY, O_CREAT, O_TRUNC, O_NOFOLLOW = 0 } = (await import("node:fs")).constants;
+  const handle = await fs.open(filePath, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0o644);
+  try {
+    await handle.writeFile(content, "utf8");
+  } finally {
+    await handle.close();
   }
 }
 
@@ -1524,10 +1628,15 @@ async function main() {
     : path.join(baseDirectory, "generated", serviceName);
   const endpointsDirectory = path.join(outputDirectory, "endpoints");
 
+  await refuseSymlink(outputDirectory);
+  await refuseSymlink(endpointsDirectory);
   await ensureDirectory(endpointsDirectory);
 
   const apiOverview = buildApiOverview(spec, serviceName, owner);
-  await fs.writeFile(path.join(outputDirectory, "api-overview.md"), escapeUntrustedHtml(apiOverview), "utf8");
+  await writeOutput(path.join(outputDirectory, "api-overview.md"), escapeUntrustedHtml(apiOverview));
+  // Two routes can make the same file name (/a-b and /a/b both become
+  // a-b); the second gets a number instead of overwriting the first.
+  const usedSlugs = new Map();
 
   const supportedMethods = ["get", "post", "put", "patch", "delete"];
   for (const [route, pathItem] of Object.entries(spec.paths || {})) {
@@ -1547,7 +1656,15 @@ async function main() {
         pathItem
       );
 
-      await fs.writeFile(path.join(endpointsDirectory, `${endpointSlug}.md`), escapeUntrustedHtml(content), "utf8");
+      let fileSlug = endpointSlug;
+      for (let suffix = 2; usedSlugs.has(fileSlug); suffix += 1) {
+        fileSlug = `${endpointSlug}-${suffix}`;
+      }
+      if (fileSlug !== endpointSlug) {
+        console.warn(`${method.toUpperCase()} ${route} would share the file name ${endpointSlug}.md with ${usedSlugs.get(endpointSlug)}; writing it as ${fileSlug}.md`);
+      }
+      usedSlugs.set(fileSlug, `${method.toUpperCase()} ${route}`);
+      await writeOutput(path.join(endpointsDirectory, `${fileSlug}.md`), escapeUntrustedHtml(content));
     }
   }
 
@@ -1556,6 +1673,8 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(String(error?.message || "").startsWith("Could not read") ? error.message : error);
+  // A plain message for problems the user can fix; a stack only for bugs.
+  const expected = /^(Could not read|.* is a symbolic link)/.test(String(error?.message || ""));
+  console.error(expected ? error.message : error);
   process.exit(1);
 });

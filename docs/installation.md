@@ -13,11 +13,11 @@ Install the `repodocs-ai` command, set up a docs repository, generate docs from 
 ## Install
 
 ```bash
-npm install -g github:SulagnaSasmal/repodocs-ai#v1.2.6
+npm install -g github:SulagnaSasmal/repodocs-ai#v1.2.7
 repodocs-ai --version
 ```
 
-To run a command once without installing, use `npx --yes github:SulagnaSasmal/repodocs-ai#v1.2.6 <command>`. Run `repodocs-ai help` for every command. Paths resolve from the folder you run the command in.
+To run a command once without installing, use `npx --yes github:SulagnaSasmal/repodocs-ai#v1.2.7 <command>`. Run `repodocs-ai help` for every command. Paths resolve from the folder you run the command in.
 
 ## Set Up a Docs Repository
 
@@ -61,7 +61,7 @@ Each check reports PASS, WARN, FAIL or SKIP and names the folder it checked. The
 
 ## Turn On CI
 
-Push `company-docs` to GitHub. The workflow in `.github/workflows/docs-validate.yml` runs on every pull request and on every push to `main`. It validates `generated/` and `docs/` against `openapi/`, with the same RepoDocs AI version that created the repository. It fails until there is at least one Markdown doc to check. To pin an exact commit instead of a release tag, replace `#v1.2.6` (or whichever version) in the workflow's `npx` line with the commit SHA.
+Push `company-docs` to GitHub. The workflow in `.github/workflows/docs-validate.yml` runs on every pull request and on every push to `main`. It validates `generated/` and `docs/` against `openapi/`, with the same RepoDocs AI version that created the repository. It fails until there is at least one Markdown doc to check. To pin an exact commit instead of a release tag, replace `#v1.2.7` (or whichever version) in the workflow's `npx` line with the commit SHA.
 
 ## Work on RepoDocs AI Itself
 

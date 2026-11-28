@@ -67,13 +67,13 @@ Include:
 
 If you deploy the RepoDocs AI hosted control plane:
 
-1. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY` to a random value of at least 24 characters, for example `openssl rand -hex 24`. The server refuses to start with a shorter key, a key containing a placeholder word such as `replace-me` or `password`, or a guessable one (fewer than 10 distinct characters, a short pattern repeated, or a run along the keyboard, the alphabet or the digits, such as `qwertyuiop…`).
-2. Until a key is set, the server answers only requests from the same machine, addressed to `localhost` or `127.0.0.1`; other requests get 503, and other Host names get 421, so a site that rebinds its DNS name to this machine cannot read the API. Never put it on a public address without a key.
+1. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY` to a random value of at least 24 characters, for example `openssl rand -hex 24`. The server refuses to start with a shorter key, a key containing a placeholder word such as `replace-me` or `password`, or a guessable one: common password words or the product's own name, words joined by separators, the same character six times running, any six characters repeated, fewer than 10 distinct characters, or runs along the keyboard, the alphabet or the digits, such as `qwertyuiop…`. About one random hex key in ten thousand trips these rules by chance; generate another. The key's hint is not stored, so `/users` shows no part of it.
+2. Until a key is set, the server answers only requests from the same machine, addressed to `localhost` or `127.0.0.1`; other requests get 503, and other Host names get 421, so a site that rebinds its DNS name to this machine cannot read the API. Never put it on a public address without a key, and never behind a reverse proxy without one: a proxy on the same machine also connects over loopback, and one that adds no forwarding headers (nginx's `proxy_pass` defaults, for example) looks exactly like a local caller. The server refuses to start with `REPODOCS_TRUST_PROXY=1` and no key. Once any user exists, a key is always required: revoking or disabling keys never reopens the no-key mode.
 3. Requests that change something are refused from any other origin (403), and their bodies must be JSON (415), so a web page open in the same browser cannot create users or queue jobs.
-4. Give operators a `service_scope`: a comma-separated list of the job names they may run, matched exactly.
-5. Rotate API keys with the `/users/:id/keys` endpoint, and revoke keys you no longer use. The last active admin cannot be demoted or disabled.
+4. Give operators a `service_scope`: a comma-separated list of the job names they may run, matched exactly. An operator with no scope can run no jobs. User names are unique regardless of case, so `Admin` cannot sit beside `admin`.
+5. Rotate API keys with the `/users/:id/keys` endpoint, and revoke keys you no longer use. The last active admin cannot be demoted or disabled, and the last working admin key cannot be revoked. Changes to users and keys are serialised through a lock in Redis, so a revocation cannot be undone by requests that use the key at the same moment, even across several instances.
 6. Protect Redis with a password and keep it off public networks. The compose stack requires `REDIS_PASSWORD` and does not publish the Redis port.
-7. Put the control plane behind HTTPS. It sends security headers on every response and a strict Content-Security-Policy on the dashboard, limits request bodies to 64 KB, and limits each client to 120 requests and 10 failed key attempts a minute. The counts live in Redis, so every instance shares them. Behind a load balancer or reverse proxy, set `REPODOCS_TRUST_PROXY=1` so limits apply per client rather than per proxy; requests that arrive through a proxy are never treated as local.
+7. Put the control plane behind HTTPS. It sends security headers on every response and a strict Content-Security-Policy on the dashboard, limits request bodies to 64 KB, and limits each client to 120 requests and 10 failed key attempts a minute; wrong keys sent to `/auth/status` count too. A valid key keeps working during a lockout, so bad guesses from a shared address cannot lock out the real admin. Each user can have at most 5 jobs waiting (`REPODOCS_MAX_QUEUED_PER_USER`). The counts live in Redis, so every instance shares them. Behind a load balancer or reverse proxy, set `REPODOCS_TRUST_PROXY=1` so limits apply per client rather than per proxy; requests that carry forwarding headers (`X-Forwarded-For`, `Forwarded`, `X-Real-IP`, `X-Forwarded-Host`, `X-Forwarded-Proto` or `Via`) are never treated as local.
 8. Operators see only the runs they started and the artifacts of jobs their scope allows. Admins see everything.
 9. Review `docs/hosted-control-plane.md` before deploying to production.
 
@@ -82,16 +82,25 @@ If you deploy the RepoDocs AI hosted control plane:
 - Every GitHub Action in this repository, and in the workflow `init` writes for adopters, is pinned to a full commit SHA, with the version in a comment. Dependabot updates both.
 - Workflow tokens are read-only.
 - Dependabot watches the root package, the website and the actions. `npm audit` reports no advisories in either package.
-- Releases are installed from Git tags (`#v1.2.6`). To make a release's tag impossible to move, the maintainer enables immutable releases in the repository settings. Teams that want certainty regardless can pin a commit SHA instead of a tag.
+- Releases are installed from Git tags (`#v1.2.7`). Immutable releases are enabled on the repository, so a published release tag cannot be moved. Teams that want certainty regardless can pin a commit SHA instead of a tag.
 
 ## Generated Documentation
 
 OpenAPI specs often come from other teams or vendors, so the generator treats their text as untrusted.
 
 - Outside code blocks, HTML from a spec is escaped, entities are shown as written, and `javascript:`, `vbscript:` and `data:` links are removed in every form (inline, reference-style, entity-encoded, split by whitespace). A docs site that renders raw HTML (MkDocs, Jekyll, Hugo with unsafe HTML on) shows that text instead of running it.
-- The curl examples are safe to paste into a shell. Characters the shell acts on are percent-encoded in URLs and escaped in header values, header names are reduced to valid header characters, and line breaks are removed, so a crafted server URL, parameter or security scheme cannot run a command. The test suite runs the generated example for a hostile spec with `curl` stubbed out and checks nothing ran. `!` is quoted so shell history expansion cannot rewrite a value. Multipart text fields use `--form-string`, which sends a value as text even when it starts with `@` or `<`; only fields the spec marks as files use `-F "name=@<file>"`, and the OpenAPI check fails an example that names a real local file, such as `@/etc/passwd`, so a copied example cannot upload one.
+- The curl examples are safe to paste into a shell. Characters the shell acts on are percent-encoded in URLs and escaped in header values, header names are reduced to valid header characters, and line breaks are removed, so a crafted server URL, parameter or security scheme cannot run a command. The test suite runs the generated example for a hostile spec with `curl` stubbed out and checks nothing ran. `!` is quoted so shell history expansion cannot rewrite a value, in URLs, headers, cookies, and form-encoded and multipart fields alike. Square brackets in URLs are percent-encoded, so curl does not read `name[key]` as a range. Multipart text fields use `--form-string`, which sends a value as text even when it starts with `@` or `<`; only fields the spec marks as files use `-F "name=@<file>"`, and the OpenAPI check fails an example that names a real local file, such as `@/etc/passwd`, so a copied example cannot upload one.
 - The quality check fails hand-written docs that contain `<script>`, `<iframe>`, `<object>`, `<embed>`, `<form>`, `<style>`, `<meta http-equiv>`, inline event handlers or script links.
 
 ## Last Audit
 
 A security audit on 2026-11-28 covered secrets in the tree and the full Git history, the control plane, the generator and validators, the GitHub workflows, the Docker setup and dependencies. The findings and fixes are in `.github/release-checks/2026-11-28-security-audit.md`.
+
+### Reading untrusted specs
+
+The generator treats a spec as untrusted input:
+
+- It never writes through a symbolic link: if the output folder, its `endpoints/` folder or a doc file in it is a link, it stops with an error, so a link planted in a pull request cannot point it at files elsewhere on the machine.
+- A spec larger than 50 MB (`REPODOCS_MAX_SPEC_BYTES`), or one that expands to more than 5 million values (`REPODOCS_MAX_SPEC_VALUES`), such as a YAML alias bomb, is refused before it is walked.
+- Frontmatter values copied from the spec carry no HTML tags or script URLs.
+- Matching code fences and HTML tags takes time proportional to the text, so a description with a long run of backticks or unclosed tags cannot stall `generate` or `validate`.

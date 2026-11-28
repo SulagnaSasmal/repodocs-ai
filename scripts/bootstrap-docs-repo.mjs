@@ -252,7 +252,8 @@ async function main() {
     console.log("   Tip: rerun with --with-examples to also copy the payments API example set");
   }
   console.log(`4. Put your OpenAPI spec in ${relativeTarget}/openapi/ and generate docs:`);
-  console.log(`   repodocs-ai generate ${relativeTarget}/openapi/<spec>.yaml ${relativeTarget}/generated`);
+  console.log(`   repodocs-ai generate ${relativeTarget}/openapi/<spec>.yaml ${relativeTarget}/generated --owner <your-team>`);
+  console.log("   (--owner fills the owner field; add the same name to owners.json so validate knows it)");
   console.log(`5. Validate: repodocs-ai validate ${relativeTarget}/generated --specs ${relativeTarget}/openapi`);
   console.log("   CI runs the same checks through .github/workflows/docs-validate.yml once you push to GitHub");
 }

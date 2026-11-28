@@ -55,6 +55,7 @@ const MAX_BODY_BYTES = Number(process.env.REPODOCS_MAX_BODY_BYTES || 64 * 1024);
 const MAX_RUN_OUTPUT_BYTES = 256 * 1024;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = Number(process.env.REPODOCS_RATE_LIMIT_PER_MINUTE || 120);
+const MAX_QUEUED_PER_USER = Number(process.env.REPODOCS_MAX_QUEUED_PER_USER || 5);
 const RATE_LIMIT_MAX_FAILED_AUTH = Number(process.env.REPODOCS_FAILED_AUTH_PER_MINUTE || 10);
 const redisUrl = process.env.REDIS_URL || "redis://127.0.0.1:6379";
 const workerId = `${process.pid}-${crypto.randomBytes(3).toString("hex")}`;
@@ -81,7 +82,9 @@ const redisKeys = {
   runs: "repodocs:control-plane:runs",
   history: "repodocs:control-plane:history",
   running: "repodocs:control-plane:running",
-  rate: "repodocs:control-plane:rate"
+  rate: "repodocs:control-plane:rate",
+  usersLock: "repodocs:control-plane:users:lock",
+  keyLastUsed: "repodocs:control-plane:key-last-used"
 };
 
 const redis = createClient({ url: redisUrl });
@@ -122,18 +125,18 @@ function buildApiKey() {
   return `rdai_${crypto.randomBytes(24).toString("hex")}`;
 }
 
-function sanitizeKeyRecord(keyRecord) {
+function sanitizeKeyRecord(keyRecord, lastUsed = {}) {
   return {
     id: keyRecord.id,
     label: keyRecord.label,
     key_hint: keyRecord.key_hint,
     created_at: keyRecord.created_at,
-    last_used_at: keyRecord.last_used_at || null,
+    last_used_at: lastUsed[keyRecord.id] || keyRecord.last_used_at || null,
     revoked_at: keyRecord.revoked_at || null
   };
 }
 
-function sanitizeUser(user) {
+function sanitizeUser(user, lastUsed = {}) {
   return {
     id: user.id,
     username: user.username,
@@ -143,7 +146,7 @@ function sanitizeUser(user) {
     service_scope: user.service_scope || "",
     created_at: user.created_at,
     updated_at: user.updated_at,
-    api_keys: (user.api_keys || []).map(sanitizeKeyRecord)
+    api_keys: (user.api_keys || []).map((keyRecord) => sanitizeKeyRecord(keyRecord, lastUsed))
   };
 }
 
@@ -172,7 +175,7 @@ function createApiKeyRecord(label = "default") {
       id: randomId("key"),
       label,
       key_hash: hashApiKey(plainTextKey),
-      key_hint: plainTextKey.slice(-8),
+      key_hint: plainTextKey.slice(-4),
       created_at: nowIso(),
       last_used_at: null,
       revoked_at: null
@@ -236,6 +239,50 @@ async function getUsers() {
 
 async function setUsers(users) {
   await redis.set(redisKeys.users, JSON.stringify(users));
+}
+
+// Every change to the users list is a read, a change and a write. Without a
+// lock, two requests can each read the list, and the second write silently
+// undoes the first: a revoked key comes back, or a new user disappears. The
+// lock lives in Redis, so it also holds across several control plane instances.
+const USERS_LOCK_MS = 5000;
+let localUsersChain = Promise.resolve();
+
+async function withUsersLock(work) {
+  const token = crypto.randomBytes(16).toString("hex");
+  const deadline = Date.now() + 10_000;
+  while ((await redis.set(redisKeys.usersLock, token, { NX: true, PX: USERS_LOCK_MS })) !== "OK") {
+    if (Date.now() > deadline) {
+      throw new HttpError(503, "The user store is busy. Try again.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5 + Math.floor(Math.random() * 20)));
+  }
+  try {
+    return await work();
+  } finally {
+    // Release only our own lock, in case it expired and someone else holds it now.
+    await redis.eval('if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end', {
+      keys: [redisKeys.usersLock],
+      arguments: [token]
+    });
+  }
+}
+
+// Runs mutator(users) under the lock and saves the list it leaves behind.
+// The mutator returns what the caller needs; it may throw HttpError to refuse.
+function mutateUsers(mutator) {
+  const run = localUsersChain.then(() => withUsersLock(async () => {
+    const users = await getUsers();
+    const result = await mutator(users);
+    await setUsers(users);
+    return result;
+  }));
+  localUsersChain = run.catch(() => {});
+  return run;
+}
+
+async function getKeyLastUsed() {
+  return (await redis.hGetAll(redisKeys.keyLastUsed)) || {};
 }
 
 async function getRun(runId) {
@@ -304,11 +351,14 @@ async function getActiveRuns() {
   return runs;
 }
 
+// Once any user exists, a key is always required. Revoking or disabling every
+// key must lock the API, never drop it back into the open no-key mode.
 async function getAuthEnabled() {
-  const users = await getUsers();
-  return users.some((user) =>
-    user.status !== "disabled" && Array.isArray(user.api_keys) && user.api_keys.some((key) => !key.revoked_at)
-  );
+  return (await getUsers()).length > 0;
+}
+
+function usableKeys(users) {
+  return users.flatMap((user) => (user.status === "disabled" ? [] : (user.api_keys || []).filter((key) => !key.revoked_at).map((key) => ({ user, key }))));
 }
 
 async function findUserById(userId) {
@@ -317,16 +367,14 @@ async function findUserById(userId) {
 }
 
 async function updateUser(userId, updater) {
-  const users = await getUsers();
-  const index = users.findIndex((candidate) => candidate.id === userId);
-  if (index < 0) {
-    return null;
-  }
-
-  const updatedUser = updater(users[index]);
-  users[index] = updatedUser;
-  await setUsers(users);
-  return updatedUser;
+  return mutateUsers((users) => {
+    const index = users.findIndex((candidate) => candidate.id === userId);
+    if (index < 0) {
+      return null;
+    }
+    users[index] = updater(users[index], users);
+    return users[index];
+  });
 }
 
 function issueKeyForUser(user, label = "default") {
@@ -335,6 +383,13 @@ function issueKeyForUser(user, label = "default") {
   user.updated_at = nowIso();
   return keyBundle;
 }
+
+// Words people build memorable keys from. A random key contains none of them.
+const GUESSABLE_WORDS = [
+  "repodocs", "control", "plane", "password", "passwd", "secret", "admin", "letmein", "welcome", "qwerty",
+  "monkey", "dragon", "master", "shadow", "sunshine", "princess", "football", "baseball", "iloveyou",
+  "summer", "winter", "spring", "autumn", "default", "changeme", "replace", "example", "bootstrap", "token"
+];
 
 function bootstrapKeyProblem(key) {
   if (!key) {
@@ -348,42 +403,80 @@ function bootstrapKeyProblem(key) {
   if (key.length < MIN_BOOTSTRAP_KEY_LENGTH) {
     return `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY must be at least ${MIN_BOOTSTRAP_KEY_LENGTH} characters. ${generate}`;
   }
-  // Long but guessable: few distinct characters, or one short pattern repeated.
-  // Runs such as abcdef, 123456 or qwerty count as guessable too.
-  const rows = ["abcdefghijklmnopqrstuvwxyz", "0123456789", "qwertyuiop", "asdfghjkl", "zxcvbnm"];
-  const lowerKey = key.toLowerCase();
-  let sequential = 0;
-  for (let index = 1; index < lowerKey.length; index += 1) {
-    const pair = lowerKey.slice(index - 1, index + 1);
-    if (rows.some((row) => row.includes(pair) || row.includes([...pair].reverse().join("")))) sequential += 1;
+  const guessable = `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY looks guessable; use a random key, not one built from words, repeats or runs. ${generate}`;
+  if (GUESSABLE_WORDS.some((word) => lower.includes(word))) {
+    return guessable;
   }
-  if (new Set(key).size < 10 || /^(.{1,8})\1+.{0,8}$/.test(key) || sequential / Math.max(1, key.length - 1) >= 0.5) {
-    return `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY looks guessable (too few distinct characters or a repeated pattern). ${generate}`;
+  // Words joined by separators (a passphrase someone chose) rather than random output.
+  if (key.split(/[^A-Za-z0-9]+/).filter((part) => /^(?:[a-z]{3,}|[A-Z][a-z]{2,})$/.test(part)).length >= 3) {
+    return guessable;
+  }
+  // The same character six times running (aaaaaa, 000000).
+  if (/(.)\1{5}/.test(key)) {
+    return guessable;
+  }
+  // Any six characters that appear twice: a phrase repeated to reach the length.
+  // In 48 random hex characters this happens about once in ten million keys.
+  const seen = new Set();
+  for (let index = 0; index + 6 <= lower.length; index += 1) {
+    const chunk = lower.slice(index, index + 6);
+    if (seen.has(chunk)) {
+      return guessable;
+    }
+    seen.add(chunk);
+  }
+  // Runs along the keyboard, the alphabet or the digits (abcdef, 123456, qwerty).
+  const rows = ["abcdefghijklmnopqrstuvwxyz", "0123456789", "qwertyuiop", "asdfghjkl", "zxcvbnm"];
+  const step = (from, to) => {
+    for (const row of rows) {
+      const at = row.indexOf(from);
+      if (at >= 0 && row[at + 1] === to) return 1;
+      if (at > 0 && row[at - 1] === to) return -1;
+    }
+    return 0;
+  };
+  let sequential = 0;
+  let longestRun = 1;
+  let run = 1;
+  let previous = 0;
+  for (let index = 1; index < lower.length; index += 1) {
+    const direction = step(lower[index - 1], lower[index]);
+    if (direction !== 0) sequential += 1;
+    run = direction !== 0 && direction === previous ? run + 1 : direction !== 0 ? 2 : 1;
+    previous = direction;
+    longestRun = Math.max(longestRun, run);
+  }
+  if (new Set(key).size < 10 || longestRun >= 6 || sequential / Math.max(1, key.length - 1) >= 0.5) {
+    return guessable;
   }
   return null;
 }
 
 async function bootstrapAdminIfNeeded() {
-  const users = await getUsers();
-  if (users.length > 0 || !bootstrapAdminKey) {
+  if (!bootstrapAdminKey) {
     return;
   }
-
-  const adminUser = createUserRecord({
-    username: bootstrapAdminUser,
-    displayName: bootstrapAdminDisplayName,
-    role: "admin"
+  await mutateUsers((users) => {
+    if (users.length > 0) {
+      return;
+    }
+    const adminUser = createUserRecord({
+      username: bootstrapAdminUser,
+      displayName: bootstrapAdminDisplayName,
+      role: "admin"
+    });
+    adminUser.api_keys.push({
+      id: randomId("key"),
+      label: "bootstrap-admin",
+      key_hash: hashApiKey(bootstrapAdminKey),
+      // No hint for a key the operator chose: part of it could help someone guess the rest.
+      key_hint: "",
+      created_at: nowIso(),
+      last_used_at: null,
+      revoked_at: null
+    });
+    users.push(adminUser);
   });
-  adminUser.api_keys.push({
-    id: randomId("key"),
-    label: "bootstrap-admin",
-    key_hash: hashApiKey(bootstrapAdminKey),
-    key_hint: bootstrapAdminKey.slice(-8),
-    created_at: nowIso(),
-    last_used_at: null,
-    revoked_at: null
-  });
-  await setUsers([adminUser]);
 }
 
 async function migrateFileStateToRedisIfNeeded() {
@@ -483,7 +576,7 @@ class HttpError extends Error {
 function isLoopback(request) {
   // A request forwarded by a proxy on this machine is not local, whatever
   // the socket says: it came from somewhere else.
-  if (request.headers["x-forwarded-for"] || request.headers.forwarded || request.headers["x-real-ip"]) {
+  if (["x-forwarded-for", "forwarded", "x-real-ip", "x-forwarded-host", "x-forwarded-proto", "via"].some((name) => request.headers[name])) {
     return false;
   }
   const address = request.socket.remoteAddress || "";
@@ -569,9 +662,9 @@ async function findAuthenticatedPrincipal(request) {
       }
 
       if (hashesMatch(keyRecord.key_hash, hashedApiKey)) {
-        keyRecord.last_used_at = nowIso();
-        user.updated_at = nowIso();
-        await setUsers(users);
+        // Kept apart from the users list: writing the whole list on every
+        // request raced with admin changes and could undo a revocation.
+        await redis.hSet(redisKeys.keyLastUsed, keyRecord.id, nowIso());
         return { user, key: keyRecord };
       }
     }
@@ -581,14 +674,17 @@ async function findAuthenticatedPrincipal(request) {
 }
 
 async function requireAuth(request, response) {
-  if (await failedAuthBlocked(request)) {
-    sendJson(response, 429, { error: "Too many failed authentication attempts. Try again in a minute." }, { "Retry-After": "60" });
-    return null;
-  }
-
+  // A valid key always works. The lockout stops guessing, so it applies only
+  // to keys that do not match; otherwise ten bad guesses from a shared address
+  // (everyone behind one proxy) would lock out the real admin as well.
   const principal = await findAuthenticatedPrincipal(request);
   if (principal) {
     return principal;
+  }
+
+  if (getPresentedApiKey(request) && (await failedAuthBlocked(request))) {
+    sendJson(response, 429, { error: "Too many failed authentication attempts. Try again in a minute." }, { "Retry-After": "60" });
+    return null;
   }
 
   if (!(await getAuthEnabled())) {
@@ -608,15 +704,11 @@ async function requireAuth(request, response) {
     await countFailedAuth(request);
   }
 
-  response.writeHead(401, {
-    "Content-Type": "application/json; charset=utf-8",
-    "WWW-Authenticate": 'Bearer realm="RepoDocs AI Control Plane"'
-  });
-  response.end(JSON.stringify({
+  sendJson(response, 401, {
     error: "Authentication required",
     auth_enabled: true,
     accepted_headers: ["Authorization: Bearer <token>", "X-API-Key: <token>"]
-  }, null, 2));
+  }, { "WWW-Authenticate": 'Bearer realm="RepoDocs AI Control Plane"' });
   return null;
 }
 
@@ -681,10 +773,15 @@ function cleanText(value, maxLength = 80) {
 
 const USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
-// service_scope lists the job names a user may run, comma separated.
+// service_scope lists the job names an operator may run, comma separated.
+// An operator with no scope may run nothing; admins may run every job.
 function scopeAllows(serviceScope, jobName) {
   const allowed = String(serviceScope || "").split(",").map((entry) => entry.trim()).filter(Boolean);
-  return allowed.length === 0 || allowed.includes(jobName);
+  return allowed.includes(jobName);
+}
+
+function principalMayRun(principal, jobName) {
+  return seesEverything(principal) || scopeAllows(principal.user.service_scope, jobName);
 }
 
 // What a principal may see. Admins, and local development with no keys,
@@ -1258,6 +1355,12 @@ const stateReady = (async () => {
   await blockingRedis.connect();
   await migrateFileStateToRedisIfNeeded();
   await bootstrapAdminIfNeeded();
+  // With no users, every request over loopback is trusted. A reverse proxy on
+  // this machine also connects over loopback, and one that adds no forwarding
+  // headers cannot be told apart, so a proxied setup must have a key.
+  if (TRUST_PROXY && !(await getAuthEnabled())) {
+    throw new Error("REPODOCS_TRUST_PROXY=1 is set but no key is configured. Behind a proxy every request would look local. Set REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY.");
+  }
   workerLoopDone = startWorkerLoop().catch((error) => {
     log("error", "failed to start control-plane worker loop", { error: error.message });
   });
@@ -1321,6 +1424,14 @@ const server = http.createServer(async (request, response) => {
 
     if (request.method === "GET" && url.pathname === "/auth/status") {
       const principal = await findAuthenticatedPrincipal(request);
+      // A wrong key counts toward the lockout here too, so this endpoint
+      // cannot be used to test keys faster than the API itself allows.
+      if (!principal && getPresentedApiKey(request)) {
+        if (await failedAuthBlocked(request)) {
+          return sendJson(response, 429, { error: "Too many failed authentication attempts. Try again in a minute." }, { "Retry-After": "60" });
+        }
+        await countFailedAuth(request);
+      }
       return sendJson(response, 200, {
         auth_enabled: await getAuthEnabled(),
         accepted_headers: ["Authorization: Bearer <token>", "X-API-Key: <token>"],
@@ -1344,7 +1455,7 @@ const server = http.createServer(async (request, response) => {
       const allQueuedRuns = await getQueuedRuns();
       const queuedRuns = visibleRuns(principal, allQueuedRuns);
       return sendJson(response, 200, {
-        jobs: Object.keys(jobs).filter((job) => seesEverything(principal) || scopeAllows(principal.user.service_scope, job)),
+        jobs: Object.keys(jobs).filter((job) => principalMayRun(principal, job)),
         active_run: activeRuns[0] || null,
         active_runs: activeRuns,
         queue_depth: allQueuedRuns.length,
@@ -1388,7 +1499,8 @@ const server = http.createServer(async (request, response) => {
       if (!requireAdmin(principal, response)) {
         return;
       }
-      return sendJson(response, 200, { users: (await getUsers()).map(sanitizeUser) });
+      const lastUsed = await getKeyLastUsed();
+      return sendJson(response, 200, { users: (await getUsers()).map((user) => sanitizeUser(user, lastUsed)) });
     }
 
     if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/dashboard")) {
@@ -1411,22 +1523,23 @@ const server = http.createServer(async (request, response) => {
         return sendJson(response, 400, { error: "username is required: 1 to 64 letters, digits, dots, hyphens or underscores, starting with a letter or digit" });
       }
 
-      const users = await getUsers();
-      if (users.some((user) => user.username === username)) {
-        return sendJson(response, 409, { error: `User '${username}' already exists` });
-      }
-
       const role = body.role === "admin" ? "admin" : "operator";
       const serviceScope = cleanText(body.service_scope, 200);
-      const user = createUserRecord({
-        username,
-        displayName: cleanText(body.display_name || username) || username,
-        role,
-        serviceScope
+      const { user, keyBundle } = await mutateUsers((users) => {
+        // Names differ by more than case, so Admin cannot pose as admin.
+        if (users.some((existing) => existing.username.toLowerCase() === username.toLowerCase())) {
+          throw new HttpError(409, `User '${username}' already exists`);
+        }
+        const created = createUserRecord({
+          username,
+          displayName: cleanText(body.display_name || username) || username,
+          role,
+          serviceScope
+        });
+        const bundle = issueKeyForUser(created, cleanText(body.key_label || "default", 40) || "default");
+        users.push(created);
+        return { user: created, keyBundle: bundle };
       });
-      const keyBundle = issueKeyForUser(user, cleanText(body.key_label || "default", 40) || "default");
-      users.push(user);
-      await setUsers(users);
       return sendJson(response, 201, {
         user: sanitizeUser(user),
         api_key: keyBundle.plain_text_key
@@ -1449,11 +1562,11 @@ const server = http.createServer(async (request, response) => {
       }
 
       const body = await parseJsonBody(request);
-      const demotesOrDisables = (body.role === "operator" && existingUser.role === "admin") || (body.status === "disabled" && existingUser.status !== "disabled");
-      if (demotesOrDisables && isLastActiveAdmin(await getUsers(), userId)) {
-        return sendJson(response, 409, { error: "This is the last active admin. Make another user admin first." });
-      }
-      const user = await updateUser(userId, (candidate) => {
+      const user = await updateUser(userId, (candidate, users) => {
+        const demotesOrDisables = (body.role === "operator" && candidate.role === "admin") || (body.status === "disabled" && candidate.status !== "disabled");
+        if (demotesOrDisables && isLastActiveAdmin(users, userId)) {
+          throw new HttpError(409, "This is the last active admin. Make another user admin first.");
+        }
         if (body.display_name) {
           candidate.display_name = cleanText(body.display_name) || candidate.display_name;
         }
@@ -1516,10 +1629,14 @@ const server = http.createServer(async (request, response) => {
       }
 
       let revokedKeyId = "";
-      const user = await updateUser(keyMatch?.[1] || "", (candidate) => {
+      const user = await updateUser(keyMatch?.[1] || "", (candidate, users) => {
         const keyRecord = (candidate.api_keys || []).find((entry) => entry.id === keyMatch?.[2]);
         if (!keyRecord) {
           throw new Error("KEY_NOT_FOUND");
+        }
+        const adminKeysLeft = usableKeys(users).filter((entry) => entry.user.role === "admin" && entry.key.id !== keyRecord.id);
+        if (!keyRecord.revoked_at && candidate.role === "admin" && candidate.status !== "disabled" && adminKeysLeft.length === 0) {
+          throw new HttpError(409, "This is the last working admin key. Issue another admin key first, or nobody could manage the control plane.");
         }
         keyRecord.revoked_at = nowIso();
         candidate.updated_at = nowIso();
@@ -1547,10 +1664,18 @@ const server = http.createServer(async (request, response) => {
 
       const jobName = url.pathname.replace(/^\/jobs\//, "");
       const serviceScope = principal.user?.service_scope || "";
-      if (!scopeAllows(serviceScope, jobName)) {
+      if (!principalMayRun(principal, jobName)) {
         return sendJson(response, 403, {
-          error: `User '${principal.user?.username}' is scoped to service '${serviceScope}' and cannot trigger job '${jobName}'`
+          error: serviceScope
+            ? `User '${principal.user?.username}' is scoped to '${serviceScope}' and cannot trigger job '${jobName}'`
+            : `User '${principal.user?.username}' has no service_scope, so it cannot trigger jobs. An admin can set one.`
         });
+      }
+      // One user cannot fill the queue: each job can run an npm script for minutes.
+      const requester = principal.user?.id || null;
+      const waiting = (await getQueuedRuns()).filter((run) => (run.requested_by_user?.id || null) === requester).length;
+      if (waiting >= MAX_QUEUED_PER_USER) {
+        return sendJson(response, 429, { error: `You already have ${waiting} jobs waiting. Wait for some to finish.` }, { "Retry-After": "60" });
       }
 
       await readRequestBody(request);
@@ -1601,5 +1726,6 @@ stateReady.then(() => {
   });
 }).catch((error) => {
   log("error", "failed to initialize control plane", { error: error.message });
-  process.exitCode = 1;
+  // Open Redis connections would keep the process alive; a failed start must exit.
+  process.exit(1);
 });

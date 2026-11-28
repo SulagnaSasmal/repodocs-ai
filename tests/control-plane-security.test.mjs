@@ -115,7 +115,13 @@ describe.skipIf(!redisAvailable)("control plane security", () => {
     "replace-me-replace-me-replace-me",
     "abcabcabcabcabcabcabcabcabcabc",
     "abcdefghijklmnopqrstuvwxyz0123",
-    "qwertyuiopasdfghjklzxcvbnm12345"
+    "qwertyuiopasdfghjklzxcvbnm12345",
+    "repodocs-ai-control-plane-key",
+    "aaaaaaaaaabbbbbbbbbbcdefghij",
+    "0000000000111111111123456789",
+    "AAAAAAAAAAAAAAAAAA1234567890",
+    "Summer2026!Summer2026!xy",
+    "Monkey123!Monkey123!Monk"
   ])("refuses to start with the bootstrap key '%s'", async (key) => {
     const result = spawnSync(process.execPath, [serverScript], {
       cwd: repoRoot,
@@ -330,6 +336,97 @@ describe.skipIf(!redisAvailable)("control plane security", () => {
       expect(statuses.slice(60)).toContain(429);
       // Another client is not affected.
       expect(await statusOf(`http://127.0.0.1:${first.port}/jobs`, { headers: { ...asAdmin, "X-Forwarded-For": "198.51.100.8" } })).toBe(200);
+    });
+  });
+
+  it("refuses to trust a proxy when no key is configured", async () => {
+    await flushRedis();
+    const result = spawnSync(process.execPath, [serverScript], {
+      cwd: repoRoot,
+      env: { ...process.env, REDIS_URL: redisUrl, REPODOCS_CONTROL_PLANE_PORT: String(freePort()), REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY: "", REPODOCS_TRUST_PROXY: "1" },
+      encoding: "utf8",
+      timeout: 10000
+    });
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}${result.stderr}`).toContain("REPODOCS_TRUST_PROXY=1 is set but no key is configured");
+  });
+
+  describe("user state under concurrent requests (v1.2.6 retest)", () => {
+    const key = crypto.randomBytes(24).toString("hex");
+    let base;
+    let server;
+    const asAdmin = { "X-API-Key": key, "Content-Type": "application/json" };
+    const createUser = async (username, extra = {}) => fetch(`${base}/users`, { method: "POST", headers: asAdmin, body: JSON.stringify({ username, ...extra }) });
+
+    beforeAll(async () => {
+      await flushRedis();
+      server = await startServer({ REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY: key, REPODOCS_MAX_QUEUED_PER_USER: "3" });
+      base = `http://127.0.0.1:${server.port}`;
+    });
+    afterAll(() => stop(server.child));
+
+    it("keeps a revoked key revoked while that key is being used", async () => {
+      for (let trial = 0; trial < 5; trial += 1) {
+        const created = await (await createUser(`racer-${trial}`, { service_scope: "validate" })).json();
+        const operatorKey = created.api_key;
+        const keyId = created.user.api_keys[0].id;
+        const hammer = Array.from({ length: 30 }, () => statusOf(`${base}/auth/status`, { headers: { "X-API-Key": operatorKey } }));
+        const revoke = statusOf(`${base}/users/${created.user.id}/keys/${keyId}`, { method: "DELETE", headers: asAdmin });
+        const [revoked] = await Promise.all([revoke, ...hammer]);
+        expect(revoked).toBe(200);
+        expect(await statusOf(`${base}/jobs`, { headers: { "X-API-Key": operatorKey } })).toBe(401);
+      }
+    });
+
+    it("stores every user created at the same time", async () => {
+      const results = await Promise.all(Array.from({ length: 10 }, (_, index) => createUser(`bulk-${index}`).then((response) => response.status)));
+      expect(results.every((status) => status === 201)).toBe(true);
+      const { users } = await (await fetch(`${base}/users`, { headers: asAdmin })).json();
+      expect(users.filter((user) => user.username.startsWith("bulk-"))).toHaveLength(10);
+    });
+
+    it("treats user names that differ only in case as the same name", async () => {
+      expect((await createUser("Admin")).status).toBe(409);
+    });
+
+    it("refuses to revoke the last working admin key, so the API never falls back to no-key mode", async () => {
+      const { users } = await (await fetch(`${base}/users`, { headers: asAdmin })).json();
+      const admin = users.find((user) => user.role === "admin");
+      expect(admin.api_keys[0].key_hint).toBe("");
+      const response = await fetch(`${base}/users/${admin.id}/keys/${admin.api_keys[0].id}`, { method: "DELETE", headers: asAdmin });
+      expect(response.status).toBe(409);
+      expect(await statusOf(`${base}/users`)).toBe(401);
+    });
+
+    it("lets an operator with no scope run nothing", async () => {
+      const created = await (await createUser("unscoped")).json();
+      expect(await statusOf(`${base}/jobs/validate`, { method: "POST", headers: { "X-API-Key": created.api_key } })).toBe(403);
+      const listed = await (await fetch(`${base}/jobs`, { headers: { "X-API-Key": created.api_key } })).json();
+      expect(listed.jobs).toEqual([]);
+    });
+
+    it("caps how many jobs one user can have waiting", async () => {
+      const statuses = [];
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        statuses.push(await statusOf(`${base}/jobs/validate`, { method: "POST", headers: asAdmin }));
+      }
+      expect(statuses).toContain(429);
+    });
+
+    it("sends the security headers on 401 responses", async () => {
+      const response = await fetch(`${base}/users`);
+      await response.arrayBuffer();
+      expect(response.status).toBe(401);
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    });
+
+    it("keeps accepting a valid key during a lockout, and counts wrong keys sent to /auth/status", async () => {
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        await statusOf(`${base}/auth/status`, { headers: { "X-API-Key": `wrong-${attempt}` } });
+      }
+      expect(await statusOf(`${base}/jobs`, { headers: { "X-API-Key": "wrong-again" } })).toBe(429);
+      expect(await statusOf(`${base}/jobs`, { headers: asAdmin })).toBe(200);
     });
   });
 });
