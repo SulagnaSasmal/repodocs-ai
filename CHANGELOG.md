@@ -4,6 +4,29 @@ This changelog tracks product-facing changes to RepoDocs AI.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.4] — 2026-11-28
+
+Closes the items the 1.2.3 security audit left open. See `.github/release-checks/2026-11-28-security-audit.md`.
+
+### Security
+
+- Control plane operators see only the runs they started and the artifacts of jobs their scope allows; admins see everything.
+- Rate limits are counted in Redis and shared by every instance. `REPODOCS_TRUST_PROXY=1` applies them per client behind a proxy. Requests that arrive through a proxy are never treated as local, so a proxy on the same machine cannot reopen a server that has no key.
+- Every GitHub Action is pinned to a commit SHA, in this repository and in the workflow `init` writes, which also gets a read-only token.
+- The docs website sets a Content-Security-Policy and referrer policy in each page, with per-page script hashes.
+- KaTeX override clears the last `npm audit` advisory.
+
+### Changed
+
+- `@anthropic-ai/sdk` 1.14, `redis` 6 and `js-yaml` 5. The agent's default model is `claude-opus-5-5`; set `REPODOCS_AI_MODEL` to use another.
+- `archive/` is removed. Nothing used it; Git history keeps it.
+
+### Fixed
+
+- A job taken off the queue while a server was shutting down was lost. It is now put back for another worker.
+- The control-plane dashboard failed for operators because it always asked for the admin-only user list.
+- The quality check's summary line now names the unsafe-HTML check.
+
 ## [1.2.3] — 2026-11-28
 
 Fixes from the v1.2.2 fresh-agent release check, which used the Adyen Checkout API and 101 deliberate breaks. v1.2.2 failed the run on 59 of them; v1.2.3 fails it on 96. See `.github/release-checks/2026-11-28-v1.2.2.md`.
