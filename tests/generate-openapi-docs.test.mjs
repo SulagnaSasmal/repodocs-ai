@@ -51,7 +51,9 @@ describe("generate-openapi-docs", () => {
     expect(getPayments).toContain("Allowed values: `pending`, `completed`, `failed`, `refunded`");
     expect(getPayments).toContain("Format: date");
     expect(getPayments).toContain("Minimum: 1");
-    expect(getPayments).toContain("Maximum: 100");
+    // The spec's description already says "Maximum 100", so no second note is added.
+    expect(getPayments).toMatch(/\| per_page \|[^\n]*Maximum:? 100/);
+    expect(getPayments).not.toMatch(/\| per_page \|[^\n]*Maximum 100[^\n]*Maximum: 100/);
   });
 
   it("states request body requirements and uses schema descriptions when present", () => {
@@ -150,7 +152,7 @@ describe("validate-doc-quality target paths", () => {
       docsDirectory
     ], { cwd: repoRoot });
 
-    expect(stdout).toContain("Structure checks passed for 4 Markdown files in");
+    expect(stdout).toContain("Structure checks passed for 5 Markdown files in");
     expect(stdout).toContain(path.basename(docsDirectory));
   });
 
@@ -234,5 +236,40 @@ describe("generate-openapi-docs with a hostile spec", () => {
     const result = await execFileAsync(process.execPath, [path.join(repoRoot, "scripts", "validate-doc-quality.mjs"), handWritten]).catch((error) => error);
     expect(result.code).toBe(1);
     expect(result.stderr).toContain("unsafe HTML that would run script on a docs site: an inline event handler (on...=), a javascript:, vbscript: or data: link");
+  });
+});
+
+describe("generate-openapi-docs with a spec that tries to inject shell commands", () => {
+  let outputDirectory;
+
+  beforeAll(async () => {
+    outputDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "repodocs-shell-"));
+    await execFileAsync(process.execPath, [
+      path.join(repoRoot, "scripts", "generate-openapi-docs.mjs"),
+      path.join(repoRoot, "tests", "fixtures", "hostile", "shell-in-spec.yaml"),
+      path.join(outputDirectory, "docs")
+    ], { cwd: repoRoot });
+  });
+
+  it.skipIf(process.platform === "win32")("writes curl examples that run no command when copied into a shell", async () => {
+    const doc = await fs.readFile(path.join(outputDirectory, "docs", "endpoints", "post-items.md"), "utf8");
+    const curl = doc.match(/^(`{3,})bash\n([\s\S]*?)^\1/m)[2];
+    // Run the example exactly as a reader would paste it, with curl replaced by a no-op.
+    const bin = path.join(outputDirectory, "bin");
+    await fs.mkdir(bin);
+    await fs.writeFile(path.join(bin, "curl"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    await execFileAsync("bash", ["-c", curl], { cwd: outputDirectory, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+    const created = (await fs.readdir(outputDirectory)).filter((name) => name.startsWith("PWNED"));
+    expect(created).toEqual([]);
+  });
+
+  it("removes script links in every form and keeps the heading on one line", async () => {
+    const overview = await fs.readFile(path.join(outputDirectory, "docs", "api-overview.md"), "utf8");
+    const prose = overview.replace(/^---\n[\s\S]*?\n---\n/, "").replace(/`+[^`\n]*?`+/g, "");
+    expect(prose).not.toMatch(/\]\(\s*(java|&#)/i);
+    expect(prose).not.toMatch(/^\s*\[r\]:\s*javascript/im);
+    expect((prose.match(/#unsafe-link-removed/g) || []).length).toBe(4);
+    const endpoint = await fs.readFile(path.join(outputDirectory, "docs", "endpoints", "post-items.md"), "utf8");
+    expect(endpoint).toContain("# Endpoint: Create an item\n");
   });
 });
