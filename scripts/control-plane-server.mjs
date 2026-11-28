@@ -50,7 +50,7 @@ const bootstrapAdminKey = process.env.REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY || ""
 // A bootstrap key is chosen by a person, so it must be long and not a
 // placeholder copied from the docs. Generate one with: openssl rand -hex 24
 const MIN_BOOTSTRAP_KEY_LENGTH = 24;
-const PLACEHOLDER_KEYS = new Set(["replace-me", "changeme", "change-me", "admin", "password", "secret"]);
+const PLACEHOLDER_KEYS = new Set(["replace-me", "replaceme", "changeme", "change-me", "admin", "password", "secret", "example", "your-key", "yourkey", "bootstrap"]);
 const MAX_BODY_BYTES = Number(process.env.REPODOCS_MAX_BODY_BYTES || 64 * 1024);
 const MAX_RUN_OUTPUT_BYTES = 256 * 1024;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
@@ -340,11 +340,17 @@ function bootstrapKeyProblem(key) {
   if (!key) {
     return null;
   }
-  if (PLACEHOLDER_KEYS.has(key.trim().toLowerCase())) {
-    return `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY is the placeholder '${key}'. Set a random value, for example: openssl rand -hex 24`;
+  const generate = "Generate one with: openssl rand -hex 24";
+  const lower = key.trim().toLowerCase();
+  if (PLACEHOLDER_KEYS.has(lower) || [...PLACEHOLDER_KEYS].some((word) => word.length >= 6 && lower.includes(word))) {
+    return `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY contains a placeholder word. ${generate}`;
   }
   if (key.length < MIN_BOOTSTRAP_KEY_LENGTH) {
-    return `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY must be at least ${MIN_BOOTSTRAP_KEY_LENGTH} characters. Generate one with: openssl rand -hex 24`;
+    return `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY must be at least ${MIN_BOOTSTRAP_KEY_LENGTH} characters. ${generate}`;
+  }
+  // Long but guessable: few distinct characters, or one short pattern repeated.
+  if (new Set(key).size < 10 || /^(.{1,8})\1+.{0,8}$/.test(key)) {
+    return `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY looks guessable (too few distinct characters or a repeated pattern). ${generate}`;
   }
   return null;
 }
@@ -1254,6 +1260,40 @@ const server = http.createServer(async (request, response) => {
     await stateReady;
     // Parse the path only; the Host header is not trusted.
     const url = new URL(request.url || "/", "http://control-plane.local");
+
+    // A web page in a browser can send requests here too. Requests that
+    // change something are refused when they come from another origin, and
+    // must send JSON, which a page cannot do across origins without a CORS
+    // preflight this server never approves.
+    const changesState = !["GET", "HEAD", "OPTIONS"].includes(request.method);
+    const origin = request.headers.origin;
+    if (changesState && origin && origin !== "null") {
+      let originHost = "";
+      try {
+        originHost = new URL(origin).host;
+      } catch {
+        originHost = "";
+      }
+      if (originHost !== String(request.headers.host || "")) {
+        return sendJson(response, 403, { error: "Cross-origin requests are not allowed" });
+      }
+    }
+    if (changesState && (origin === "null" || request.headers["sec-fetch-site"] === "cross-site")) {
+      return sendJson(response, 403, { error: "Cross-origin requests are not allowed" });
+    }
+    if (changesState && Number(request.headers["content-length"] || 0) > 0 && !/^application\/json\b/i.test(String(request.headers["content-type"] || ""))) {
+      return sendJson(response, 415, { error: "Request bodies must be JSON (Content-Type: application/json)" });
+    }
+
+    // With no key configured, only this machine is trusted, so the Host must
+    // name this machine too; otherwise a site that rebinds its DNS name to
+    // 127.0.0.1 could read the API from a browser.
+    if (!(await getAuthEnabled()) && url.pathname !== "/health") {
+      const hostName = String(request.headers.host || "").replace(/:\d+$/, "").replace(/^\[|\]$/g, "").toLowerCase();
+      if (!["localhost", "127.0.0.1", "::1"].includes(hostName)) {
+        return sendJson(response, 421, { error: "With no key configured, use http://localhost or http://127.0.0.1 to reach the control plane" });
+      }
+    }
 
     if (url.pathname !== "/health" && (await overLimit(request, "requests", RATE_LIMIT_MAX_REQUESTS))) {
       return sendJson(response, 429, { error: "Too many requests. Try again in a minute." }, { "Retry-After": "60" });
