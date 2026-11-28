@@ -53,6 +53,8 @@ async function collectFromTarget(target, extensions) {
   return collectFiles(target, extensions);
 }
 
+const skippedSpecs = [];
+
 async function loadSpecs(specTargets) {
   const files = [];
   for (const target of specTargets) {
@@ -66,6 +68,9 @@ async function loadSpecs(specTargets) {
 
     if (spec?.openapi && spec?.paths) {
       specs.push({ filePath, spec });
+    } else if (spec?.swagger) {
+      // Swagger 2.0 is not read; say so rather than skipping the file without a word.
+      skippedSpecs.push(`${path.basename(filePath)} is Swagger ${spec.swagger}, not OpenAPI 3.x, so it was not checked; convert it (for example with swagger2openapi) to include it`);
     }
   }
 
@@ -96,7 +101,7 @@ function extractOperation(content) {
 // closed by a fence at least as long, so content with ``` inside stays whole.
 function codeBlocks(text) {
   const blocks = [];
-  const pattern = /^(`{3,})([^\n`]*)\n([\s\S]*?)^\1`*[ \t]*$/gm;
+  const pattern = /^(`{3,}|~{3,})([^\n`~]*)\n([\s\S]*?)^\1[`~]*[ \t]*$/gm;
   let match;
   while ((match = pattern.exec(String(text || "")))) {
     blocks.push({ lang: match[2].trim().toLowerCase(), body: match[3].replace(/\n$/, "") });
@@ -288,6 +293,8 @@ function splitRow(line) {
     .slice(1, -1)
     .map((cell) => cell.trim())
     .map((cell, index) => (index < 3 ? cell.replace(/^`([^`]*)`$/, "$1") : cell))
+    // The Required column: required/optional and true/false mean yes/no.
+    .map((cell, index) => (index === 2 ? ({ required: "yes", true: "yes", mandatory: "yes", optional: "no", false: "no" }[cell.toLowerCase()] || cell) : cell))
     // Generated docs escape "<" outside code (array&lt;string&gt;); compare the text.
     .map((cell) => cell.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&"));
 }
@@ -421,16 +428,33 @@ function sectionTableHeader(content, heading) {
 function parseCurl(text) {
   const joined = String(text).replace(/\\\n\s*/g, " ");
   const tokens = [];
-  const pattern = /"((?:[^"\\]|\\.)*)"|'((?:[^']|'\\'')*)'|(\S+)/g;
-  let match;
-  while ((match = pattern.exec(joined))) {
-    tokens.push(match[1] !== undefined ? match[1].replace(/\\(.)/g, "$1") : match[2] !== undefined ? match[2].replace(/'\\''/g, "'") : match[3]);
+  // A shell word can join quoted and unquoted pieces: "abc"'!'"def".
+  const word = /(?:"(?:[^"\\]|\\.)*"|'[^']*'|[^\s"']+)+/g;
+  const piece = /"((?:[^"\\]|\\.)*)"|'([^']*)'|([^\s"']+)/g;
+  for (const match of joined.match(word) || []) {
+    let text = "";
+    for (const part of match.matchAll(piece)) {
+      text += part[1] !== undefined ? part[1].replace(/\\(.)/g, "$1") : part[2] !== undefined ? part[2] : part[3];
+    }
+    tokens.push(text);
   }
-  const result = { method: null, headers: new Map(), headerNames: new Map(), cookies: new Set(), hasBody: false, multipart: false, basicAuth: false };
+  const result = { method: null, headers: new Map(), headerNames: new Map(), cookies: new Set(), hasBody: false, multipart: false, basicAuth: false, formFields: [] };
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     const next = tokens[index + 1] || "";
-    if (token === "-X" || token === "--request") {
+    if (/^-X[A-Za-z]+$/.test(token)) {
+      result.method = token.slice(2).toUpperCase(); // -XPOST
+    } else if (token === "--form-string" || token === "-F" || token === "--form") {
+      const separator = next.indexOf("=");
+      if (separator > 0) {
+        const raw = next.slice(separator + 1);
+        // -F reads a file for @path and <path; --form-string never does.
+        result.formFields.push({ name: next.slice(0, separator), value: raw, file: token !== "--form-string" && /^[@<]/.test(raw) ? raw.slice(1).split(";")[0] : null });
+      }
+      result.hasBody = true;
+      result.multipart = true;
+      index += 1;
+    } else if (token === "-X" || token === "--request") {
       result.method = next.toUpperCase();
       index += 1;
     } else if (token === "-H" || token === "--header") {
@@ -519,7 +543,11 @@ function shapeErrors(spec, value, shape, label, kind, depth) {
   }
   if (value && typeof value === "object") {
     const properties = shape.properties || {};
-    if (Object.keys(properties).length === 0 || shape.additionalProperties) {
+    // Extra keys are allowed under additionalProperties, but the declared
+    // ones are still checked; a map's values are checked against its schema.
+    const extraSchema = shape.additionalProperties && typeof shape.additionalProperties === "object" ? shape.additionalProperties : null;
+    const open = Boolean(shape.additionalProperties) || Object.keys(properties).length === 0;
+    if (Object.keys(properties).length === 0 && !extraSchema) {
       return [];
     }
     const errors = [];
@@ -534,7 +562,11 @@ function shapeErrors(spec, value, shape, label, kind, depth) {
     for (const [key, child] of Object.entries(value)) {
       const childLabel = label ? `${label}.${key}` : key;
       if (!(key in properties)) {
-        errors.push(`${kind} example field '${childLabel}' is not defined`);
+        if (extraSchema) {
+          errors.push(...jsonErrors(spec, child, [extraSchema], childLabel, kind, depth + 1));
+        } else if (!open) {
+          errors.push(`${kind} example field '${childLabel}' is not defined`);
+        }
         continue;
       }
       errors.push(...jsonErrors(spec, child, [properties[key]], childLabel, kind, depth + 1));
@@ -750,7 +782,24 @@ function securityRequirementsOf(spec, operation) {
 }
 
 // Checks an Authentication section's wording against the security schemes in use.
-function authenticationErrors(spec, authText, requirements, subject) {
+// Header names the spec knows about anywhere: header parameters on any operation, or a
+// name the API description itself mentions (APIs often describe their auth headers in prose).
+function specKnownHeaderNames(spec) {
+  const names = new Set();
+  for (const pathItem of Object.values(spec.paths || {})) {
+    for (const method of ["get", "put", "post", "delete", "patch", "head", "options"]) {
+      if (!pathItem?.[method]) continue;
+      for (const parameter of definedParameters(spec, pathItem, pathItem[method])) {
+        if (parameter.in === "header" && parameter.name) names.add(parameter.name.toLowerCase());
+      }
+    }
+  }
+  const description = String(spec.info?.description || "");
+  for (const found of description.matchAll(/([A-Za-z][A-Za-z0-9-]*)\s*:/g)) names.add(found[1].toLowerCase());
+  return names;
+}
+
+function authenticationErrors(spec, authText, requirements, subject, operationParameters = null, warn = null) {
   const errors = [];
   const schemes = spec.components?.securitySchemes || {};
   const inUse = requirements.flatMap((requirement) => Object.keys(requirement || {}).map((name) => resolveRef(spec, schemes[name]) || {}));
@@ -759,8 +808,25 @@ function authenticationErrors(spec, authText, requirements, subject) {
   if (requiresAuth && saysNone) {
     errors.push(`Authentication says none is required, but the spec requires it for ${subject}`);
   }
-  if (!requiresAuth && !saysNone && /authentication is required|bearer|api key|oauth|basic/i.test(authText)) {
+  if (!requiresAuth && !saysNone && /authentication is required|bearer|oauth|basic auth/i.test(authText) && !/defines no security scheme/i.test(authText)) {
     errors.push(`Authentication says it is required, but the spec defines no security for ${subject}`);
+  }
+  if (!requiresAuth) {
+    // With no scheme, credentials can only travel as the operation's own parameters.
+    const headerNames = new Set((operationParameters || []).filter((parameter) => parameter.in === "header").map((parameter) => parameter.name.toLowerCase()));
+    const knownElsewhere = specKnownHeaderNames(spec);
+    for (const found of authText.matchAll(/\bheader\s+`([^`]+)`|`([^`]+)`\s+header\b|`([A-Za-z][A-Za-z0-9-]*)`/gi)) {
+      const name = (found[1] || found[2] || found[3]).replace(/:.*$/, "").trim();
+      const looksLikeHeader = Boolean(found[1] || found[2]) || /^(x-|api-|authorization$)/i.test(name);
+      if (looksLikeHeader && /^[A-Za-z][A-Za-z0-9-]*$/.test(name) && !headerNames.has(name.toLowerCase())) {
+        if (warn && knownElsewhere.has(name.toLowerCase())) {
+          // The spec uses this header elsewhere but leaves it off this operation: a spec gap, not an invented header.
+          warn(`Authentication names the header '${name}', which the spec uses elsewhere but does not declare on ${subject}; confirm with an SME`);
+          continue;
+        }
+        errors.push(`Authentication names the header '${name}', but ${subject} has no such header parameter and the spec defines no security scheme`);
+      }
+    }
   }
   if (requiresAuth) {
     const has = (test) => inUse.some(test);
@@ -835,6 +901,32 @@ function checkEndpointDoc(content, relativePath, match, operationRef, requestJso
   // Response example JSON.
   const success = Object.entries(operation.responses || {}).find(([code]) => code.startsWith("2"));
   const successSchema = jsonSchemaOf(successResponse(spec, operation)?.content);
+  // Each section once: a second "## Response Example" would hide the real one.
+  for (const heading of ["Endpoint", "Request Example", "Response Example", "Request Body", "Error Codes"]) {
+    const count = (content.match(new RegExp(`^## ${heading}\\s*$`, "gm")) || []).length;
+    if (count > 1) {
+      add(`has ${count} "## ${heading}" sections; only one is allowed`);
+    }
+  }
+  // Every JSON block in the Response Example is an example of the success response.
+  const allResponseJson = codeBlocks(sectionText(content, "Response Example")).filter((block) => block.lang === "json").slice(1);
+  for (const block of allResponseJson) {
+    try {
+      const extra = JSON.parse(block.body);
+      for (const message of checkJsonValue(spec, extra, successSchema, "", "response")) {
+        add(`${message} in ${specName} (a second JSON block in the Response Example)`);
+      }
+    } catch {
+      add(`a second JSON block in the Response Example is not valid JSON`);
+    }
+  }
+  const responseProse = (sectionText(content, "Response Example") || "").replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[`~]*[ \t]*$/gm, "");
+  if (successSchema && /^(?: {4}|\t)[{[]/m.test(responseProse)) {
+    add(`the Response Example has an indented code block, which is not compared; put the example in a \`\`\`json block`);
+  }
+  if (successSchema && sectionText(content, "Response Example") && !/^Status:\s*`?\d{3}/m.test(sectionText(content, "Response Example"))) {
+    warn(`the Response Example has no "Status:" line, so the success status is not compared with ${specName}`);
+  }
   // A Response Example whose JSON block lost its language would not be compared at all.
   const responseBlocks = codeBlocks(sectionText(content, "Response Example"));
   if (successSchema && responseBlocks.length > 0 && !responseBlocks.some((block) => block.lang === "json")) {
@@ -924,6 +1016,9 @@ function checkEndpointDoc(content, relativePath, match, operationRef, requestJso
       continue;
     }
     const specRequired = defined.required ? "yes" : "no";
+    if (documented.required && !/^(yes|no)$/i.test(documented.required)) {
+      add(`parameter '${documented.name}' has '${documented.required}' in the Required column; write yes or no`);
+    }
     if ((documented.required === "yes" || documented.required === "no") && documented.required !== specRequired) {
       add(`parameter '${documented.name}' is marked Required: ${documented.required}, but the spec says ${specRequired}`);
     }
@@ -1033,6 +1128,9 @@ function checkEndpointDoc(content, relativePath, match, operationRef, requestJso
             problems.push(`request field '${name}' lists allowed values (${documentedValues.join(", ")}) that do not match the spec (${specValues.join(", ") || "no enum"})`);
           }
         }
+        if (flag && !/^(yes|no|unspecified)$/i.test(flag)) {
+          problems.push(`request field '${name}' has '${flag}' in the Required column; write yes or no`);
+        }
         if ((flag === "yes" || flag === "no") && !(isTopLevel && bodyIsRequired === false && flag === "no" && !candidate.required)) {
           if ((flag === "yes") !== candidate.required) {
             problems.push(`request field '${name}' is marked Required: ${flag}, but the spec says ${candidate.required ? "yes" : "no"}`);
@@ -1053,7 +1151,9 @@ function checkEndpointDoc(content, relativePath, match, operationRef, requestJso
       const documentedNames = new Set(bodyRows.map(([name]) => name));
       for (const [property, propertySchema] of Object.entries(tableShapes[0].properties || {})) {
         if (!documentedNames.has(property) && !resolveSchema(spec, propertySchema)?.readOnly) {
-          add(`request field '${property}' from ${specName} is missing from the Request Body table`);
+          // A required field must be documented; an optional one may be left out.
+          const fieldRequired = (tableShapes[0].required || []).includes(property);
+          (fieldRequired ? add : warn)(`${fieldRequired ? "required" : "optional"} request field '${property}' from ${specName} is missing from the Request Body table`);
         }
       }
     }
@@ -1062,11 +1162,26 @@ function checkEndpointDoc(content, relativePath, match, operationRef, requestJso
   // Authentication section.
   const authText = sectionText(content, "Authentication");
   if (authText) {
-    authenticationErrors(spec, authText, securityRequirementsOf(spec, operation), `${operationRef.method} ${operationRef.url}`).forEach(add);
+    authenticationErrors(spec, authText, securityRequirementsOf(spec, operation), `${operationRef.method} ${operationRef.url}`, specParameters, warn).forEach(add);
+  }
+
+  // The Endpoint URL's placeholders are the spec's own path parameter names.
+  const endpointPlaceholders = (operationRef.url.match(/\{([^}]+)\}/g) || []).map((entry) => entry.slice(1, -1));
+  const routePlaceholders = (match.route.match(/\{([^}]+)\}/g) || []).map((entry) => entry.slice(1, -1));
+  if (endpointPlaceholders.join("|") !== routePlaceholders.join("|") && endpointPlaceholders.length === routePlaceholders.length) {
+    add(`the Endpoint URL ${operationRef.url} names its path parameters {${endpointPlaceholders.join("}, {")}}, but the spec path is ${match.route}`);
   }
 
   // Credentials the request example sends, against the operation's security.
   const curlText = requestCurl(content);
+  const requestBlocks = codeBlocks(sectionText(content, "Request Example"));
+  const curlCount = requestBlocks.filter((block) => /^\s*curl\b/.test(block.body)).length;
+  if (sectionText(content, "Request Example") && curlCount === 0) {
+    warn(`the Request Example has no curl command, so the request was not compared with ${specName}`);
+  }
+  if (curlCount > 1) {
+    warn(`the Request Example has ${curlCount} curl commands; only the first is compared with ${specName}`);
+  }
   if (curlText) {
     const schemes = spec.components?.securitySchemes || {};
     const requirements = securityRequirementsOf(spec, operation);
@@ -1133,6 +1248,40 @@ function checkEndpointDoc(content, relativePath, match, operationRef, requestJso
       }
     }
 
+    // Multipart fields against the body schema; a real local path in -F would
+    // upload that file from the reader's machine.
+    const multipartMedia = Object.entries(requestBody?.content || {}).find(([type]) => /multipart\/form-data/i.test(type))?.[1];
+    if (curl.formFields.length > 0 && multipartMedia) {
+      const formSchema = resolveSchema(spec, multipartMedia.schema) || {};
+      const formProperties = formSchema.properties || {};
+      for (const field of curl.formFields) {
+        if (field.file && !/^<[^>]+>$|^path\/to\//.test(field.file)) {
+          add(`the request example uploads the local file '${field.file}' in field '${field.name}'; use a placeholder such as @<file>`);
+        }
+        const fieldSchema = formProperties[field.name] ? resolveSchema(spec, formProperties[field.name]) || {} : null;
+        if (!fieldSchema) {
+          if (!formSchema.additionalProperties && Object.keys(formProperties).length > 0) {
+            add(`the request example sends form field '${field.name}', which is not defined in ${specName}`);
+          }
+          continue;
+        }
+        if (field.file) continue;
+        const fieldType = [].concat(fieldSchema.type || []).find((type) => type !== "null");
+        if (Array.isArray(fieldSchema.enum) && !fieldSchema.enum.map(String).includes(field.value)) {
+          add(`form field '${field.name}' uses '${field.value}', which is not one of its allowed values (${fieldSchema.enum.join(", ")})`);
+        } else if ((fieldType === "integer" && !/^-?\d+$/.test(field.value)) || (fieldType === "number" && !/^-?\d+(\.\d+)?$/.test(field.value)) || (fieldType === "boolean" && !/^(true|false)$/.test(field.value))) {
+          add(`form field '${field.name}' uses '${field.value}', which is not a valid ${fieldType}`);
+        }
+      }
+      for (const required of formSchema.required || []) {
+        if (!curl.formFields.some((field) => field.name === required)) {
+          add(`the request example leaves out required form field '${required}'`);
+        }
+      }
+    }
+    if (!requestBody?.content && curl.hasBody) {
+      add(`the request example sends a body, but ${operationRef.method} ${operationRef.url} defines no request body`);
+    }
     // A body needs its Content-Type; -F sets multipart itself.
     if (requestBody?.content && curl.hasBody && !curl.multipart && !curl.headers.has("content-type")) {
       add(`the request example sends a body without a Content-Type header; the spec's request body types are ${Object.keys(requestBody.content).join(", ")}`);
@@ -1257,6 +1406,33 @@ function checkEndpointDoc(content, relativePath, match, operationRef, requestJso
   return errors;
 }
 
+// curl calls in a doc that is not an endpoint doc (an overview or a guide): a call to a
+// spec server must use a path and method that server's spec defines.
+function guideCurlErrors(content, relativePath, specs) {
+  const errors = [];
+  for (const block of codeBlocks(content)) {
+    for (const command of block.body.replace(/\\\n\s*/g, " ").split("\n").filter((line) => /^\s*(?:\$\s*)?curl\b/.test(line))) {
+      const rawUrl = command.match(/https?:\/\/[^\s"'\\]+/)?.[0];
+      if (!rawUrl) continue;
+      const curl = parseCurl(command);
+      const method = (curl.method || (curl.hasBody ? "POST" : "GET")).toLowerCase();
+      const url = rawUrl.replace(/[?#].*$/, "").replace(/\/$/, "");
+      for (const { filePath, spec } of specs) {
+        const base = serverBases(spec).filter((candidate) => candidate && (url === candidate || url.startsWith(`${candidate}/`))).sort((a, b) => b.length - a.length)[0];
+        if (!base) continue;
+        const route = url.slice(base.length) || "/";
+        const routes = Object.keys(spec.paths || {}).filter((specRoute) => routePattern(specRoute).test(route));
+        if (routes.length === 0) {
+          errors.push(`${relativePath}: a curl example calls ${route}, which ${path.basename(filePath)} does not define`);
+        } else if (!routes.some((specRoute) => spec.paths[specRoute]?.[method])) {
+          errors.push(`${relativePath}: a curl example sends ${method.toUpperCase()} ${route}, but ${path.basename(filePath)} defines no ${method.toUpperCase()} for that path`);
+        }
+      }
+    }
+  }
+  return errors;
+}
+
 // Checks an API overview doc: base URL and authentication against the spec.
 function checkOverviewDoc(content, relativePath, specs) {
   const errors = [];
@@ -1275,7 +1451,9 @@ function checkOverviewDoc(content, relativePath, specs) {
   if (authText) {
     const schemes = Object.keys(spec.components?.securitySchemes || {});
     const requirements = (spec.security && spec.security.length > 0) ? spec.security : schemes.map((name) => ({ [name]: [] }));
-    authenticationErrors(spec, authText, requirements, "the API").forEach((message) => errors.push(`${relativePath}: ${message}`));
+    const allHeaderParameters = Object.values(spec.paths || {}).flatMap((pathItem) =>
+      ["get", "put", "post", "delete", "patch", "head", "options"].filter((method) => pathItem?.[method]).flatMap((method) => definedParameters(spec, pathItem, pathItem[method])));
+    authenticationErrors(spec, authText, requirements, "the API", allHeaderParameters).forEach((message) => errors.push(`${relativePath}: ${message}`));
   }
   return errors;
 }
@@ -1306,6 +1484,7 @@ async function main() {
 
   const specTargets = targets.specPaths.length > 0 ? targets.specPaths : [path.join(repoRoot, "examples")];
   const specs = await loadSpecs(specTargets);
+  warnings.push(...skippedSpecs);
   if (targets.userMode && specs.length === 0) {
     console.error(`No OpenAPI 3.x specs found in ${specTargets.map((target) => displayPath(target, displayRoot)).join(", ")}.`);
     process.exitCode = 1;
@@ -1333,6 +1512,7 @@ async function main() {
       } else if (targets.userMode && (/^component:\s*"?endpoint"?\s*$/m.test(content) || /^# Endpoint:/m.test(content) || /## Request Example/.test(content))) {
         errors.push(`${relativePath}: looks like an endpoint doc, but its Endpoint section (Method and URL) is missing or unreadable, so it could not be compared with the spec`);
       }
+      errors.push(...guideCurlErrors(content, relativePath, specs));
       continue;
     }
 

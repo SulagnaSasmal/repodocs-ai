@@ -4,6 +4,37 @@ This changelog tracks product-facing changes to RepoDocs AI.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.6] - 2026-11-28
+
+Fixes from the v1.2.5 fresh-agent release check, which used the Discourse API (OpenAPI 3.1, 84 operations), 228 deliberate breaks and 40 legitimate edits. v1.2.5 failed the run on 167 breaks and rejected 3 legitimate edits. v1.2.6 fails it on 197, warns on 19 more, and rejects 1 legitimate edit, by design: a `stable` doc with no `reviewed_by`. See `.github/release-checks/2026-11-28-v1.2.5.md`.
+
+### Security
+
+- A multipart example that uploads a real local file, such as `-F "file=@/etc/passwd"`, fails the OpenAPI check. Generated multipart text fields use `--form-string`, so a value starting with `@` or `<` is sent as text, never read from disk.
+- `!` in generated curl examples is quoted, so shell history expansion cannot change a value.
+- The quality check catches script links split by a newline inside a quoted attribute, in `formaction`, `xlink:href`, `poster` and other attributes, and as autolinks; event handlers after `/` or a quote; and `style` attributes that load a URL. Images from another site are a warning.
+- Control plane: bootstrap keys that run along the keyboard, the alphabet or the digits are refused.
+- The CI workflow that `init` writes now lints the Markdown with a pinned `markdownlint-cli`.
+
+### Added
+
+- OpenAPI 3.1 support in the generator: `examples`, `const`, type arrays such as `[string, "null"]`, and more formats (`time`, `uri-reference`, `hostname`, `ipv4`, `ipv6`, `byte`). Example numbers respect minimum and maximum, and strings meet `minLength`.
+- Multipart request bodies: file fields get `-F "name=@<file>"`, other fields `--form-string`, and the OpenAPI check reads each field's name, type, allowed values and whether it is required.
+- An operation with no 2xx response says so instead of showing an invented example. Other servers are listed under the base URL. With no security scheme, credential-like header parameters such as `Api-Key` are pointed out for SME review.
+- OpenAPI check errors: a second Endpoint, Request Example, Response Example, Request Body or Error Codes section; a wrong value in any JSON block of the Response Example or in a `~~~` fence; an indented code block in place of a fenced one; Endpoint URL placeholders that do not match the spec's path parameter names; `-XPOST`-style methods; a request body on an operation that takes none; Required values other than yes or no; declared fields inside objects that also allow other keys; and curl calls in guides and overview pages to a path or method the spec does not define.
+- Quality check errors: a heading with no space after `#`, a heading indented into a code block, a table separator with the wrong number of cells, an unclosed HTML comment, `TBD` in any case, and `<your-…>` placeholders in prose.
+- Warnings: a Response Example with no `Status:` line, a Request Example with no curl or with more than one, an auth header the spec uses on other operations but not this one, a page with no `#` title, and a Swagger 2.0 file in the specs folder, which is now reported instead of skipped without a word.
+- The Discourse API as a tenth third-party fixture, and probe tests for every new check.
+
+### Changed
+
+- The Required column accepts `required`, `true` and `mandatory` as yes, and `optional` and `false` as no.
+- `<insert …>` and `{{…}}` count as placeholders only in prose, so a Handlebars or template example inside a code block passes.
+- The suspicious-status heuristic no longer runs on docs that are compared with a spec, where the spec decides the status.
+- A hand-written endpoint doc that leaves out optional request fields gets a warning instead of an error; a missing required field is still an error.
+- A spec that cannot be parsed gives one line naming the file and the YAML or JSON error, not a stack trace.
+- A parameter with no description says `Needs SME input` instead of repeating where it is sent.
+
 ## [1.2.5] — 2026-11-28
 
 Fixes from the v1.2.4 fresh-agent release check, which used the Apideck CRM API, 175 deliberate breaks and 29 legitimate edits. v1.2.4 failed the run on 134 breaks; v1.2.5 fails it on 158 and warns on 12 more. See `.github/release-checks/2026-11-28-v1.2.4.md`.

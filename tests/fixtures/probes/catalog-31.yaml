@@ -1,0 +1,98 @@
+openapi: 3.1.0
+info:
+  title: Catalog API
+  version: "2.0"
+  description: |
+    Send your key in the Api-Key header and your user name in the Api-Username header.
+    Example: `Api-Username: system`
+servers:
+  - url: https://api.example.com/v1
+  - url: https://{region}.example.com/v1
+    variables:
+      region:
+        default: sandbox
+paths:
+  /items:
+    get:
+      operationId: listItems
+      summary: List items
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100}
+        - name: Api-Key
+          in: header
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: The items
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id: {type: integer, examples: [42]}
+                  name: {type: [string, "null"]}
+                  created: {type: string, format: date-time}
+                  contact: {type: string, format: email}
+    post:
+      operationId: createItem
+      summary: Create an item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string, minLength: 3}
+                stock:
+                  type: object
+                  additionalProperties: {type: integer}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: {type: integer}
+  /items/{itemId}:
+    delete:
+      operationId: deleteItem
+      summary: Delete an item
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        "404":
+          description: Not found
+  /uploads:
+    post:
+      operationId: uploadFile
+      summary: Upload a file
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+                title: {type: string}
+      responses:
+        "200":
+          description: Stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}

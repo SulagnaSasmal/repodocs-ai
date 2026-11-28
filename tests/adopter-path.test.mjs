@@ -237,7 +237,8 @@ describe.each(fixtures)("adopter path with %s", (fixture) => {
 
   it("runs the CI step the bootstrap wrote, and it passes", async () => {
     const workflow = await fs.readFile(path.join(docsRepo, ".github", "workflows", "docs-validate.yml"), "utf8");
-    const step = workflow.split("run: |\n").pop().split("\n").map((line) => line.replace(/^ {10}/, "")).join("\n");
+    // The step that runs repodocs-ai validate (the workflow also has a lint step).
+    const step = yaml.load(workflow).jobs.validate.steps.find((candidate) => /repodocs-ai#v/.test(candidate.run || "")).run;
     // The workflow runs a pinned release through npx; run this checkout instead.
     const pinned = step.match(/npx --yes github:SulagnaSasmal\/repodocs-ai#v[\d.]+/)?.[0];
     expect(pinned).toBeTruthy();
