@@ -109,7 +109,7 @@ Running `npm run validate` checks this repository itself and prints one line per
 ```text
 Validated frontmatter for 39 Markdown files in templates, examples.
 Validated 99 required project files.
-Structure checks passed for 28 Markdown files in examples, generated (placeholders, leftover template text, required sections, examples, suspicious status codes, SME labels, placeholder example values, owners). Accuracy against the OpenAPI spec is checked separately.
+Structure checks passed for 28 Markdown files in examples, generated (placeholders, leftover template text, required sections, examples, suspicious status codes, SME labels, placeholder example values, owners, unsafe HTML). Accuracy against the OpenAPI spec is checked separately.
 Compared 11 endpoint docs in examples/api-docs, examples/payments-api, examples/complete-system, generated against the OpenAPI spec (13 Markdown files describe no endpoint and were not compared).
 Checked api_version for 24 Markdown files in examples/api-docs, examples/payments-api, examples/complete-system, generated. 3 of them use api_version 'n/a', which is allowed only for docs that describe no endpoint and is not compared with a spec version.
 ```
@@ -122,7 +122,7 @@ Running `npm test`:
 
 ```text
  Test Files  10 passed (10)
-      Tests  271 passed (271)
+      Tests  289 passed (289)
 ```
 
 The tests include the full adopter path (`init`, `generate`, `validate`, and the CI step `init` writes), and the CLI installed from a packed tarball. They run against eight OpenAPI specs written by other people in `tests/fixtures/third-party/`. They check the generated docs against each spec, not only that the commands succeed. Before each release, a fresh AI agent also follows the README from scratch; the procedure and past reports are in `.github/release-checks/`.
@@ -174,7 +174,7 @@ The command exits with a non-zero code when a check fails, so it can gate CI.
 Each check reports PASS, WARN, FAIL or SKIP and names the folder it checked:
 
 - **Frontmatter:** required fields, which must not be empty, allowed values, and a `last_reviewed` date that exists on the calendar and is not in the future, from `schema/metadata-frontmatter.md`.
-- **Structure and quality:** leftover placeholders (`TODO`, `TBD`, `FIXME`, `<insert …>`, `{{…}}`, lorem ipsum) and template instructions are errors. Warnings: required sections, examples, sections dropped from the template a hand-written doc follows, suspicious status codes in hand-written docs (such as a POST returning 200), unresolved `Needs SME input` labels, placeholder example values, `{name}` placeholders left in the request URL, and owners that are `unassigned` or missing from `schema/owners-registry.md`.
+- **Structure and quality:** leftover placeholders (`TODO`, `TBD`, `FIXME`, `<insert …>`, `{{…}}`, lorem ipsum), template instructions, and HTML that would run script on a docs site (`<script>`, `<iframe>`, inline event handlers, `javascript:` links) are errors. Warnings: required sections, examples, sections dropped from the template a hand-written doc follows, suspicious status codes in hand-written docs (such as a POST returning 200), unresolved `Needs SME input` labels, placeholder example values, `{name}` placeholders left in the request URL, and owners that are `unassigned` or missing from `schema/owners-registry.md`.
 - **OpenAPI examples:** request, response and error JSON examples at every depth: unknown fields, values outside an enum, values of the wrong JSON type, every shape of a `oneOf`, readOnly fields sent in requests and writeOnly fields shown in responses. Request Body table rows: each field exists, with the spec's type, Required flag, allowed values, default, format, minimum and maximum, and whether the body itself is required. Parameter tables, with the same notes. In the request example: the server URL, the path, query parameters and their allowed values, the `Content-Type` header, and the credentials it sends. The authentication section against the spec's security. The success status and Error Codes against the spec's responses.
 - **API versions:** `api_version` in frontmatter against the spec's version.
 
@@ -199,6 +199,7 @@ For hand-authored docs:
 ## What It Does Not Do
 
 - It does not check whether your spec is correct or complete. Generated docs are only as accurate as the spec.
+- It does not copy HTML from the spec into your docs as HTML. Spec text is escaped outside code, so tags show as text and `javascript:` links are removed; write HTML by hand where you need it.
 - It does not write descriptions the spec lacks. Those sections say `Needs SME input` until someone fills them in.
 - It does not document response fields as a table. Response examples, error codes and an example error body are generated; field-level response docs are written by hand.
 - When the spec's own example contradicts its schema, the generated doc does not copy the contradiction silently. Fields the schema does not define are left out, and a number written as a string is shown as a number; the doc says which.
@@ -256,7 +257,7 @@ Without `ANTHROPIC_API_KEY`, the agent still runs generation and validation, but
 
 For the optional hosted automation runtime:
 
-1. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY`.
+1. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY` and `REDIS_PASSWORD` to random values (`openssl rand -hex 24`). The control plane refuses keys shorter than 24 characters and placeholders such as `replace-me`.
 2. Run `npm run control-plane:stack:smoke`.
 3. Confirm the Redis-backed control plane and admin flow pass the smoke test.
 4. Treat the hosted control plane as experimental: an evaluation and internal automation surface, not an enterprise platform. Enterprise features such as external identity, tenancy isolation, audit logging, and broader operational controls are still roadmap items.
@@ -444,7 +445,7 @@ The optional, experimental hosted control plane runs automation over HTTP with R
 
 The control plane stores queue state, run metadata, and user/key records in Redis so multiple app instances can safely accept and process jobs against shared state. The legacy `.control-plane/*.json` files are only used as a one-time migration source when Redis starts empty.
 
-For local development, the repository includes an `experimental/deploy/compose.yaml` stack that runs Redis and the control plane together. Both services publish Docker health checks, so `docker compose ps` shows when Redis is ready and when the control plane is answering `/health`. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY` in your shell or environment, then run `npm run control-plane:stack:up`.
+For local development, the repository includes an `experimental/deploy/compose.yaml` stack that runs Redis and the control plane together. Both services publish Docker health checks, so `docker compose ps` shows when Redis is ready and when the control plane is answering `/health`. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY` and `REDIS_PASSWORD` in your shell or environment, then run `npm run control-plane:stack:up`. Redis is reachable only from the control plane, and the control plane only from this machine. See `SECURITY.md` for the server's limits and headers.
 
 To run a repeatable end-to-end verification against a live stack, use `npm run control-plane:smoke`. To boot the compose stack and run the smoke test in one step, use `npm run control-plane:stack:smoke`.
 

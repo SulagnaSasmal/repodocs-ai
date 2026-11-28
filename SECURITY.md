@@ -4,7 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 1.0.x   | Yes       |
+| 1.2.x   | Yes       |
+| < 1.2   | No        |
 
 ## Reporting a Vulnerability
 
@@ -66,8 +67,18 @@ Include:
 
 If you deploy the RepoDocs AI hosted control plane:
 
-1. Always set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY` to a strong random value.
-2. Never expose the control plane port to the public internet without authentication.
-3. Rotate API keys regularly using the `/users/:id/keys` management endpoint.
-4. Use the provided Docker and Redis configurations — do not run the control plane with an unauthenticated Redis instance accessible from untrusted networks.
-5. Review `docs/hosted-control-plane.md` before deploying to production.
+1. Set `REPODOCS_CONTROL_PLANE_BOOTSTRAP_KEY` to a random value of at least 24 characters, for example `openssl rand -hex 24`. The server refuses to start with a shorter key or a placeholder such as `replace-me`.
+2. Until a key is set, the server answers only requests from the same machine; requests from anywhere else get 503. Never put it on a public address without a key.
+3. Give operators a `service_scope`: a comma-separated list of the job names they may run, matched exactly.
+4. Rotate API keys with the `/users/:id/keys` endpoint, and revoke keys you no longer use. The last active admin cannot be demoted or disabled.
+5. Protect Redis with a password and keep it off public networks. The compose stack requires `REDIS_PASSWORD` and does not publish the Redis port.
+6. Put the control plane behind HTTPS. It sends security headers and a strict Content-Security-Policy, limits request bodies to 64 KB, and limits each address to 120 requests and 10 failed key attempts a minute. Those limits are kept per process, so a multi-instance deployment should also rate-limit at the load balancer.
+7. Review `docs/hosted-control-plane.md` before deploying to production.
+
+## Generated Documentation
+
+OpenAPI specs often come from other teams or vendors, so the generator treats their text as untrusted. Outside code blocks, HTML from a spec is escaped and `javascript:`, `vbscript:` and `data:` links are removed, so a docs site that renders raw HTML (MkDocs, Jekyll, Hugo with unsafe HTML on) shows that text instead of running it. The quality check fails hand-written docs that contain `<script>`, `<iframe>`, inline event handlers or script links.
+
+## Last Audit
+
+A security audit on 2026-11-28 covered secrets in the tree and the full Git history, the control plane, the generator and validators, the GitHub workflows, the Docker setup and dependencies. The findings and fixes are in `.github/release-checks/2026-11-28-security-audit.md`.
