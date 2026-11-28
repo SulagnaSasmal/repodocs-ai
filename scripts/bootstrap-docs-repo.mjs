@@ -37,15 +37,19 @@ on:
       - main
   pull_request:
 
+# The token can read the repository and nothing else.
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the docs
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
 
@@ -61,6 +65,8 @@ jobs:
           fi
           specs=()
           if [ -d openapi ]; then specs=(--specs openapi); fi
+          # Pinned to the release that created this repository. To pin an exact
+          # commit instead of a tag, replace v${version} with its commit SHA.
           npx --yes github:SulagnaSasmal/repodocs-ai#v${version} validate "\${targets[@]}" "\${specs[@]}"
 `;
 }
